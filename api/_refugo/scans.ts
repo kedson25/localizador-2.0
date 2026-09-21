@@ -1,14 +1,19 @@
 import { FieldValue } from 'firebase-admin/firestore';
-import { adminDb } from '../_lib/firebase-admin';
+import { adminDb, isFirebaseAdminConfigured } from '../_lib/firebase-admin';
+import { listDocsRest, patchDocRest, deleteDocRest } from '../_lib/firestore-rest';
 import { normalizeCodigo, getDeterministicItemId } from '../_lib/id';
 import { sendSuccess, sendError } from '../_lib/response';
 
 export default async function handler(req: any, res: any) {
-  const { db } = adminDb;
-  const scansCol = db.collection('refugo_scans_items');
-
   if (req.method === 'GET') {
     try {
+      if (!isFirebaseAdminConfigured()) {
+        const { documents } = await listDocsRest('refugo_scans_items', 100);
+        return sendSuccess(res, { scans: documents });
+      }
+
+      const { db } = adminDb;
+      const scansCol = db.collection('refugo_scans_items');
       const snap = await scansCol.orderBy('timestamp', 'desc').limit(500).get();
       const scans = snap.docs.map((d) => ({
         ...d.data(),
@@ -37,10 +42,17 @@ export default async function handler(req: any, res: any) {
         foundBy: foundBy || 'Operador',
         scannedAt: new Date().toISOString(),
         timestamp: Date.now(),
-        updatedAt: FieldValue.serverTimestamp(),
+        updatedAt: new Date().toISOString(),
       };
 
-      await scansCol.doc(docId).set(scanItem, { merge: true });
+      if (!isFirebaseAdminConfigured()) {
+        await patchDocRest(`refugo_scans_items/${docId}`, scanItem);
+        return sendSuccess(res, scanItem, 201);
+      }
+
+      const { db } = adminDb;
+      const scansCol = db.collection('refugo_scans_items');
+      await scansCol.doc(docId).set({ ...scanItem, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
 
       return sendSuccess(res, scanItem, 201);
     } catch (err: any) {
@@ -50,6 +62,16 @@ export default async function handler(req: any, res: any) {
 
   if (req.method === 'DELETE') {
     try {
+      if (!isFirebaseAdminConfigured()) {
+        const { documents } = await listDocsRest('refugo_scans_items', 100);
+        for (const doc of documents) {
+          await deleteDocRest(`refugo_scans_items/${doc.id}`);
+        }
+        return sendSuccess(res, { cleared: true });
+      }
+
+      const { db } = adminDb;
+      const scansCol = db.collection('refugo_scans_items');
       // Excluir em lotes de 400
       while (true) {
         const snap = await scansCol.limit(400).get();

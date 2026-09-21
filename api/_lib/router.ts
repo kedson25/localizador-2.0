@@ -14,6 +14,8 @@ export async function dispatchApiRoute(req: any, res: any) {
     const queryString = req.url.split('?')[1];
     const params = new URLSearchParams(queryString);
     req.query = Object.fromEntries(params.entries());
+  } else if (!req.query) {
+    req.query = {};
   }
 
   // Parsear body se for stream

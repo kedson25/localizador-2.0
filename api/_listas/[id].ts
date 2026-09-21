@@ -1,11 +1,11 @@
 import { FieldValue } from 'firebase-admin/firestore';
-import { adminDb } from '../_lib/firebase-admin';
+import { adminDb, isFirebaseAdminConfigured } from '../_lib/firebase-admin';
+import { getDocRest, patchDocRest, deleteDocRest } from '../_lib/firestore-rest';
 import { sendSuccess, sendError } from '../_lib/response';
 import { logApi } from '../_lib/logger';
 
 export default async function handler(req: any, res: any) {
   const startTime = Date.now();
-  const { db } = adminDb;
 
   // Extrair ID tanto de req.query quanto da URL
   const listaId =
@@ -17,10 +17,18 @@ export default async function handler(req: any, res: any) {
     return sendError(res, 400, 'MISSING_ID', 'ID da lista é obrigatório');
   }
 
-  const docRef = db.collection('coleta_listas').doc(listaId);
-
   if (req.method === 'GET') {
     try {
+      if (!isFirebaseAdminConfigured()) {
+        const data = await getDocRest(`coleta_listas/${listaId}`);
+        if (!data) {
+          return sendError(res, 404, 'NOT_FOUND', 'Lista não encontrada');
+        }
+        return sendSuccess(res, { ...data, id: listaId });
+      }
+
+      const { db } = adminDb;
+      const docRef = db.collection('coleta_listas').doc(listaId);
       const snap = await docRef.get();
       if (!snap.exists) {
         return sendError(res, 404, 'NOT_FOUND', 'Lista não encontrada');
@@ -39,6 +47,17 @@ export default async function handler(req: any, res: any) {
       delete updates.id;
       delete updates.itens; // Garante que nunca regrava array itens no documento pai
 
+      if (!isFirebaseAdminConfigured()) {
+        const cleanedUpdates = {
+          ...updates,
+          updatedAt: new Date().toISOString(),
+        };
+        const updated = await patchDocRest(`coleta_listas/${listaId}`, cleanedUpdates);
+        return sendSuccess(res, { ...updated, id: listaId });
+      }
+
+      const { db } = adminDb;
+      const docRef = db.collection('coleta_listas').doc(listaId);
       const cleanedUpdates = {
         ...updates,
         updatedAt: FieldValue.serverTimestamp(),
@@ -55,6 +74,14 @@ export default async function handler(req: any, res: any) {
 
   if (req.method === 'DELETE') {
     try {
+      if (!isFirebaseAdminConfigured()) {
+        await deleteDocRest(`coleta_listas/${listaId}`);
+        return sendSuccess(res, { deleted: true, listaId });
+      }
+
+      const { db } = adminDb;
+      const docRef = db.collection('coleta_listas').doc(listaId);
+
       // 1. Excluir subcoleção itens em chunks de 400
       const itemsCol = docRef.collection('itens');
       let totalDeletedItems = 0;

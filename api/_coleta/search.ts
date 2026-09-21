@@ -1,4 +1,5 @@
-import { adminDb } from '../_lib/firebase-admin';
+import { adminDb, isFirebaseAdminConfigured } from '../_lib/firebase-admin';
+import { getDocRest, listDocsRest } from '../_lib/firestore-rest';
 import { SearchItemsSchema } from '../_lib/validation';
 import { normalizeCodigo, cleanDigits, getDeterministicItemId } from '../_lib/id';
 import { sendSuccess, sendError } from '../_lib/response';
@@ -20,11 +21,45 @@ export default async function handler(req: any, res: any) {
     const { listaId, q, limit: maxResults } = parseResult.data;
     const cleanQuery = normalizeCodigo(q);
     const digitsQuery = cleanDigits(cleanQuery);
+    const resultsMap = new Map<string, any>();
+
+    if (!isFirebaseAdminConfigured()) {
+      // 1. Busca Direta Determinística por Document ID (O(1))
+      try {
+        const deterministicId = getDeterministicItemId(cleanQuery);
+        const item = await getDocRest(`coleta_listas/${listaId}/itens/${deterministicId}`);
+        if (item) {
+          resultsMap.set(item.id, item);
+        }
+      } catch (_) {}
+
+      // 2. Se não achou por ID determinístico, lista e filtra
+      if (resultsMap.size < maxResults) {
+        const { documents } = await listDocsRest(`coleta_listas/${listaId}/itens`, 100);
+        for (const doc of documents) {
+          if (
+            doc.codigo === cleanQuery ||
+            doc.codigoClean === digitsQuery ||
+            (doc.codigo && doc.codigo.includes(cleanQuery))
+          ) {
+            resultsMap.set(doc.id, doc);
+            if (resultsMap.size >= maxResults) break;
+          }
+        }
+      }
+
+      const results = Array.from(resultsMap.values());
+      return sendSuccess(res, {
+        results,
+        count: results.length,
+        query: cleanQuery,
+      });
+    }
 
     const { db } = adminDb;
     const listaRef = db.collection('coleta_listas').doc(listaId);
     const itemsCol = listaRef.collection('itens');
-    const resultsMap = new Map<string, any>();
+    // resultsMap já foi declarado no escopo superior
 
     // 1. Busca Direta Determinística por Document ID (O(1))
     try {

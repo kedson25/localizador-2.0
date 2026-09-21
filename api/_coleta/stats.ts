@@ -1,4 +1,5 @@
-import { adminDb } from '../_lib/firebase-admin';
+import { adminDb, isFirebaseAdminConfigured } from '../_lib/firebase-admin';
+import { getDocRest } from '../_lib/firestore-rest';
 import { sendSuccess, sendError } from '../_lib/response';
 
 export default async function handler(req: any, res: any) {
@@ -12,14 +13,22 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    const { db } = adminDb;
-    const docSnap = await db.collection('coleta_listas').doc(listaId).get();
+    let data: Record<string, any> | null = null;
 
-    if (!docSnap.exists) {
+    if (!isFirebaseAdminConfigured()) {
+      data = await getDocRest(`coleta_listas/${listaId}`);
+    } else {
+      const { db } = adminDb;
+      const docSnap = await db.collection('coleta_listas').doc(listaId).get();
+      if (docSnap.exists) {
+        data = docSnap.data() || {};
+      }
+    }
+
+    if (!data) {
       return sendError(res, 404, 'LISTA_NOT_FOUND', 'Lista não encontrada');
     }
 
-    const data = docSnap.data() || {};
     const stats = {
       listaId,
       nome: data.nome,

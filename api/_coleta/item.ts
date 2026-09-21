@@ -1,5 +1,6 @@
 import { FieldValue } from 'firebase-admin/firestore';
-import { adminDb } from '../_lib/firebase-admin';
+import { adminDb, isFirebaseAdminConfigured } from '../_lib/firebase-admin';
+import { updateItemRest, deleteItemRest } from '../_lib/firestore-rest';
 import { requireAuth } from '../_lib/auth';
 import { UpdateItemSchema, DeleteItemSchema } from '../_lib/validation';
 import { sendSuccess, sendError } from '../_lib/response';
@@ -7,7 +8,6 @@ import { logApi } from '../_lib/logger';
 
 export default async function handler(req: any, res: any) {
   const startTime = Date.now();
-  const { db } = adminDb;
 
   if (req.method === 'PATCH') {
     try {
@@ -17,6 +17,13 @@ export default async function handler(req: any, res: any) {
       }
 
       const { listaId, itemId, changes } = parseResult.data;
+
+      if (!isFirebaseAdminConfigured()) {
+        const result = await updateItemRest(listaId, itemId, changes);
+        return sendSuccess(res, result);
+      }
+
+      const { db } = adminDb;
       const listaRef = db.collection('coleta_listas').doc(listaId);
       const itemRef = listaRef.collection('itens').doc(itemId);
 
@@ -75,6 +82,13 @@ export default async function handler(req: any, res: any) {
       }
 
       const { listaId, itemId } = parseResult.data;
+
+      if (!isFirebaseAdminConfigured()) {
+        const result = await deleteItemRest(listaId, itemId);
+        return sendSuccess(res, result);
+      }
+
+      const { db } = adminDb;
       const listaRef = db.collection('coleta_listas').doc(listaId);
       const itemRef = listaRef.collection('itens').doc(itemId);
 

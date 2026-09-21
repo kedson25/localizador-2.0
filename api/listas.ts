@@ -4,11 +4,15 @@ import reconcileHandler from './_listas/reconcile';
 import { sendError } from './_lib/response';
 
 export default async function handler(req: any, res: any) {
-  const { action } = req.query;
+  const { action, id } = req.query || {};
+  if (!action || action === 'index') {
+    return listasIndexHandler(req, res);
+  }
   switch (action) {
-    case 'index': return listasIndexHandler(req, res);
     case 'id': return listaIdHandler(req, res);
     case 'reconcile': return reconcileHandler(req, res);
-    default: return sendError(res, 404, 'NOT_FOUND', 'Ação não encontrada em listas');
+    default:
+      if (id) return listaIdHandler(req, res);
+      return sendError(res, 404, 'NOT_FOUND', 'Ação não encontrada em listas');
   }
 }

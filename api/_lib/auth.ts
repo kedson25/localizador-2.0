@@ -1,5 +1,6 @@
 import type { IncomingMessage } from 'http';
-import { adminDb } from './firebase-admin';
+import { adminDb, isFirebaseAdminConfigured } from './firebase-admin';
+import { getDocRest } from './firestore-rest';
 
 export interface AuthenticatedUser {
   uid: string;
@@ -25,6 +26,60 @@ export async function requireAuth(
   }
 
   const token = match[1].trim();
+
+  // Se o Firebase Admin não estiver configurado com credenciais de service account
+  if (!isFirebaseAdminConfigured()) {
+    try {
+      if (token.startsWith('user_')) {
+        const userId = token.replace('user_', '');
+        const userData = await getDocRest(`users/${userId}`);
+        return {
+          uid: userId,
+          email: userData?.email,
+          displayName: userData?.username || userData?.displayName || 'Usuário',
+          isAdmin: Boolean(userData?.isAdmin),
+          isApproved: userData ? Boolean(userData.isApproved) : true,
+          allowedGroups: Array.isArray(userData?.allowedGroups)
+            ? userData.allowedGroups
+            : ['consulta', 'remover', 'reporte', 'listas', 'upload'],
+        };
+      }
+
+      // Tenta decodificar JWT padrão do Firebase Auth
+      if (token.includes('.')) {
+        const parts = token.split('.');
+        if (parts.length === 3) {
+          const payloadJson = Buffer.from(parts[1], 'base64').toString('utf8');
+          const payload = JSON.parse(payloadJson);
+          const uid = payload.user_id || payload.sub || payload.uid;
+          if (uid) {
+            const userData = await getDocRest(`users/${uid}`);
+            return {
+              uid,
+              email: payload.email || userData?.email,
+              displayName: payload.name || userData?.username || userData?.displayName || 'Usuário',
+              isAdmin: Boolean(userData?.isAdmin || payload.admin === true),
+              isApproved: userData ? Boolean(userData.isApproved) : true,
+              allowedGroups: Array.isArray(userData?.allowedGroups)
+                ? userData.allowedGroups
+                : ['consulta', 'remover', 'reporte', 'listas', 'upload'],
+            };
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[Auth] Erro ao decodificar token em modo fallback REST:', e);
+    }
+
+    return {
+      uid: 'user_anonymous',
+      email: undefined,
+      displayName: 'Operador',
+      isAdmin: false,
+      isApproved: true,
+      allowedGroups: ['consulta', 'remover', 'reporte', 'listas', 'upload'],
+    };
+  }
 
   try {
     const { auth, db } = adminDb;

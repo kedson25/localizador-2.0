@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'http';
 import { FieldValue } from 'firebase-admin/firestore';
-import { adminDb } from '../_lib/firebase-admin';
+import { adminDb, isFirebaseAdminConfigured } from '../_lib/firebase-admin';
+import { processBipRest } from '../_lib/firestore-rest';
 import { getServerSupabase } from '../_lib/supabase';
 import { requireAuth, AuthError } from '../_lib/auth';
 import { BipRequestSchema } from '../_lib/validation';
@@ -56,115 +57,146 @@ export default async function handler(req: any, res: any) {
     const digitsOnly = cleanDigits(cleanCode);
     const operante = responsavel || user.displayName || 'Operador';
 
-    const { db } = adminDb;
-    const listaRef = db.collection('coleta_listas').doc(listaId);
-    const itemRef = listaRef.collection('itens').doc(docId);
+    let result: { item: any; isNew: boolean };
 
-    // 4. Executar transação atômica
-    const result = await db.runTransaction(async (transaction) => {
-      const [listaSnap, itemSnap] = await Promise.all([
-        transaction.get(listaRef),
-        transaction.get(itemRef),
-      ]);
+    // Se as credenciais de service account não estiverem presentes no ambiente, usar Firestore REST diretamente
+    if (!isFirebaseAdminConfigured()) {
+      result = await processBipRest({
+        listaId,
+        codigo: cleanCode,
+        saida,
+        motivo,
+        rota,
+        responsavel: operante,
+        grupoId,
+      });
+    } else {
+      try {
+        const { db } = adminDb;
+        const listaRef = db.collection('coleta_listas').doc(listaId);
+        const itemRef = listaRef.collection('itens').doc(docId);
 
-      if (!listaSnap.exists) {
-        throw new Error('LISTA_NOT_FOUND');
-      }
+        // 4. Executar transação atômica
+        result = await db.runTransaction(async (transaction) => {
+          const [listaSnap, itemSnap] = await Promise.all([
+            transaction.get(listaRef),
+            transaction.get(itemRef),
+          ]);
 
-      const listaData = listaSnap.data() || {};
-      const nowMs = Date.now();
-      const nowBR = new Date().toLocaleString('pt-BR');
+          if (!listaSnap.exists) {
+            throw new Error('LISTA_NOT_FOUND');
+          }
 
-      const targetSaida = saida || listaData.saidaPadrao || 'Ciclo 2 - Saída PM';
-      const targetMotivo = motivo || listaData.motivoPadrao || 'Pendente';
-      const targetRota = rota || listaData.rota || 'Sem Rota';
+          const listaData = listaSnap.data() || {};
+          const nowMs = Date.now();
+          const nowBR = new Date().toLocaleString('pt-BR');
 
-      if (itemSnap.exists) {
-        // Item já existia: atualizar dados sem duplicar
-        const prevItem = itemSnap.data() || {};
-        const prevSaida = prevItem.saida;
-        const prevMotivo = prevItem.motivo;
-        const prevOp = prevItem.responsavel;
+          const targetSaida = saida || listaData.saidaPadrao || 'Ciclo 2 - Saída PM';
+          const targetMotivo = motivo || listaData.motivoPadrao || 'Pendente';
+          const targetRota = rota || listaData.rota || 'Sem Rota';
 
-        const updatedItem = {
-          ...prevItem,
+          if (itemSnap.exists) {
+            // Item já existia: atualizar dados sem duplicar
+            const prevItem = itemSnap.data() || {};
+            const prevSaida = prevItem.saida;
+            const prevMotivo = prevItem.motivo;
+            const prevOp = prevItem.responsavel;
+
+            const updatedItem = {
+              ...prevItem,
+              codigo: cleanCode,
+              codigoClean: digitsOnly,
+              saida: targetSaida,
+              motivo: targetMotivo,
+              rota: targetRota,
+              responsavel: operante,
+              grupoId: grupoId !== undefined ? grupoId : prevItem.grupoId,
+              scannedAt: nowBR,
+              timestamp: nowMs,
+              updatedAt: FieldValue.serverTimestamp(),
+            };
+
+            transaction.set(itemRef, updatedItem, { merge: true });
+
+            // Atualizar métricas na lista se saída/motivo/operador mudaram
+            const listaUpdates: Record<string, any> = {
+              updatedAt: FieldValue.serverTimestamp(),
+            };
+
+            if (prevSaida && prevSaida !== targetSaida) {
+              listaUpdates[`saidasCount.${prevSaida}`] = FieldValue.increment(-1);
+              listaUpdates[`saidasCount.${targetSaida}`] = FieldValue.increment(1);
+            }
+            if (prevMotivo && prevMotivo !== targetMotivo) {
+              listaUpdates[`motivosCount.${prevMotivo}`] = FieldValue.increment(-1);
+              listaUpdates[`motivosCount.${targetMotivo}`] = FieldValue.increment(1);
+            }
+            if (prevOp && prevOp !== operante) {
+              listaUpdates[`bipsPorOperador.${prevOp}`] = FieldValue.increment(-1);
+              listaUpdates[`bipsPorOperador.${operante}`] = FieldValue.increment(1);
+            }
+
+            if (Object.keys(listaUpdates).length > 1) {
+              transaction.set(listaRef, listaUpdates, { merge: true });
+            }
+
+            return {
+              item: { ...updatedItem, id: docId },
+              isNew: false,
+            };
+          } else {
+            // Novo item na lista: inserção atômica
+            const newItem = {
+              id: docId,
+              codigo: cleanCode,
+              codigoClean: digitsOnly,
+              rota: targetRota,
+              saida: targetSaida,
+              motivo: targetMotivo,
+              scannedAt: nowBR,
+              responsavel: operante,
+              grupoId: grupoId || undefined,
+              validado: false,
+              timestamp: nowMs,
+              createdAt: FieldValue.serverTimestamp(),
+              updatedAt: FieldValue.serverTimestamp(),
+            };
+
+            transaction.set(itemRef, newItem);
+
+            // Incrementar contadores atômicos
+            const listaUpdates: Record<string, any> = {
+              totalItens: FieldValue.increment(1),
+              [`bipsPorOperador.${operante}`]: FieldValue.increment(1),
+              [`saidasCount.${targetSaida}`]: FieldValue.increment(1),
+              [`motivosCount.${targetMotivo}`]: FieldValue.increment(1),
+              updatedAt: FieldValue.serverTimestamp(),
+            };
+
+            transaction.set(listaRef, listaUpdates, { merge: true });
+
+            return {
+              item: newItem,
+              isNew: true,
+            };
+          }
+        });
+      } catch (adminErr: any) {
+        if (adminErr.message === 'LISTA_NOT_FOUND') {
+          throw adminErr;
+        }
+        console.warn('[Bip] Falha no Admin SDK, tentando via Firestore REST:', adminErr.message);
+        result = await processBipRest({
+          listaId,
           codigo: cleanCode,
-          codigoClean: digitsOnly,
-          saida: targetSaida,
-          motivo: targetMotivo,
-          rota: targetRota,
+          saida,
+          motivo,
+          rota,
           responsavel: operante,
-          grupoId: grupoId !== undefined ? grupoId : prevItem.grupoId,
-          scannedAt: nowBR,
-          timestamp: nowMs,
-          updatedAt: FieldValue.serverTimestamp(),
-        };
-
-        transaction.set(itemRef, updatedItem, { merge: true });
-
-        // Atualizar métricas na lista se saída/motivo/operador mudaram
-        const listaUpdates: Record<string, any> = {
-          updatedAt: FieldValue.serverTimestamp(),
-        };
-
-        if (prevSaida && prevSaida !== targetSaida) {
-          listaUpdates[`saidasCount.${prevSaida}`] = FieldValue.increment(-1);
-          listaUpdates[`saidasCount.${targetSaida}`] = FieldValue.increment(1);
-        }
-        if (prevMotivo && prevMotivo !== targetMotivo) {
-          listaUpdates[`motivosCount.${prevMotivo}`] = FieldValue.increment(-1);
-          listaUpdates[`motivosCount.${targetMotivo}`] = FieldValue.increment(1);
-        }
-        if (prevOp && prevOp !== operante) {
-          listaUpdates[`bipsPorOperador.${prevOp}`] = FieldValue.increment(-1);
-          listaUpdates[`bipsPorOperador.${operante}`] = FieldValue.increment(1);
-        }
-
-        if (Object.keys(listaUpdates).length > 1) {
-          transaction.set(listaRef, listaUpdates, { merge: true });
-        }
-
-        return {
-          item: { ...updatedItem, id: docId },
-          isNew: false,
-        };
-      } else {
-        // Novo item na lista: inserção atômica
-        const newItem = {
-          id: docId,
-          codigo: cleanCode,
-          codigoClean: digitsOnly,
-          rota: targetRota,
-          saida: targetSaida,
-          motivo: targetMotivo,
-          scannedAt: nowBR,
-          responsavel: operante,
-          grupoId: grupoId || undefined,
-          validado: false,
-          timestamp: nowMs,
-          createdAt: FieldValue.serverTimestamp(),
-          updatedAt: FieldValue.serverTimestamp(),
-        };
-
-        transaction.set(itemRef, newItem);
-
-        // Incrementar contadores atômicos
-        const listaUpdates: Record<string, any> = {
-          totalItens: FieldValue.increment(1),
-          [`bipsPorOperador.${operante}`]: FieldValue.increment(1),
-          [`saidasCount.${targetSaida}`]: FieldValue.increment(1),
-          [`motivosCount.${targetMotivo}`]: FieldValue.increment(1),
-          updatedAt: FieldValue.serverTimestamp(),
-        };
-
-        transaction.set(listaRef, listaUpdates, { merge: true });
-
-        return {
-          item: newItem,
-          isNew: true,
-        };
+          grupoId,
+        });
       }
-    });
+    }
 
     logApi('info', 'Bip executado com sucesso', {
       endpoint: '/api/coleta/bip',

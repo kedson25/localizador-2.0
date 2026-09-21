@@ -1,4 +1,5 @@
-import { adminDb } from '../_lib/firebase-admin';
+import { adminDb, isFirebaseAdminConfigured } from '../_lib/firebase-admin';
+import { getDocRest, listDocsRest } from '../_lib/firestore-rest';
 import { QueryItemsSchema } from '../_lib/validation';
 import { sendSuccess, sendError } from '../_lib/response';
 import { logApi } from '../_lib/logger';
@@ -17,6 +18,35 @@ export default async function handler(req: any, res: any) {
     }
 
     const { listaId, limit: pageSize, cursor, direction, saida, motivo, validado, order } = parseResult.data;
+
+    if (!isFirebaseAdminConfigured()) {
+      const listaData = await getDocRest(`coleta_listas/${listaId}`);
+      if (!listaData) {
+        return sendError(res, 404, 'LISTA_NOT_FOUND', 'Lista de coleta não encontrada');
+      }
+
+      const totalItens = typeof listaData.totalItens === 'number' ? listaData.totalItens : 0;
+      const { documents, nextPageToken } = await listDocsRest(`coleta_listas/${listaId}/itens`, pageSize);
+
+      let items = documents;
+      if (saida) items = items.filter((i) => i.saida === saida);
+      if (motivo) items = items.filter((i) => i.motivo === motivo);
+      if (validado !== undefined) items = items.filter((i) => i.validado === (validado === 'true'));
+
+      const hasMore = Boolean(nextPageToken);
+      const nextCursor = items.length > 0 ? items[items.length - 1].id : null;
+      const prevCursor = items.length > 0 ? items[0].id : null;
+
+      return sendSuccess(res, {
+        items,
+        nextCursor: hasMore ? nextCursor : null,
+        prevCursor,
+        hasMore,
+        total: totalItens,
+        pageSize,
+      });
+    }
+
     const { db } = adminDb;
 
     // 1. Obter contadores e metadados da lista pai (O(1))
