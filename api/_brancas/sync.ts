@@ -1,12 +1,13 @@
 import crypto from 'crypto';
-import { readBrancas, readRotasIds, readRotasDetails, isGoogleSheetsConfigured, BrancaRow } from '../_lib/googleSheets';
-import { getDocRest, patchDocRest, runQueryRest, batchCommitWritesRest } from '../_lib/firestore-rest';
+import { readBrancas, readRotasDetails, isGoogleSheetsConfigured, BrancaRow } from '../_lib/googleSheets';
+import { getDocRest, runQueryRest } from '../_lib/firestore-rest';
+import { batchCommitWritesWithRetry } from '../_lib/firestore-safe-batch';
 import { sendSuccess, sendError } from '../_lib/response';
 import { logApi } from '../_lib/logger';
-import { translateRoutingPattern, buildVisaoGeral, OperationalPatternInsight, VisaoGeralCategoria } from '../_lib/operationalTranslator';
+import { translateRoutingPattern, buildVisaoGeral, OperationalPatternInsight } from '../_lib/operationalTranslator';
 
 export type ResultadoBranca = 'ROTEIRIZADO' | 'NAO_ROTEIRIZADO';
-export type TransicaoBranca = 
+export type TransicaoBranca =
   | 'NOVO_NAO_ROTEIRIZADO'
   | 'CONTINUA_NAO_ROTEIRIZADO'
   | 'RECUPERADO'
@@ -111,11 +112,17 @@ export default async function syncHandler(req: any, res: any) {
     }
 
     const latestSnapshot = latestSnapshots.length > 0 ? latestSnapshots[0] : null;
+    const latestWriteComplete =
+      !latestSnapshot ||
+      ((latestSnapshot.writeSyncStatus === undefined || latestSnapshot.writeSyncStatus === 'COMPLETE') &&
+        Number(latestSnapshot.failedPackageWrites || 0) === 0);
 
-    // SE NADA MUDOU (Hash idêntico e já temos dados processados) e não é forçado:
+    // Só reutiliza snapshot idêntico se a persistência anterior realmente terminou.
+    // Snapshot parcial deve ser reprocessado para que os writes pendentes sejam tentados novamente.
     if (
       latestSnapshot &&
       latestSnapshot.hash === currentHash &&
+      latestWriteComplete &&
       !forceManual &&
       Array.isArray(latestSnapshot.itemsNaoRoteirizados) &&
       latestSnapshot.itemsNaoRoteirizados.length > 0
@@ -125,6 +132,7 @@ export default async function syncHandler(req: any, res: any) {
         changed: false,
         isNewRun: false,
         hasChanges: false,
+        partialSuccess: false,
         runId: latestSnapshot.id,
         snapshotId: latestSnapshot.id,
         ciclosDetectados: latestSnapshot.ciclosDetectados || ciclosDetectados,
@@ -155,6 +163,10 @@ export default async function syncHandler(req: any, res: any) {
         extRotasCount: rotasIds.size,
         visaoGeralSistema: latestSnapshot.visaoGeralSistema || buildVisaoGeral(latestSnapshot.itemsNaoRoteirizados || []),
         padroesDetectados: latestSnapshot.padroesDetectados || [],
+        totalPackageWrites: latestSnapshot.totalPackageWrites || 0,
+        successfulPackageWrites: latestSnapshot.successfulPackageWrites || latestSnapshot.totalPackageWrites || 0,
+        failedPackageWrites: 0,
+        quotaLimited: false,
         lastComparisonTime: latestSnapshot.createdAt,
         lastCheckTime: new Date().toISOString(),
         statusBanner: 'Nenhuma alteração encontrada.',
@@ -162,7 +174,7 @@ export default async function syncHandler(req: any, res: any) {
       });
     }
 
-    // 4. SE MUDOU: Comparação, Classificação e Snapshot
+    // 4. SE MUDOU (ou houve sync parcial anterior): Comparação, Classificação e Snapshot
     const snapshotId = `snap_${Date.now()}_${currentHash.slice(0, 8)}`;
     const naoRoteirizadasRows = brancas.filter(b => !rotasIds.has(b.idPacote));
     const roteirizadasRows = brancas.filter(b => rotasIds.has(b.idPacote));
@@ -212,8 +224,8 @@ export default async function syncHandler(req: any, res: any) {
       const tentativasCount = previousMovs.length + 1;
 
       let transicao: TransicaoBranca = 'NOVO_NAO_ROTEIRIZADO';
-      let motivoAnterior = prev?.ultimoMotivo || prev?.motivoMacro || '';
-      let statusAnterior = prev?.ultimoStatus || prev?.statusTraduzido || '';
+      const motivoAnterior = prev?.ultimoMotivo || prev?.motivoMacro || '';
+      const statusAnterior = prev?.ultimoStatus || prev?.statusTraduzido || '';
 
       if (!prev) {
         transicao = 'NOVO_NAO_ROTEIRIZADO';
@@ -499,7 +511,21 @@ export default async function syncHandler(req: any, res: any) {
       ? Number(((roteirizadasCount / totalBrancas) * 100).toFixed(1))
       : 0;
 
-    // 7. Salvar snapshot completo em routing_snapshots/{snapshotId} e routing_runs/{snapshotId}
+    // 7. Primeiro persiste os históricos. A resposta só é concluída depois de sabermos
+    // quantos writes foram realmente aceitos pelo Firestore.
+    const packageWriteResult = await batchCommitWritesWithRetry(packageWrites, {
+      chunkSize: 250,
+      maxAttempts: 4,
+      baseDelayMs: 400,
+      maxDelayMs: 4_000,
+      delayBetweenChunksMs: 80,
+    });
+
+    const packageSyncPartial = packageWriteResult.failedWrites > 0;
+    const writeSyncStatus = packageSyncPartial ? 'PARTIAL' : 'COMPLETE';
+
+    // 8. Salvar snapshot completo somente depois da tentativa dos históricos,
+    // registrando a situação real da persistência.
     const snapshotPayload = {
       snapshotId,
       id: snapshotId,
@@ -530,42 +556,84 @@ export default async function syncHandler(req: any, res: any) {
       visaoGeralSistema,
       padroesDetectados,
       observacao: observacao ? String(observacao).trim() : '',
+      writeSyncStatus,
+      totalPackageWrites: packageWriteResult.totalWrites,
+      successfulPackageWrites: packageWriteResult.successfulWrites,
+      failedPackageWrites: packageWriteResult.failedWrites,
+      quotaLimited: packageWriteResult.quotaLimited,
+      failedWriteChunks: packageWriteResult.failedChunks.map((chunk) => ({
+        chunkIndex: chunk.chunkIndex,
+        startIndex: chunk.startIndex,
+        writeCount: chunk.writeCount,
+        attempts: chunk.attempts,
+        status: chunk.status || null,
+        quotaLimited: chunk.quotaLimited,
+      })),
+      writeSyncUpdatedAt: nowIso,
       createdAt: nowIso,
       timestamp: nowTimestamp,
     };
 
-    // Grava snapshots e histórico de pacotes no Firestore (com tratamento para cota excedida 429)
-    try {
-      await Promise.all([
-        patchDocRest(`routing_snapshots/${snapshotId}`, snapshotPayload),
-        patchDocRest(`routing_runs/${snapshotId}`, snapshotPayload),
-      ]);
-    } catch (err: any) {
-      console.warn('[Sync Snapshot Write Warn - Quota/Network]:', err?.message || err);
-    }
+    const snapshotWriteResult = await batchCommitWritesWithRetry(
+      [
+        { type: 'set', docPath: `routing_snapshots/${snapshotId}`, data: snapshotPayload },
+        { type: 'set', docPath: `routing_runs/${snapshotId}`, data: snapshotPayload },
+      ],
+      {
+        chunkSize: 2,
+        maxAttempts: 4,
+        baseDelayMs: 400,
+        maxDelayMs: 4_000,
+        delayBetweenChunksMs: 0,
+      }
+    );
 
-    if (packageWrites.length > 0) {
-      batchCommitWritesRest(packageWrites).catch((err) => {
-        console.warn('[Sync REST Batch Writes Warn]:', err);
+    const snapshotPersisted = snapshotWriteResult.failedWrites === 0;
+    const partialSuccess = packageSyncPartial || !snapshotPersisted;
+    const duration = Date.now() - startTime;
+
+    if (partialSuccess) {
+      logApi('warn', 'Sincronização de brancas concluída parcialmente', {
+        snapshotId,
+        totalBrancas,
+        totalRotas: rotasIds.size,
+        totalPackageWrites: packageWriteResult.totalWrites,
+        successfulPackageWrites: packageWriteResult.successfulWrites,
+        failedPackageWrites: packageWriteResult.failedWrites,
+        quotaLimited: packageWriteResult.quotaLimited || snapshotWriteResult.quotaLimited,
+        snapshotPersisted,
+        durationMs: duration,
+      });
+    } else {
+      logApi('info', 'Nova extração detectada e snapshot salvo com sucesso', {
+        snapshotId,
+        totalBrancas,
+        totalRotas: rotasIds.size,
+        roteirizados: roteirizadasCount,
+        naoRoteirizados: naoRoteirizadasRows.length,
+        recuperados,
+        totalPackageWrites: packageWriteResult.totalWrites,
+        durationMs: duration,
       });
     }
 
-    const duration = Date.now() - startTime;
-    logApi('info', 'Nova extração detectada e snapshot salvo com sucesso', {
-      snapshotId,
-      totalBrancas,
-      totalRotas: rotasIds.size,
-      roteirizados: roteirizadasCount,
-      naoRoteirizados: naoRoteirizadasRows.length,
-      recuperados,
-      durationMs: duration,
-    });
+    const statusBanner = partialSuccess
+      ? packageWriteResult.failedWrites > 0
+        ? `Sincronização parcial: ${packageWriteResult.successfulWrites}/${packageWriteResult.totalWrites} gravações concluídas. ${packageWriteResult.failedWrites} serão tentadas novamente automaticamente.`
+        : 'Dados processados, mas o snapshot não pôde ser confirmado no Firestore. O sistema tentará novamente automaticamente.'
+      : 'Nova extração detectada. Análise atualizada automaticamente.';
+
+    const message = partialSuccess
+      ? 'A análise foi concluída sem interromper a operação, porém existem gravações pendentes no Firestore.'
+      : 'Nova extração detectada nas planilhas e análise atualizada automaticamente.';
 
     return sendSuccess(res, {
       ok: true,
       changed: true,
       isNewRun: true,
       hasChanges: true,
+      partialSuccess,
+      snapshotPersisted,
       snapshotId,
       runId: snapshotId,
       ciclosDetectados,
@@ -593,10 +661,16 @@ export default async function syncHandler(req: any, res: any) {
       extRotasCount: rotasIds.size,
       visaoGeralSistema,
       padroesDetectados,
+      writeSyncStatus,
+      totalPackageWrites: packageWriteResult.totalWrites,
+      successfulPackageWrites: packageWriteResult.successfulWrites,
+      failedPackageWrites: packageWriteResult.failedWrites,
+      quotaLimited: packageWriteResult.quotaLimited || snapshotWriteResult.quotaLimited,
+      failedWriteChunks: packageWriteResult.failedChunks,
       lastComparisonTime: nowIso,
       lastCheckTime: nowIso,
-      statusBanner: 'Nova extração detectada. Análise atualizada automaticamente.',
-      message: 'Nova extração detectada nas planilhas e análise atualizada automaticamente.',
+      statusBanner,
+      message,
       durationMs: duration,
     });
   } catch (err: any) {
