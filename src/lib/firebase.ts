@@ -410,6 +410,88 @@ export function listenToRefugoScans(callback: (scans: RefugoScan[]) => void): ()
   return unsubscribe;
 }
 
+export const REFUGO_HISTORICO_COLLECTION = 'refugo_historico_metricas';
+
+/**
+ * Salva permanentemente uma sessão ou resumo de métricas do Refugo no Firestore.
+ * Não é apagado quando o usuário limpa a base de faltantes ou os itens escaneados da mesa.
+ */
+export async function salvarRefugoHistoricoMetrica(
+  metrica: Omit<RefugoHistoricoMetrica, 'id'> & { id?: string }
+): Promise<string> {
+  const id = metrica.id || `refugo_metricas_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const docRef = doc(db, REFUGO_HISTORICO_COLLECTION, id);
+  const dataToSave = {
+    ...metrica,
+    id,
+    createdAt: metrica.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  try {
+    await setDoc(docRef, dataToSave, { merge: true });
+    return id;
+  } catch (error) {
+    console.error('Erro ao salvar métricas históricas de refugo:', error);
+    // Tenta fallback via API REST do backend se houver erro de permissão no SDK
+    try {
+      const res = await fetch('/api/refugo?action=historico', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(dataToSave)
+      });
+      if (res.ok) {
+        return id;
+      }
+    } catch (_) {}
+    throw error;
+  }
+}
+
+/**
+ * Escuta em tempo real o histórico acumulado permanente das métricas do Refugo.
+ */
+export function listenToRefugoHistoricoMetricas(
+  callback: (metricas: RefugoHistoricoMetrica[]) => void
+): () => void {
+  const colRef = collection(db, REFUGO_HISTORICO_COLLECTION);
+  const q = query(colRef, orderBy('timestamp', 'desc'));
+  
+  const unsubscribe = onSnapshot(q, (snap) => {
+    const list = snap.docs.map(docSnap => ({
+      ...docSnap.data(),
+      id: docSnap.id,
+    } as RefugoHistoricoMetrica));
+    callback(list);
+  }, async (error) => {
+    console.warn('Erro ao escutar histórico de métricas do refugo via snapshot, tentando fallback via API:', error);
+    try {
+      const res = await fetch('/api/refugo?action=historico');
+      if (res.ok) {
+        const json = await res.json();
+        if (json.ok && Array.isArray(json.data?.metricas)) {
+          callback(json.data.metricas);
+        }
+      }
+    } catch (_) {}
+  });
+
+  return unsubscribe;
+}
+
+export async function deleteRefugoHistoricoMetrica(id: string): Promise<void> {
+  const docRef = doc(db, REFUGO_HISTORICO_COLLECTION, id);
+  try {
+    await deleteDoc(docRef);
+  } catch (error) {
+    console.error('Erro ao excluir histórico de métrica do refugo:', error);
+    try {
+      await fetch(`/api/refugo?action=historico&id=${encodeURIComponent(id)}`, {
+        method: 'DELETE'
+      });
+    } catch (_) {}
+  }
+}
+
 /**
  * Server-First Persistence for Coleta Listas:
  * The Firestore database is the single source of truth.
@@ -417,7 +499,7 @@ export function listenToRefugoScans(callback: (scans: RefugoScan[]) => void): ()
  * documents in the subcollection `coleta_listas/{listaId}/itens/{itemId}`.
  * No operational localStorage, no operational IndexedDB, no massive RAM cache.
  */
-import { ColetaLista, ColetaItem } from '../types';
+import { ColetaLista, ColetaItem, RefugoHistoricoMetrica } from '../types';
 
 function cleanDigits(val: string | undefined | null): string {
   if (!val) return '';

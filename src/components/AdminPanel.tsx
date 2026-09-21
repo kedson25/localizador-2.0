@@ -8,8 +8,15 @@ import {
   TrendingUp, Target, Trophy, Trash2, Database
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { listenToListas, saveLista, listenToRefugoScans } from '../lib/firebase';
+import { 
+  listenToListas, 
+  saveLista, 
+  listenToRefugoScans, 
+  listenToRefugoHistoricoMetricas, 
+  deleteRefugoHistoricoMetrica 
+} from '../lib/firebase';
 import { SupabaseManager } from './SupabaseManager';
+import { AdminRefugoMetrics } from './AdminRefugoMetrics';
 export interface RefugoScan {
   id: string;
   rota: string;
@@ -25,7 +32,7 @@ function compareListasNewestFirst(a: ColetaLista, b: ColetaLista) {
   }
   return b.id.localeCompare(a.id);
 }
-import { ColetaLista } from '../types';
+import { ColetaLista, RefugoHistoricoMetrica } from '../types';
 import { PageSkeleton } from './PageSkeleton';
 
 const TABS = [
@@ -132,6 +139,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
   const [users, setUsers] = useState<User[]>([]);
   const [listas, setListas] = useState<ColetaLista[]>([]);
   const [refugoScans, setRefugoScans] = useState<RefugoScan[]>([]);
+  const [refugoHistorico, setRefugoHistorico] = useState<RefugoHistoricoMetrica[]>([]);
   const [loading, setLoading] = useState(true);
   const [listasReady, setListasReady] = useState(false);
   const [isVerifiedAdmin, setIsVerifiedAdmin] = useState(false);
@@ -163,9 +171,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
     const unsubRefugo = listenToRefugoScans(scans => {
       setRefugoScans(scans);
     });
+    const unsubRefugoHistorico = listenToRefugoHistoricoMetricas(metricas => {
+      setRefugoHistorico(metricas);
+    });
     return () => {
       unsubListas();
       unsubRefugo();
+      unsubRefugoHistorico();
     };
   }, [currentUser]);
 
@@ -224,6 +236,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
     await runAdminAction(async () => {
       await updateUserAdminStatus(userId, { allowedGroups: newGroups });
       await fetchUsers();
+    });
+  };
+
+  const handleDeleteRefugoHistorico = async (id: string) => {
+    await runAdminAction(async () => {
+      await deleteRefugoHistoricoMetrica(id);
     });
   };
 
@@ -430,23 +448,30 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
     ).length;
   };
 
-  const totalBrancasRefugo = refugoScans.filter(scan => {
-    if (scan.status !== 'not_found') return false;
+  // Filtro de histórico permanente por período
+  const filteredRefugoHistorico = refugoHistorico.filter(m => {
+    const dataIso = m.data || (m.timestamp ? new Date(m.timestamp).toISOString().slice(0, 10) : '');
+    if (!dataIso) return true;
+    return (!startDate || dataIso >= startDate) && (!endDate || dataIso <= endDate);
+  });
+
+  const filteredActiveScans = refugoScans.filter(scan => {
     const scanDate = parseDateRobust(scan.scannedAt);
     if (!scanDate || Number.isNaN(scanDate.getTime())) return false;
     const scanIso = `${scanDate.getFullYear()}-${String(scanDate.getMonth() + 1).padStart(2, '0')}-${String(scanDate.getDate()).padStart(2, '0')}`;
     return (!startDate || scanIso >= startDate) && (!endDate || scanIso <= endDate);
-  }).length;
+  });
+
+  const totalHistoricoEncontrados = filteredRefugoHistorico.reduce((acc, m) => acc + (m.totalEncontrados || 0), 0);
+  const totalHistoricoBrancas = filteredRefugoHistorico.reduce((acc, m) => acc + (m.totalBrancas || 0), 0);
+
+  const totalAtivosEncontrados = filteredActiveScans.filter(s => s.status === 'found').length;
+  const totalAtivosBrancas = filteredActiveScans.filter(s => s.status !== 'found' || (s.rota && s.rota.toLowerCase().includes('branca'))).length;
+
+  const totalRotasEncontradas = totalHistoricoEncontrados + totalAtivosEncontrados;
+  const totalBrancasRefugo = totalHistoricoBrancas + totalAtivosBrancas;
 
   const totalBrancasEmFluxo = filteredListas.reduce((acc, lista) => acc + countRotasBrancas(lista), 0) + totalBrancasRefugo;
-
-  const totalRotasEncontradas = refugoScans.filter(scan => {
-    if (scan.status !== 'found') return false;
-    const scanDate = parseDateRobust(scan.scannedAt);
-    if (!scanDate || Number.isNaN(scanDate.getTime())) return false;
-    const scanIso = `${scanDate.getFullYear()}-${String(scanDate.getMonth() + 1).padStart(2, '0')}-${String(scanDate.getDate()).padStart(2, '0')}`;
-    return (!startDate || scanIso >= startDate) && (!endDate || scanIso <= endDate);
-  }).length;
   const mediaAcertoGeral = listasFinalizadas.length > 0 
     ? (listasFinalizadas.reduce((acc, l) => acc + (l.porcentagemAcerto ?? 100), 0) / listasFinalizadas.length).toFixed(1)
     : '0.0';
@@ -845,6 +870,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
               </div>
             </section>
           )}
+
+          {/* MÉTRICAS E ROTAS ENCONTRADAS NO REFUGO (HISTÓRICO PERMANENTE) */}
+          <AdminRefugoMetrics
+            historico={filteredRefugoHistorico}
+            activeScans={filteredActiveScans}
+            onDeleteHistorico={handleDeleteRefugoHistorico}
+            startDate={startDate}
+            endDate={endDate}
+          />
 
           {/* TABELA DE LISTAS DA DATA DE CÁLCULO */}
           <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 space-y-6">

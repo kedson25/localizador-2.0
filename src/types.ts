@@ -87,4 +87,19 @@ export interface ColetaLista {
   itensFaltaram?: number;
 }
 
-export type ActiveTab = 'tools' | 'lookup' | 'remove' | 'report' | 'upload' | 'refugo';
+export interface RefugoHistoricoMetrica {
+  id: string;
+  data: string; // YYYY-MM-DD
+  dataHora: string; // DD/MM/YYYY, HH:mm:ss
+  timestamp: number;
+  responsavel: string;
+  totalBipados: number;
+  totalEncontrados: number;
+  totalBrancas: number;
+  rotasEncontradas: Record<string, number>;
+  origem: 'sessao_concluida' | 'limpeza_refugo' | 'auto_sync' | 'manual';
+  createdAt?: any;
+  updatedAt?: any;
+}
+
+export type ActiveTab = 'tools' | 'lookup' | 'remove' | 'report' | 'upload' | 'refugo' | 'brancas';

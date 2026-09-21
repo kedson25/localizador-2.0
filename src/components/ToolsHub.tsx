@@ -10,7 +10,8 @@ import {
   Folder,
   ArrowRight,
   Barcode,
-  ListTodo
+  ListTodo,
+  FileSpreadsheet
 } from 'lucide-react';
 import { ActiveTab, GroupSummary } from '../types';
 import { User } from '../lib/auth';
@@ -32,6 +33,7 @@ export const ToolsHub: React.FC<ToolsHubProps> = ({
   const navigate = useNavigate();
   const [isBacklogOpen, setIsBacklogOpen] = useState(false);
   const [isRefugoOpen, setIsRefugoOpen] = useState(false);
+  const [isBrancasOpen, setIsBrancasOpen] = useState(true);
 
   
   const allBacklogTools = [
@@ -94,6 +96,19 @@ export const ToolsHub: React.FC<ToolsHubProps> = ({
       icon: Barcode,
       iconColor: 'text-[#3483FA]',
       badgeBg: 'bg-blue-50 text-[#3483FA] border-blue-200',
+    }
+  ];
+
+  const brancasTools = [
+    {
+      id: 'brancas',
+      path: '/brancas',
+      name: 'Análise de Brancas',
+      tag: 'Auditoria',
+      description: 'Descubra por que pacotes não receberam rota e acompanhe recuperação.',
+      icon: FileSpreadsheet,
+      iconColor: 'text-amber-500',
+      badgeBg: 'bg-amber-50 text-amber-800 border-amber-200',
     }
   ];
 
@@ -310,6 +325,87 @@ export const ToolsHub: React.FC<ToolsHubProps> = ({
               );
             })}
           </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
+      {/* Grupo: Análise de Brancas */}
+      <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
+        {/* Header do Grupo */}
+        <div 
+          onClick={() => setIsBrancasOpen(!isBrancasOpen)}
+          className="px-5 py-4 bg-gray-50 border-b border-gray-200 flex items-center justify-between cursor-pointer hover:bg-gray-100 transition-colors select-none"
+        >
+          <div className="flex items-start gap-3">
+            <div className="mt-0.5">
+              {isBrancasOpen ? (
+                <ChevronDown className="w-5 h-5 text-gray-400" />
+              ) : (
+                <ChevronRight className="w-5 h-5 text-gray-400" />
+              )}
+            </div>
+            <div className="w-8 h-8 rounded bg-amber-500 text-white flex items-center justify-center font-bold text-xs shadow-sm shrink-0">
+              <FileSpreadsheet className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wider">
+                  Análise de Brancas
+                </h2>
+                <span className="text-[10px] font-mono text-amber-800 bg-amber-100 border border-amber-200 px-2 py-0.5 rounded-full font-bold">
+                  NOVO
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Lista de Ferramentas Brancas */}
+        <AnimatePresence initial={false}>
+          {isBrancasOpen && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.3, ease: 'easeInOut' }}
+              className="overflow-hidden"
+            >
+              <div className="divide-y divide-gray-100">
+                {brancasTools.map((tool) => {
+                  const Icon = tool.icon;
+                  return (
+                    <button
+                      key={tool.id}
+                      onClick={() => navigate(tool.path)}
+                      className="w-full px-5 py-4 hover:bg-amber-50/50 flex flex-col sm:flex-row sm:items-center justify-between text-left transition-colors cursor-pointer group gap-4"
+                    >
+                      <div className="flex items-start sm:items-center gap-4 min-w-0 pr-3">
+                        <div className="w-10 h-10 rounded-lg bg-gray-100 group-hover:bg-white flex items-center justify-center border border-gray-200 shrink-0 transition-colors shadow-sm">
+                          <Icon className={`w-5 h-5 ${tool.iconColor}`} />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-bold text-[#333333] group-hover:text-amber-900 transition-colors">
+                              {tool.name}
+                            </span>
+                            <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${tool.badgeBg}`}>
+                              {tool.tag}
+                            </span>
+                          </div>
+                          <p className="text-xs text-gray-500 leading-relaxed mt-1">
+                            {tool.description}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-xs font-semibold text-gray-400 group-hover:text-amber-600 shrink-0 mt-2 sm:mt-0">
+                        <span>Abrir</span>
+                        <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
             </motion.div>
           )}
         </AnimatePresence>

@@ -1,16 +1,39 @@
+import fs from 'fs';
+import path from 'path';
 import { cleanDigits, getDeterministicItemId, normalizeCodigo } from './id';
 
-const FIREBASE_PROJECT_ID =
-  process.env.FIREBASE_PROJECT_ID ||
-  process.env.VITE_FIREBASE_PROJECT_ID ||
-  'ecooy-5b791';
+function getAppletConfig(): Record<string, any> | null {
+  try {
+    const configPath = path.resolve(process.cwd(), 'firebase-applet-config.json');
+    if (fs.existsSync(configPath)) {
+      const raw = fs.readFileSync(configPath, 'utf-8');
+      return JSON.parse(raw);
+    }
+  } catch (_) {}
+  return null;
+}
 
-const FIREBASE_API_KEY =
+const appletConfig = getAppletConfig();
+
+export const FIREBASE_PROJECT_ID =
+  process.env.FIREBASE_PROJECT_ID ||
+  process.env.GOOGLE_PROJECT_ID ||
+  appletConfig?.projectId ||
+  process.env.VITE_FIREBASE_PROJECT_ID ||
+  'gen-lang-client-0559227827';
+
+export const FIRESTORE_DATABASE_ID =
+  process.env.FIRESTORE_DATABASE_ID ||
+  appletConfig?.firestoreDatabaseId ||
+  'ai-studio-localizador20-a047a96e-6aee-4898-bd0c-4a2179a78d15';
+
+export const FIREBASE_API_KEY =
   process.env.FIREBASE_API_KEY ||
   process.env.VITE_FIREBASE_API_KEY ||
-  'AIzaSyCfpBmn3cdKP9vaGrDzKCB7oRPMSMx02tA';
+  appletConfig?.apiKey ||
+  'AIzaSyDehI2KaCf1zfRuBrfAlMdX8BPcCc7hX1Q';
 
-const BASE_URL = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents`;
+export const BASE_URL = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/${FIRESTORE_DATABASE_ID}/documents`;
 
 export function toFirestoreValue(val: any): any {
   if (val === null || val === undefined) return { nullValue: null };
@@ -76,12 +99,13 @@ export function fromFirestoreFields(fields: Record<string, any>): Record<string,
 
 export async function getDocRest(docPath: string): Promise<Record<string, any> | null> {
   try {
-    const url = `${BASE_URL}/${docPath}?key=${FIREBASE_API_KEY}`;
+    const cleanPath = docPath.replace(/^\/+/, '');
+    const url = `${BASE_URL}/${cleanPath}?key=${FIREBASE_API_KEY}`;
     const res = await fetch(url);
     if (res.status === 404) return null;
     if (!res.ok) {
       const errText = await res.text();
-      console.warn(`[Firestore REST] Erro GET ${docPath}: ${res.status}`, errText);
+      console.warn(`[Firestore REST] Erro GET ${cleanPath}: ${res.status}`, errText);
       return null;
     }
     const data = await res.json();
@@ -100,7 +124,8 @@ export async function patchDocRest(
   fields: Record<string, any>,
   updateMaskFieldPaths?: string[]
 ): Promise<Record<string, any>> {
-  let url = `${BASE_URL}/${docPath}?key=${FIREBASE_API_KEY}`;
+  const cleanPath = docPath.replace(/^\/+/, '');
+  let url = `${BASE_URL}/${cleanPath}?key=${FIREBASE_API_KEY}`;
   if (updateMaskFieldPaths && updateMaskFieldPaths.length > 0) {
     const maskParams = updateMaskFieldPaths
       .map((p) => `updateMask.fieldPaths=${encodeURIComponent(p)}`)
@@ -120,7 +145,7 @@ export async function patchDocRest(
 
   if (!res.ok) {
     const errText = await res.text();
-    throw new Error(`Firestore REST PATCH ${docPath} falhou (${res.status}): ${errText}`);
+    throw new Error(`Firestore REST PATCH ${cleanPath} falhou (${res.status}): ${errText}`);
   }
 
   const data = await res.json();
@@ -130,39 +155,196 @@ export async function patchDocRest(
   return parsed;
 }
 
+export async function setDocRest(
+  docPath: string,
+  fields: Record<string, any>
+): Promise<Record<string, any>> {
+  return patchDocRest(docPath, fields);
+}
+
 export async function deleteDocRest(docPath: string): Promise<boolean> {
-  const url = `${BASE_URL}/${docPath}?key=${FIREBASE_API_KEY}`;
+  const cleanPath = docPath.replace(/^\/+/, '');
+  const url = `${BASE_URL}/${cleanPath}?key=${FIREBASE_API_KEY}`;
   const res = await fetch(url, { method: 'DELETE' });
   return res.ok;
 }
 
 export async function listDocsRest(
   collectionPath: string,
-  pageSize = 100,
+  pageSize = 300,
   pageToken?: string
 ): Promise<{ documents: Array<{ id: string; [key: string]: any }>; nextPageToken?: string }> {
-  let url = `${BASE_URL}/${collectionPath}?pageSize=${pageSize}&key=${FIREBASE_API_KEY}`;
-  if (pageToken) {
-    url += `&pageToken=${encodeURIComponent(pageToken)}`;
+  try {
+    const cleanPath = collectionPath.replace(/^\/+/, '');
+    let url = `${BASE_URL}/${cleanPath}?pageSize=${pageSize}&key=${FIREBASE_API_KEY}`;
+    if (pageToken) {
+      url += `&pageToken=${encodeURIComponent(pageToken)}`;
+    }
+
+    const res = await fetch(url);
+    if (!res.ok) return { documents: [] };
+    const data = await res.json();
+
+    const documents = (data.documents || []).map((doc: any) => {
+      const parsed = fromFirestoreFields(doc.fields || {});
+      const parts = (doc.name || '').split('/');
+      parsed.id = parts[parts.length - 1];
+      return parsed;
+    });
+
+    return {
+      documents,
+      nextPageToken: data.nextPageToken,
+    };
+  } catch (err) {
+    console.error(`[Firestore REST] Erro listDocsRest ${collectionPath}:`, err);
+    return { documents: [] };
   }
-
-  const res = await fetch(url);
-  if (!res.ok) return { documents: [] };
-  const data = await res.json();
-
-  const documents = (data.documents || []).map((doc: any) => {
-    const parsed = fromFirestoreFields(doc.fields || {});
-    const parts = (doc.name || '').split('/');
-    parsed.id = parts[parts.length - 1];
-    return parsed;
-  });
-
-  return {
-    documents,
-    nextPageToken: data.nextPageToken,
-  };
 }
 
+export async function runQueryRest(
+  collectionId: string,
+  options: {
+    parent?: string;
+    orderByField?: string;
+    orderDirection?: 'ASCENDING' | 'DESCENDING';
+    limit?: number;
+    filters?: Array<{ field: string; op: 'EQUAL' | 'GREATER_THAN' | 'LESS_THAN'; value: any }>;
+  } = {}
+): Promise<Array<{ id: string; [key: string]: any }>> {
+  try {
+    const parentPath = options.parent ? `${BASE_URL}/${options.parent.replace(/^\/+/, '')}` : BASE_URL;
+    const url = `${parentPath}:runQuery?key=${FIREBASE_API_KEY}`;
+
+    const structuredQuery: any = {
+      from: [{ collectionId }],
+    };
+
+    if (options.orderByField) {
+      structuredQuery.orderBy = [
+        {
+          field: { fieldPath: options.orderByField },
+          direction: options.orderDirection || 'ASCENDING',
+        },
+      ];
+    }
+
+    if (options.limit) {
+      structuredQuery.limit = options.limit;
+    }
+
+    if (options.filters && options.filters.length > 0) {
+      if (options.filters.length === 1) {
+        const f = options.filters[0];
+        structuredQuery.where = {
+          fieldFilter: {
+            field: { fieldPath: f.field },
+            op: f.op,
+            value: toFirestoreValue(f.value),
+          },
+        };
+      } else {
+        structuredQuery.where = {
+          compositeFilter: {
+            op: 'AND',
+            filters: options.filters.map((f) => ({
+              fieldFilter: {
+                field: { fieldPath: f.field },
+                op: f.op,
+                value: toFirestoreValue(f.value),
+              },
+            })),
+          },
+        };
+      }
+    }
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ structuredQuery }),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.warn(`[Firestore REST] Erro runQuery ${collectionId}:`, errText);
+      return [];
+    }
+
+    const rows = await res.json();
+    if (!Array.isArray(rows)) return [];
+
+    const documents: any[] = [];
+    for (const row of rows) {
+      if (row.document && row.document.fields) {
+        const parsed = fromFirestoreFields(row.document.fields);
+        const parts = (row.document.name || '').split('/');
+        parsed.id = parts[parts.length - 1];
+        documents.push(parsed);
+      }
+    }
+
+    return documents;
+  } catch (err) {
+    console.error(`[Firestore REST] runQueryRest falhou para ${collectionId}:`, err);
+    return [];
+  }
+}
+
+export async function batchCommitWritesRest(
+  writes: Array<{
+    type: 'set' | 'update' | 'delete';
+    docPath: string;
+    data?: Record<string, any>;
+    updateMask?: string[];
+  }>
+): Promise<boolean> {
+  if (writes.length === 0) return true;
+
+  const url = `${BASE_URL}:commit?key=${FIREBASE_API_KEY}`;
+  const writePayloads = writes.map((w) => {
+    const cleanPath = w.docPath.replace(/^\/+/, '');
+    const docName = `projects/${FIREBASE_PROJECT_ID}/databases/${FIRESTORE_DATABASE_ID}/documents/${cleanPath}`;
+
+    if (w.type === 'delete') {
+      return { delete: docName };
+    }
+
+    const payload: any = {
+      update: {
+        name: docName,
+        fields: toFirestoreFields(w.data || {}),
+      },
+    };
+
+    if (w.updateMask && w.updateMask.length > 0) {
+      payload.updateMask = { fieldPaths: w.updateMask };
+    }
+
+    return payload;
+  });
+
+  // Executa em lotes de no máximo 250 writes por requisição
+  const CHUNK_SIZE = 250;
+  for (let i = 0; i < writePayloads.length; i += CHUNK_SIZE) {
+    const chunk = writePayloads.slice(i, i + CHUNK_SIZE);
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ writes: chunk }),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error(`[Firestore REST] Commit batch falhou (${res.status}):`, errText);
+      throw new Error(`Erro ao salvar dados no Firestore: ${errText}`);
+    }
+  }
+
+  return true;
+}
+
+// Helpers para Coleta de Bip
 export interface BipParams {
   listaId: string;
   codigo: string;
@@ -173,9 +355,6 @@ export interface BipParams {
   grupoId?: string;
 }
 
-/**
- * Executa o Bip via REST com consistência e sem necessidade de credenciais de Service Account
- */
 export async function processBipRest(params: BipParams): Promise<{ item: any; isNew: boolean }> {
   const { listaId, codigo, saida, motivo, rota, responsavel, grupoId } = params;
 
@@ -190,7 +369,6 @@ export async function processBipRest(params: BipParams): Promise<{ item: any; is
   const nowMs = Date.now();
   const nowBR = new Date().toLocaleString('pt-BR');
 
-  // 1. Obter a lista pai
   const listaData = await getDocRest(`coleta_listas/${listaId}`);
   if (!listaData) {
     throw new Error('LISTA_NOT_FOUND');
@@ -200,11 +378,9 @@ export async function processBipRest(params: BipParams): Promise<{ item: any; is
   const targetMotivo = motivo || listaData.motivoPadrao || 'Pendente';
   const targetRota = rota || listaData.rota || 'Sem Rota';
 
-  // 2. Verificar se o item já existe
   const existingItem = await getDocRest(`coleta_listas/${listaId}/itens/${docId}`);
 
   if (existingItem) {
-    // Atualização de item existente
     const prevSaida = existingItem.saida;
     const prevMotivo = existingItem.motivo;
     const prevOp = existingItem.responsavel;
@@ -223,10 +399,8 @@ export async function processBipRest(params: BipParams): Promise<{ item: any; is
       updatedAt: new Date().toISOString(),
     };
 
-    // Grava item atualizado
     await patchDocRest(`coleta_listas/${listaId}/itens/${docId}`, updatedItem);
 
-    // Ajusta contadores da lista pai se necessário
     const saidasCount = { ...(listaData.saidasCount || {}) };
     const motivosCount = { ...(listaData.motivosCount || {}) };
     const bipsPorOperador = { ...(listaData.bipsPorOperador || {}) };
@@ -270,7 +444,6 @@ export async function processBipRest(params: BipParams): Promise<{ item: any; is
       isNew: false,
     };
   } else {
-    // Inserção de novo item
     const newItem = {
       id: docId,
       codigo: cleanCode,
@@ -287,10 +460,8 @@ export async function processBipRest(params: BipParams): Promise<{ item: any; is
       updatedAt: new Date().toISOString(),
     };
 
-    // Grava novo item
     await patchDocRest(`coleta_listas/${listaId}/itens/${docId}`, newItem);
 
-    // Incrementa contadores da lista pai
     const totalItens = (Number(listaData.totalItens) || 0) + 1;
     const saidasCount = { ...(listaData.saidasCount || {}) };
     saidasCount[targetSaida] = (saidasCount[targetSaida] || 0) + 1;
@@ -326,9 +497,6 @@ export async function processBipRest(params: BipParams): Promise<{ item: any; is
   }
 }
 
-/**
- * Atualiza item na lista via REST
- */
 export async function updateItemRest(
   listaId: string,
   itemId: string,
@@ -347,7 +515,6 @@ export async function updateItemRest(
 
   await patchDocRest(`coleta_listas/${listaId}/itens/${itemId}`, updated);
 
-  // Atualizar métricas pai se necessário
   const listaData = await getDocRest(`coleta_listas/${listaId}`);
   if (listaData) {
     const listaUpdates: Record<string, any> = { updatedAt: new Date().toISOString() };
@@ -383,9 +550,6 @@ export async function updateItemRest(
   return { ...updated, id: itemId };
 }
 
-/**
- * Exclui item na lista via REST
- */
 export async function deleteItemRest(
   listaId: string,
   itemId: string

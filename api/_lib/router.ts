@@ -3,6 +3,7 @@ import listasRouter from '../listas';
 import authRouter from '../auth';
 import refugoRouter from '../refugo';
 import sheetsRouter from '../sheets';
+import brancasRouter from '../brancas';
 import indexRouter from '../index';
 import { sendError } from './response';
 
@@ -42,6 +43,7 @@ export async function dispatchApiRoute(req: any, res: any) {
   if (urlPath === '/api/auth') return authRouter(req, res);
   if (urlPath === '/api/refugo') return refugoRouter(req, res);
   if (urlPath === '/api/sheets') return sheetsRouter(req, res);
+  if (urlPath === '/api/brancas' || urlPath.startsWith('/api/brancas/')) return brancasRouter(req, res);
   if (urlPath === '/api/health' || urlPath === '/api') return indexRouter(req, res);
   
   return sendError(res, 404, 'NOT_FOUND', `Rota de API não encontrada: ${urlPath}`);

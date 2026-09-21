@@ -11,10 +11,12 @@ import { CsvUploader } from './components/CsvUploader';
 import { StatsSummary } from './components/StatsSummary';
 import { ControleRefugo } from './components/ControleRefugo';
 import { ListasColeta } from './components/ListasColeta';
+import { BrancasPanel } from './components/BrancasPanel';
 import { Login } from './components/Login';
 import { Navigate } from 'react-router-dom';
 import { AdminPanel } from './components/AdminPanel';
 import { User, getCurrentUser } from './lib/auth';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 import { saveToColetor, loadFromColetor, clearColetor } from './lib/firebase';
 
@@ -35,6 +37,7 @@ export default function App() {
   useEffect(() => {
     if (currentUser) {
       const tabName = location.pathname.startsWith('/refugo') ? 'Refugo' :
+                      location.pathname.startsWith('/brancas') ? 'Brancas' :
                       location.pathname.startsWith('/listas') ? 'Coleta (Listas)' :
                       location.pathname.startsWith('/consulta') ? 'Consulta' :
                       location.pathname.startsWith('/remover') ? 'Remover' :
@@ -53,21 +56,18 @@ export default function App() {
     }
   }, [location.pathname, currentUser]);
 
-
-
-
   const showNotification = (msg: string) => {
     setNotification(msg);
     setTimeout(() => setNotification(null), 4000);
   };
 
-  // On mount, load stored CSV from Firebase Firestore
+  // On mount, load stored CSV from Firebase Firestore for the Hub
   useEffect(() => {
+    let isMounted = true;
     async function initFromFirebase() {
-      setLoadingFirebase(true);
       try {
         const savedData = await loadFromColetor();
-        if (savedData && savedData.rawText) {
+        if (isMounted && savedData && savedData.rawText) {
           setRawText(savedData.rawText);
           const parsed = parseCsvText(savedData.rawText);
           setRows(parsed.rows);
@@ -77,10 +77,15 @@ export default function App() {
       } catch (err) {
         console.error('Erro ao carregar dados:', err);
       } finally {
-        setLoadingFirebase(false);
+        if (isMounted) {
+          setLoadingFirebase(false);
+        }
       }
     }
     initFromFirebase();
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const handleParseAndSave = async (textToParse: string, fileName?: string) => {
@@ -119,6 +124,7 @@ export default function App() {
       case '/upload': return 'Importar CSV';
       case '/listas': return 'Listas de Coleta';
       case '/refugo': return 'Controle Refugo';
+      case '/brancas': return 'Análise de Brancas';
       case '/admin': return 'Painel Admin';
       default: return '';
     }
@@ -144,54 +150,28 @@ export default function App() {
           </div>
         )}
 
-        {loadingFirebase && location.pathname !== '/refugo' ? (
-          <div className="space-y-4 max-w-4xl mx-auto mt-4 animate-in fade-in duration-300 px-2">
-            <div className="h-8 w-48 bg-gray-200 rounded animate-pulse mb-2"></div>
-            <div className="h-4 w-64 bg-gray-100 rounded animate-pulse mb-8"></div>
-            
-            <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-5">
-              <div className="flex items-center gap-4">
-                <div className="w-10 h-10 bg-gray-100 rounded-lg animate-pulse"></div>
-                <div className="flex-1 space-y-2">
-                  <div className="h-4 w-1/4 bg-gray-200 rounded animate-pulse"></div>
-                  <div className="h-3 w-2/3 bg-gray-100 rounded animate-pulse"></div>
-                </div>
-              </div>
-              <div className="mt-6 space-y-4 border-t border-gray-50 pt-4">
-                {[1, 2, 3].map((i) => (
-                  <div key={i} className="flex items-center gap-4">
-                    <div className="w-8 h-8 bg-gray-100 rounded-md animate-pulse"></div>
-                    <div className="flex-1 space-y-2">
-                      <div className="h-3 w-1/3 bg-gray-200 rounded animate-pulse"></div>
-                      <div className="h-2 w-1/2 bg-gray-100 rounded animate-pulse"></div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+        <ErrorBoundary>
+          {isAuthenticated && location.pathname !== '/' && location.pathname !== '/login' && !location.pathname.startsWith('/listas/') && (
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
+              <button
+                onClick={() => navigate('/')}
+                className="flex items-center gap-2 px-3.5 py-2 sm:py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-bold text-gray-700 hover:bg-gray-50 transition-colors shadow-sm cursor-pointer min-h-[40px] sm:min-h-0"
+              >
+                <ArrowLeft className="w-4 h-4 text-[#3483FA]" />
+                <span>Voltar para o Hub</span>
+              </button>
+              {getPageTitle() && (
+                <>
+                  <div className="h-4 w-px bg-gray-300 mx-1 hidden sm:block"></div>
+                  <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">
+                    {getPageTitle()}
+                  </span>
+                </>
+              )}
             </div>
-          </div>
-        ) : (
-          <>
-            {isAuthenticated && location.pathname !== '/' && location.pathname !== '/login' && !location.pathname.startsWith('/listas/') && (
-              <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
-                <button
-                  onClick={() => navigate('/')}
-                  className="flex items-center gap-2 px-3.5 py-2 sm:py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-bold text-gray-700 hover:bg-gray-50 transition-colors shadow-sm cursor-pointer min-h-[40px] sm:min-h-0"
-                >
-                  <ArrowLeft className="w-4 h-4 text-[#3483FA]" />
-                  <span>Voltar para o Hub</span>
-                </button>
-                {getPageTitle() && (
-                  <>
-                    <div className="h-4 w-px bg-gray-300 mx-1 hidden sm:block"></div>
-                    <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">
-                      {getPageTitle()}
-                    </span>
-                  </>
-                )}
-              </div>
-            )}
-            <Routes>
+          )}
+
+          <Routes>
             {/* Public Routes */}
             <Route path="/refugo" element={<ControleRefugo currentUser={currentUser} />} />
             <Route path="/login" element={
@@ -229,15 +209,15 @@ export default function App() {
                 {(currentUser?.isAdmin || currentUser?.allowedGroups?.includes('upload')) && (
                   <Route path="/upload" element={<CsvUploader onLoadText={(text) => { handleParseAndSave(text); navigate('/'); }} currentTotalRows={rows.length} />} />
                 )}
+
+                <Route path="/brancas" element={<BrancasPanel currentUser={currentUser} />} />
               </>
             )}
             
             {/* Fallback */}
             <Route path="*" element={isAuthenticated ? <Navigate to="/" replace /> : <Navigate to="/login" replace />} />
           </Routes>
-          </>
-        )}
-
+        </ErrorBoundary>
       </main>
     </div>
   );

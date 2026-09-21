@@ -72,6 +72,94 @@
         "timestamp": { "type": "number" }
       },
       "required": ["id"]
+    },
+    "RefugoHistoricoMetrica": {
+      "title": "RefugoHistoricoMetrica",
+      "description": "Registro consolidado permanente de métricas e rotas encontradas no refugo",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "data": { "type": "string" },
+        "dataHora": { "type": "string" },
+        "timestamp": { "type": "number" },
+        "responsavel": { "type": "string" },
+        "totalBipados": { "type": "number" },
+        "totalEncontrados": { "type": "number" },
+        "totalBrancas": { "type": "number" },
+        "rotasEncontradas": { "type": "object" },
+        "origem": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "data", "totalBipados", "totalEncontrados", "totalBrancas"]
+    },
+    "RoutingRun": {
+      "title": "RoutingRun",
+      "description": "Fotografia de uma tentativa de roteirização de etiquetas brancas",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "cicloTentativa": { "type": "string" },
+        "totalBrancas": { "type": "number" },
+        "roteirizados": { "type": "number" },
+        "naoRoteirizados": { "type": "number" },
+        "recuperados": { "type": "number" },
+        "continuamFalhando": { "type": "number" },
+        "createdAt": { "type": "string" },
+        "timestamp": { "type": "number" },
+        "observacao": { "type": "string" }
+      },
+      "required": ["id", "cicloTentativa", "totalBrancas", "roteirizados", "naoRoteirizados"]
+    },
+    "RoutingRunItem": {
+      "title": "RoutingRunItem",
+      "description": "Item individual dentro de uma tentativa de roteirização",
+      "type": "object",
+      "properties": {
+        "idPacote": { "type": "string" },
+        "cicloTentativa": { "type": "string" },
+        "resultado": { "type": "string", "enum": ["ROTEIRIZADO", "NAO_ROTEIRIZADO"] },
+        "transicao": { "type": "string" },
+        "dataBranca": { "type": "string" },
+        "base": { "type": "string" },
+        "cicloOrigem": { "type": "string" },
+        "etapaFluxo": { "type": "string" },
+        "motivoMacro": { "type": "string" },
+        "detalheDescartes": { "type": "string" },
+        "statusTraduzido": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["idPacote", "cicloTentativa", "resultado"]
+    },
+    "PackageSummary": {
+      "title": "PackageSummary",
+      "description": "Resumo do último estado de um pacote analisado",
+      "type": "object",
+      "properties": {
+        "idPacote": { "type": "string" },
+        "ultimoResultado": { "type": "string" },
+        "ultimoCicloTentativa": { "type": "string" },
+        "ultimaTransicao": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["idPacote", "ultimoResultado"]
+    },
+    "PackageMovimentacao": {
+      "title": "PackageMovimentacao",
+      "description": "Evento histórico imutável na linha do tempo do pacote",
+      "type": "object",
+      "properties": {
+        "cicloTentativa": { "type": "string" },
+        "resultado": { "type": "string" },
+        "transicao": { "type": "string" },
+        "motivoMacro": { "type": "string" },
+        "detalheDescartes": { "type": "string" },
+        "statusTraduzido": { "type": "string" },
+        "dataBranca": { "type": "string" },
+        "dataRegistro": { "type": "string" },
+        "runId": { "type": "string" }
+      },
+      "required": ["cicloTentativa", "resultado", "dataRegistro"]
     }
   },
   "firestore": {
@@ -90,6 +178,26 @@
     "/refugo_scans_items/{scanId}": {
       "schema": "RefugoScan",
       "description": "Coleção de scans atômicos de pacotes de refugo"
+    },
+    "/refugo_historico_metricas/{registroId}": {
+      "schema": "RefugoHistoricoMetrica",
+      "description": "Coleção permanente de métricas e rotas encontradas no Refugo mesmo após limpeza da mesa"
+    },
+    "/routing_runs/{runId}": {
+      "schema": "RoutingRun",
+      "description": "Fotografias e sumários das tentativas de roteirização"
+    },
+    "/routing_runs/{runId}/items/{itemId}": {
+      "schema": "RoutingRunItem",
+      "description": "Itens individuais processados em uma corrida de roteirização"
+    },
+    "/packages/{packageId}": {
+      "schema": "PackageSummary",
+      "description": "Estado consolidado mais recente de cada pacote"
+    },
+    "/packages/{packageId}/movimentacoes/{movId}": {
+      "schema": "PackageMovimentacao",
+      "description": "Subcoleção cronológica de histórico de tentativas de um pacote"
     }
   }
 }

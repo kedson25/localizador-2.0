@@ -16,9 +16,10 @@ import {
   ListPlus,
   Check,
   Star,
-  RefreshCw
+  RefreshCw,
+  ShieldCheck
 } from 'lucide-react';
-import { RefugoRow, ColetaItem, ColetaLista } from '../types';
+import { RefugoRow, ColetaItem, ColetaLista, RefugoHistoricoMetrica } from '../types';
 import {
   saveRefugo,
   clearRefugo,
@@ -30,6 +31,7 @@ import {
   listenToListas,
   addItemsBatchToLista,
   getAllItemsForExport,
+  salvarRefugoHistoricoMetrica,
   RefugoScan,
   RefugoScanChange
 } from '../lib/firebase';
@@ -165,6 +167,8 @@ export function ControleRefugo({ currentUser }: { currentUser?: User | null }) {
   const [exportSaida, setExportSaida] = useState('Ciclo 2 - Saída PM');
   const [exportMotivo, setExportMotivo] = useState('Brancas');
   const [exportTargetCodes, setExportTargetCodes] = useState<string[]>([]);
+  const [successNotification, setSuccessNotification] = useState<string | null>(null);
+  const [isSavingMetricas, setIsSavingMetricas] = useState(false);
 
   const resetRefugoLocalState = useCallback(() => {
     setRows([]);
@@ -555,9 +559,62 @@ export function ControleRefugo({ currentUser }: { currentUser?: User | null }) {
     });
   };
 
+  const salvarMetricasSessaoAtual = async (origem: 'sessao_concluida' | 'limpeza_refugo' | 'auto_sync' | 'manual') => {
+    if (scannedItems.length === 0) return null;
+
+    const now = new Date();
+    const dataIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const dataHora = now.toLocaleString('pt-BR');
+
+    let totalEncontrados = 0;
+    let totalBrancas = 0;
+    const rotasEncontradas: Record<string, number> = {};
+
+    for (let i = 0; i < scannedItems.length; i++) {
+      const item = scannedItems[i];
+      const isBrancaOuSemRota = item.status !== 'found' || !item.rota || item.rota.toUpperCase().includes('SEM ROTA') || item.rota.toLowerCase().includes('branca');
+      if (item.status === 'found') {
+        totalEncontrados++;
+        const rotaNome = (item.rota || 'SEM ROTA').trim();
+        rotasEncontradas[rotaNome] = (rotasEncontradas[rotaNome] || 0) + 1;
+      }
+      if (isBrancaOuSemRota) {
+        totalBrancas++;
+      }
+    }
+
+    const payload: Omit<RefugoHistoricoMetrica, 'id'> = {
+      data: dataIso,
+      dataHora,
+      timestamp: Date.now(),
+      responsavel: currentUser?.username || 'Operador',
+      totalBipados: scannedItems.length,
+      totalEncontrados,
+      totalBrancas,
+      rotasEncontradas,
+      origem,
+    };
+
+    const docId = await salvarRefugoHistoricoMetrica(payload);
+    return docId;
+  };
+
+  const handleSalvarManual = async () => {
+    if (scannedItems.length === 0 || busyRef.current || isSavingMetricas) return;
+    setIsSavingMetricas(true);
+    try {
+      await salvarMetricasSessaoAtual('manual');
+      setSuccessNotification('Métricas de quantidades e rotas salvas no Painel Admin com sucesso!');
+    } catch (err: unknown) {
+      showError(err);
+    } finally {
+      setIsSavingMetricas(false);
+    }
+  };
+
   const clearData = async () => {
     const confirmed = window.confirm(
-      'Deseja realmente limpar a base de faltantes? Isso também apagará os itens bipados.'
+      'Deseja realmente limpar a base de faltantes? As métricas de quantidades encontradas, brancas e rotas serão salvas permanentemente no Painel Admin antes da limpeza.'
     );
 
     if (!confirmed) return;
@@ -565,10 +622,14 @@ export function ControleRefugo({ currentUser }: { currentUser?: User | null }) {
     await runOperation(async () => {
       resettingRefugoRef.current = true;
       try {
+        if (scannedItems.length > 0) {
+          await salvarMetricasSessaoAtual('limpeza_refugo');
+        }
         await syncQueueRef.current.resetAndWait();
         await clearRefugo();
         await clearRefugoScans();
         resetRefugoLocalState();
+        setSuccessNotification('Base limpa com sucesso. As métricas e rotas encontradas foram preservadas no Painel Admin!');
       } catch (error) {
         showError(error);
         setExportTargetCodes([]);
@@ -582,25 +643,25 @@ export function ControleRefugo({ currentUser }: { currentUser?: User | null }) {
 
   const clearScans = async () => {
     const confirmed = window.confirm(
-      'Deseja limpar apenas o histórico de pacotes bipados?'
+      'Deseja limpar os pacotes bipados da tela? As métricas de quantidades encontradas, brancas e rotas serão salvas permanentemente no Painel Admin.'
     );
 
     if (!confirmed) return;
 
     await runOperation(async () => {
+      if (scannedItems.length > 0) {
+        await salvarMetricasSessaoAtual('limpeza_refugo');
+      }
       syncQueueRef.current.clear();
       scanByCodeRef.current.clear();
       await clearRefugoScans();
 
       setScannedItems([]);
-
       setExportTargetCodes([]);
-
       setShowExportModal(false);
-
       setLastScanResult(null);
-
       setPage(0);
+      setSuccessNotification('Histórico de leitura limpo da tela. As métricas e rotas foram preservadas no Painel Admin!');
     });
   };
 
@@ -826,6 +887,16 @@ export function ControleRefugo({ currentUser }: { currentUser?: User | null }) {
         </div>
       )}
 
+      {successNotification && (
+        <div role="status" className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 flex items-center justify-between animate-in fade-in">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+            <span className="font-semibold">{successNotification}</span>
+          </div>
+          <button onClick={() => setSuccessNotification(null)} className="text-emerald-500 hover:text-emerald-700 font-bold ml-2">✕</button>
+        </div>
+      )}
+
       {rows.length === 0 ? (
         <div className="bg-white border-2 border-dashed border-gray-300 rounded-2xl p-12 flex flex-col items-center justify-center text-center mt-4">
           <div className="w-16 h-16 bg-[#E3F2FD] rounded-2xl flex items-center justify-center mb-4">
@@ -1022,6 +1093,16 @@ export function ControleRefugo({ currentUser }: { currentUser?: User | null }) {
 
                   {scannedItems.length > 0 && (
                     <>
+                      <button
+                        type="button"
+                        onClick={handleSalvarManual}
+                        disabled={busy || isSavingMetricas}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition-colors shadow-sm min-h-[36px] sm:min-h-0 cursor-pointer disabled:opacity-50"
+                        title="Salva as métricas de pacotes e rotas encontradas no Painel Admin agora mesmo"
+                      >
+                        <ShieldCheck className="w-4 h-4" />
+                        <span>{isSavingMetricas ? 'Salvando...' : 'Salvar no Admin'}</span>
+                      </button>
                       <button
                         onClick={clearScans}
                         disabled={busy}
