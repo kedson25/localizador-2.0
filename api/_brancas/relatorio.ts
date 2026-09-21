@@ -14,10 +14,10 @@ export default async function relatorioHandler(req: any, res: any) {
   const targetId = requestedSnapshotId || requestedRunId;
 
   try {
-    // Se autoCheck estiver ativo ou se nenhum ID foi passado, dispara verificação leve
+    // Se autoCheck estiver ativo ou se nenhum ID foi passado, dispara verificação leve.
+    // Snapshots parciais são reprocessados pelo sync até que os writes pendentes concluam.
     if ((autoCheck === 'true' || autoCheck === true || !targetId) && isGoogleSheetsConfigured()) {
       try {
-        let syncExecuted = false;
         const mockReq = {
           method: 'POST',
           query: {},
@@ -70,6 +70,8 @@ export default async function relatorioHandler(req: any, res: any) {
       naoRoteirizados: d.totalNaoRoteirizados || d.naoRoteirizados || 0,
       recuperados: d.totalRecuperados || d.recuperados || 0,
       taxaRoteirizacao: d.taxaRoteirizacao || 0,
+      writeSyncStatus: d.writeSyncStatus || 'COMPLETE',
+      failedPackageWrites: d.failedPackageWrites || 0,
     }));
 
     if (!snapshotDoc && recentSnapshotsDocs.length > 0) {
@@ -110,11 +112,24 @@ export default async function relatorioHandler(req: any, res: any) {
       ? Number(((totalRoteirizados / totalBrancas) * 100).toFixed(1))
       : 0;
 
+    const writeSyncStatus = snapshotDoc.writeSyncStatus || 'COMPLETE';
+    const totalPackageWrites = Number(snapshotDoc.totalPackageWrites || 0);
+    const successfulPackageWrites = Number(
+      snapshotDoc.successfulPackageWrites ?? totalPackageWrites
+    );
+    const failedPackageWrites = Number(snapshotDoc.failedPackageWrites || 0);
+    const quotaLimited = Boolean(snapshotDoc.quotaLimited);
+    const partialSuccess = writeSyncStatus === 'PARTIAL' || failedPackageWrites > 0;
+
     const formattedTime = new Date(snapshotDoc.createdAt || Date.now()).toLocaleTimeString('pt-BR', {
       hour: '2-digit',
       minute: '2-digit',
       second: '2-digit',
     });
+
+    const statusBanner = partialSuccess
+      ? `Sincronização parcial: ${successfulPackageWrites}/${totalPackageWrites} gravações concluídas. ${failedPackageWrites} pendente(s) de nova tentativa.`
+      : `Nenhuma alteração encontrada desde ${formattedTime}.`;
 
     return sendSuccess(res, {
       hasData: true,
@@ -140,9 +155,17 @@ export default async function relatorioHandler(req: any, res: any) {
       taxaRoteirizacao,
       extBrancasCount: snapshotDoc.extBrancasCount || totalBrancas,
       extRotasCount: snapshotDoc.extRotasCount || totalRotas,
+      writeSyncStatus,
+      partialSuccess,
+      totalPackageWrites,
+      successfulPackageWrites,
+      failedPackageWrites,
+      quotaLimited,
+      failedWriteChunks: snapshotDoc.failedWriteChunks || [],
+      writeSyncUpdatedAt: snapshotDoc.writeSyncUpdatedAt || snapshotDoc.createdAt,
       lastComparisonTime: snapshotDoc.createdAt,
       lastCheckTime: new Date().toISOString(),
-      statusBanner: `Nenhuma alteração encontrada desde ${formattedTime}.`,
+      statusBanner,
       motivos,
       statusCounts,
       itemsNaoRoteirizados,
