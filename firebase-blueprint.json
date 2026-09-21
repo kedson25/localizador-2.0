@@ -1,0 +1,95 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Usuário autenticado do sistema de coleta",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "username": { "type": "string" },
+        "email": { "type": "string" },
+        "isAdmin": { "type": "boolean" },
+        "isApproved": { "type": "boolean" },
+        "allowedGroups": { "type": "array", "items": { "type": "string" } },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["username", "email", "isAdmin", "isApproved"]
+    },
+    "ColetaLista": {
+      "title": "ColetaLista",
+      "description": "Metadados de uma lista de coleta de pacotes",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "nome": { "type": "string" },
+        "tipo": { "type": "string", "enum": ["comum", "grupos"] },
+        "rota": { "type": "string" },
+        "data": { "type": "string" },
+        "responsavel": { "type": "string" },
+        "status": { "type": "string", "enum": ["em_andamento", "finalizada"] },
+        "saidaPadrao": { "type": "string" },
+        "motivoPadrao": { "type": "string" },
+        "totalItens": { "type": "number" },
+        "totalValidados": { "type": "number" },
+        "saidasCount": { "type": "object" },
+        "motivosCount": { "type": "object" },
+        "rotasCount": { "type": "object" },
+        "bipsPorOperador": { "type": "object" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["nome", "data", "responsavel", "status"]
+    },
+    "ColetaItem": {
+      "title": "ColetaItem",
+      "description": "Um pacote ou item individual coletado na subcoleção",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "codigo": { "type": "string" },
+        "codigoClean": { "type": "string" },
+        "rota": { "type": "string" },
+        "saida": { "type": "string" },
+        "motivo": { "type": "string" },
+        "scannedAt": { "type": "string" },
+        "responsavel": { "type": "string" },
+        "timestamp": { "type": "number" },
+        "grupoId": { "type": "string" },
+        "validado": { "type": "boolean" }
+      },
+      "required": ["id", "codigo", "scannedAt"]
+    },
+    "RefugoScan": {
+      "title": "RefugoScan",
+      "description": "Registro de scan atômico de refugo",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "rota": { "type": "string" },
+        "status": { "type": "string" },
+        "foundBy": { "type": "string" },
+        "scannedAt": { "type": "string" },
+        "timestamp": { "type": "number" }
+      },
+      "required": ["id"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Coleção de contas de usuário e controle de permissões"
+    },
+    "/coleta_listas/{listaId}": {
+      "schema": "ColetaLista",
+      "description": "Coleção de metadados das listas de coleta"
+    },
+    "/coleta_listas/{listaId}/itens/{itemId}": {
+      "schema": "ColetaItem",
+      "description": "Subcoleção de pacotes individuais da lista de coleta com ID determinístico"
+    },
+    "/refugo_scans_items/{scanId}": {
+      "schema": "RefugoScan",
+      "description": "Coleção de scans atômicos de pacotes de refugo"
+    }
+  }
+}
