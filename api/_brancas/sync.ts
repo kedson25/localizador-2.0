@@ -534,11 +534,15 @@ export default async function syncHandler(req: any, res: any) {
       timestamp: nowTimestamp,
     };
 
-    // Grava snapshots e histórico de pacotes no Firestore
-    await Promise.all([
-      patchDocRest(`routing_snapshots/${snapshotId}`, snapshotPayload),
-      patchDocRest(`routing_runs/${snapshotId}`, snapshotPayload),
-    ]);
+    // Grava snapshots e histórico de pacotes no Firestore (com tratamento para cota excedida 429)
+    try {
+      await Promise.all([
+        patchDocRest(`routing_snapshots/${snapshotId}`, snapshotPayload),
+        patchDocRest(`routing_runs/${snapshotId}`, snapshotPayload),
+      ]);
+    } catch (err: any) {
+      console.warn('[Sync Snapshot Write Warn - Quota/Network]:', err?.message || err);
+    }
 
     if (packageWrites.length > 0) {
       batchCommitWritesRest(packageWrites).catch((err) => {

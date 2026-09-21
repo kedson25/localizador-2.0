@@ -328,16 +328,28 @@ export async function batchCommitWritesRest(
   const CHUNK_SIZE = 250;
   for (let i = 0; i < writePayloads.length; i += CHUNK_SIZE) {
     const chunk = writePayloads.slice(i, i + CHUNK_SIZE);
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ writes: chunk }),
-    });
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ writes: chunk }),
+      });
 
-    if (!res.ok) {
-      const errText = await res.text();
-      console.error(`[Firestore REST] Commit batch falhou (${res.status}):`, errText);
-      throw new Error(`Erro ao salvar dados no Firestore: ${errText}`);
+      if (!res.ok) {
+        const errText = await res.text();
+        if (res.status === 429 || errText.includes('Quota') || errText.includes('RESOURCE_EXHAUSTED')) {
+          console.warn(`[Firestore REST] Quota limit exceeded in batchCommitWritesRest (429):`, errText);
+          return false;
+        }
+        console.error(`[Firestore REST] Commit batch falhou (${res.status}):`, errText);
+        throw new Error(`Erro ao salvar dados no Firestore: ${errText}`);
+      }
+    } catch (err: any) {
+      if (err?.message?.includes('429') || err?.message?.includes('Quota') || err?.message?.includes('RESOURCE_EXHAUSTED')) {
+        console.warn(`[Firestore REST] Quota limit exceeded in batchCommitWritesRest:`, err?.message);
+        return false;
+      }
+      throw err;
     }
   }
 
