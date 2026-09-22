@@ -1,5 +1,10 @@
-import { dispatchApiRoute } from './_lib/router';
+import { sendSuccess } from './_lib/response';
 
 export default async function handler(req: any, res: any) {
-  return dispatchApiRoute(req, res);
+  return sendSuccess(res, {
+    ok: true,
+    service: 'localizador-api',
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+  });
 }
