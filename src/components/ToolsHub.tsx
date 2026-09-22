@@ -33,7 +33,7 @@ export const ToolsHub: React.FC<ToolsHubProps> = ({
   const navigate = useNavigate();
   const [isBacklogOpen, setIsBacklogOpen] = useState(false);
   const [isRefugoOpen, setIsRefugoOpen] = useState(false);
-  const [isBrancasOpen, setIsBrancasOpen] = useState(true);
+  const [isBrancasOpen, setIsBrancasOpen] = useState(false);
 
   
   const allBacklogTools = [
