@@ -1,0 +1,127 @@
+.admin-theme {
+  --admin-blue: #3483fa;
+  --admin-blue-dark: #2968c8;
+  --admin-green: #16a34a;
+  --admin-amber: #d97706;
+  --admin-rose: #e11d48;
+  --admin-cyan: #0891b2;
+  --admin-violet: #7c3aed;
+}
+
+/* Cor principal: azul em vez de preto nos estados ativos e ações primárias */
+.admin-theme .bg-gray-900 {
+  background-color: var(--admin-blue) !important;
+}
+
+.admin-theme .hover\:bg-black:hover {
+  background-color: var(--admin-blue-dark) !important;
+}
+
+.admin-theme .focus\:border-gray-400:focus,
+.admin-theme .field-input:focus {
+  border-color: var(--admin-blue) !important;
+  box-shadow: 0 0 0 3px rgba(52, 131, 250, 0.10);
+}
+
+/* Navegação: mais identidade, sem pesar */
+.admin-theme > div > nav {
+  border-top: 3px solid #dbeafe;
+}
+
+.admin-theme > div > nav button {
+  min-height: 38px;
+}
+
+/* Filtros */
+.admin-theme section:first-of-type button.bg-gray-900 {
+  box-shadow: 0 4px 10px rgba(52, 131, 250, 0.18);
+}
+
+/* Cards da visão geral: cor só como sinal visual */
+.admin-theme section.grid.grid-cols-2 > div {
+  position: relative;
+  overflow: hidden;
+  border-color: #e5e7eb;
+}
+
+.admin-theme section.grid.grid-cols-2 > div::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+}
+
+.admin-theme section.grid.grid-cols-2 > div:nth-child(1) {
+  background: linear-gradient(180deg, #f7fbff 0%, #ffffff 55%);
+}
+.admin-theme section.grid.grid-cols-2 > div:nth-child(1)::before { background: var(--admin-blue); }
+.admin-theme section.grid.grid-cols-2 > div:nth-child(1) > p:first-child { color: #2563eb !important; }
+
+.admin-theme section.grid.grid-cols-2 > div:nth-child(2) {
+  background: linear-gradient(180deg, #f4fdf7 0%, #ffffff 55%);
+}
+.admin-theme section.grid.grid-cols-2 > div:nth-child(2)::before { background: var(--admin-green); }
+.admin-theme section.grid.grid-cols-2 > div:nth-child(2) > p:first-child { color: #15803d !important; }
+
+.admin-theme section.grid.grid-cols-2 > div:nth-child(3) {
+  background: linear-gradient(180deg, #f8f6ff 0%, #ffffff 55%);
+}
+.admin-theme section.grid.grid-cols-2 > div:nth-child(3)::before { background: var(--admin-violet); }
+.admin-theme section.grid.grid-cols-2 > div:nth-child(3) > p:first-child { color: #6d28d9 !important; }
+
+.admin-theme section.grid.grid-cols-2 > div:nth-child(4) {
+  background: linear-gradient(180deg, #fffaf0 0%, #ffffff 55%);
+}
+.admin-theme section.grid.grid-cols-2 > div:nth-child(4)::before { background: #f59e0b; }
+.admin-theme section.grid.grid-cols-2 > div:nth-child(4) > p:first-child { color: var(--admin-amber) !important; }
+
+.admin-theme section.grid.grid-cols-2 > div:nth-child(5) {
+  background: linear-gradient(180deg, #fff6f8 0%, #ffffff 55%);
+}
+.admin-theme section.grid.grid-cols-2 > div:nth-child(5)::before { background: var(--admin-rose); }
+.admin-theme section.grid.grid-cols-2 > div:nth-child(5) > p:first-child { color: #be123c !important; }
+
+.admin-theme section.grid.grid-cols-2 > div:nth-child(6) {
+  background: linear-gradient(180deg, #f2fbfd 0%, #ffffff 55%);
+}
+.admin-theme section.grid.grid-cols-2 > div:nth-child(6)::before { background: var(--admin-cyan); }
+.admin-theme section.grid.grid-cols-2 > div:nth-child(6) > p:first-child { color: #0e7490 !important; }
+
+/* Lista: manter neutra, mas dar vida aos pontos interativos */
+.admin-theme button[title='Editar fechamento'] {
+  color: var(--admin-blue) !important;
+  border-color: #bfdbfe !important;
+  background: #f8fbff !important;
+}
+
+.admin-theme button[title='Editar fechamento']:hover {
+  background: #eff6ff !important;
+  color: var(--admin-blue-dark) !important;
+}
+
+.admin-theme details {
+  border-left: 3px solid #93c5fd !important;
+}
+
+.admin-theme details > summary {
+  background: linear-gradient(90deg, #f8fbff 0%, #ffffff 40%);
+}
+
+/* Usuários: admin ativo em azul em vez de preto */
+.admin-theme .bg-emerald-50 {
+  background-color: #ecfdf3;
+}
+
+.admin-theme .bg-amber-50 {
+  background-color: #fffbeb;
+}
+
+/* Modal e ações */
+.admin-theme input:focus,
+.admin-theme select:focus {
+  border-color: var(--admin-blue) !important;
+}
+
+.admin-theme ::selection {
+  background: rgba(52, 131, 250, 0.25);
+}
