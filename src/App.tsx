@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
+import { Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { CsvRow, GroupSummary } from './types';
 import { parseCsvText } from './utils/csvParser';
@@ -13,6 +13,7 @@ import { ControleRefugoClean } from './components/ControleRefugoClean';
 import { ListasColeta } from './components/ListasColeta';
 import { ListasDashboard } from './components/ListasDashboard';
 import { BrancasPanelWithCsvFallback } from './components/BrancasPanelWithCsvFallback';
+import { SettingsPage } from './components/SettingsPage';
 import { Login } from './components/Login';
 import { Navigate } from 'react-router-dom';
 import { AdminPanel } from './components/AdminPanel';
@@ -43,8 +44,9 @@ export default function App() {
                       location.pathname.startsWith('/consulta') ? 'Consulta' :
                       location.pathname.startsWith('/remover') ? 'Remover' :
                       location.pathname.startsWith('/reporte') ? 'Reporte' :
+                      location.pathname.startsWith('/configuracoes') ? 'Configurações' :
                       location.pathname.startsWith('/admin') ? 'Admin' : 'Hub / Início';
-      
+
       try {
         const activePresences = JSON.parse(localStorage.getItem('app_active_presences') || '{}');
         activePresences[currentUser.id || currentUser.username] = {
@@ -62,7 +64,6 @@ export default function App() {
     setTimeout(() => setNotification(null), 4000);
   };
 
-  // On mount, load stored CSV from Firebase Firestore for the Hub
   useEffect(() => {
     let isMounted = true;
     async function initFromFirebase() {
@@ -96,7 +97,6 @@ export default function App() {
     setGroups(parsed.groups);
     setHeaders(parsed.headers);
 
-    // Save to Firebase
     const saved = await saveToColetor(textToParse, parsed.rows.length, fileName);
     if (saved) {
       showNotification(`Dados processados e salvos com sucesso! (${parsed.rows.length} IDs)`);
@@ -111,8 +111,7 @@ export default function App() {
     setGroups([]);
     setHeaders([]);
     navigate('/');
-    
-    // Clear from Firebase
+
     await clearColetor();
     showNotification('Dados zerados com sucesso!');
   };
@@ -126,6 +125,7 @@ export default function App() {
       case '/listas': return 'Listas de Coleta';
       case '/refugo': return 'Controle Refugo';
       case '/brancas': return 'Análise de Brancas';
+      case '/configuracoes': return 'Configurações';
       case '/admin': return 'Painel Admin';
       default: return '';
     }
@@ -133,9 +133,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen w-full max-w-full overflow-x-hidden bg-[#EBEBEB] text-[#333333] flex flex-col font-sans selection:bg-[#3483FA] selection:text-white">
-      {/* Main Content Area */}
-      <main className={`flex-1 w-full min-w-0 mx-auto ${location.pathname === "/login" ? "" : isHome ? "max-w-none p-0" : location.pathname === "/listas" ? "px-3 sm:px-6 py-4 sm:py-6 space-y-4" : "max-w-7xl px-3 sm:px-6 lg:px-8 py-4 sm:py-6 space-y-4"}`}>
-        {/* Floating Notification */}
+      <main className={`flex-1 w-full min-w-0 mx-auto ${location.pathname === '/login' ? '' : isHome ? 'max-w-none p-0' : location.pathname === '/listas' ? 'px-3 sm:px-6 py-4 sm:py-6 space-y-4' : 'max-w-7xl px-3 sm:px-6 lg:px-8 py-4 sm:py-6 space-y-4'}`}>
         {notification && (
           <div className="bg-[#111827] text-white px-3.5 py-2.5 rounded-lg shadow-md text-xs font-mono flex items-center justify-between border border-gray-700 animate-in fade-in max-w-full">
             <span className="flex items-center gap-2 min-w-0 break-words pr-2">
@@ -152,7 +150,7 @@ export default function App() {
         )}
 
         <ErrorBoundary>
-          {isAuthenticated && location.pathname !== '/' && location.pathname !== '/login' && !location.pathname.startsWith('/listas/') && (
+          {isAuthenticated && location.pathname !== '/' && location.pathname !== '/login' && location.pathname !== '/configuracoes' && !location.pathname.startsWith('/listas/') && (
             <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
               <button
                 onClick={() => navigate('/')}
@@ -173,17 +171,16 @@ export default function App() {
           )}
 
           <Routes>
-            {/* Public Routes */}
             <Route path="/refugo" element={<ControleRefugoClean currentUser={currentUser} />} />
             <Route path="/login" element={
               isAuthenticated ? <Navigate to="/" replace /> : <Login onLogin={(user) => { setCurrentUser(user); navigate('/'); }} />
             } />
-            
-            {/* Protected Routes */}
+
             {isAuthenticated && (
               <>
                 <Route path="/" element={<ToolsHub totalRows={rows.length} groups={groups} onClear={handleClear} currentUser={currentUser} />} />
-                
+                <Route path="/configuracoes" element={<SettingsPage currentUser={currentUser} />} />
+
                 {currentUser?.isAdmin && (
                   <Route path="/admin" element={<AdminPanel currentUser={currentUser} />} />
                 )}
@@ -214,8 +211,7 @@ export default function App() {
                 <Route path="/brancas" element={<BrancasPanelWithCsvFallback currentUser={currentUser} />} />
               </>
             )}
-            
-            {/* Fallback */}
+
             <Route path="*" element={isAuthenticated ? <Navigate to="/" replace /> : <Navigate to="/login" replace />} />
           </Routes>
         </ErrorBoundary>
