@@ -1,2 +1,10 @@
-import historicoHandler from '../_brancas/historicoV2';
-export default historicoHandler;
+import { runSafeBrancasHandler } from '../_lib/safe-brancas-entry';
+
+export default async function handler(req: any, res: any) {
+  return runSafeBrancasHandler(
+    req,
+    res,
+    'historico',
+    () => import('../_brancas/historicoV2')
+  );
+}
