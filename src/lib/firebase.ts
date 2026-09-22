@@ -1,21 +1,65 @@
 // Facade público do Firebase.
 //
 // O núcleo original permanece em `firebase-core.ts`. Esta camada mantém todos os
-// exports existentes e substitui apenas os listeners usados pelo dashboard de
-// métricas do Refugo, para que a visão geral leia a fonte permanente por pacote
-// sem somar novamente os mesmos scans que ainda estão na mesa operacional.
+// exports existentes e substitui somente as leituras que precisam de semântica
+// consolidada para o dashboard e para as métricas permanentes.
 export * from './firebase-core';
 
 import {
+  listenToListas as listenToCoreListas,
   listenToRefugoHistoricoMetricas as listenToLegacyRefugoHistoricoMetricas,
   listenToRefugoScans as listenToTransientRefugoScans,
 } from './firebase-core';
 import type { RefugoScan } from './firebase-core';
-import type { RefugoHistoricoMetrica } from '../types';
+import type { ColetaLista, RefugoHistoricoMetrica } from '../types';
 import {
   listenToRefugoMetricItems,
   RefugoMetricItem,
 } from './refugoMetrics';
+
+/**
+ * Normaliza a porcentagem de acerto das listas para a Visão Geral.
+ *
+ * Regra:
+ * 1. Se já existe porcentagemAcerto gravada, ela é a fonte oficial.
+ * 2. Se não existe e há total + itensFaltaram, deriva o acerto real.
+ * 3. Se não existe fechamento, usa validação/total como fallback mensurável.
+ * 4. Nunca assume 100% só porque o campo ainda não foi preenchido.
+ */
+function deriveListaAccuracy(lista: ColetaLista): number {
+  const explicit = Number(lista.porcentagemAcerto);
+  if (lista.porcentagemAcerto !== undefined && Number.isFinite(explicit)) {
+    return Math.max(0, Math.min(100, explicit));
+  }
+
+  const total = Math.max(0, Number(lista.totalItens || 0));
+  if (total <= 0) return 0;
+
+  if (lista.itensFaltaram !== undefined && Number.isFinite(Number(lista.itensFaltaram))) {
+    const faltantes = Math.max(0, Math.min(total, Number(lista.itensFaltaram || 0)));
+    return Number((((total - faltantes) / total) * 100).toFixed(2));
+  }
+
+  const validados = Math.max(0, Math.min(total, Number(lista.totalValidados || 0)));
+  return Number(((validados / total) * 100).toFixed(2));
+}
+
+/**
+ * Mantém as listas vindas do servidor, mas garante que a média de acerto do
+ * Admin não transforme automaticamente campo ausente em 100%.
+ */
+export function listenToListas(
+  callback: (listas: ColetaLista[]) => void
+): () => void {
+  return listenToCoreListas(listas => {
+    callback(
+      listas.map(lista => ({
+        ...lista,
+        porcentagemAcerto: deriveListaAccuracy(lista),
+      }))
+    );
+  });
+}
 
 function eventKeyFromScan(scan: RefugoScan): string {
   return `${scan.normalizedId}:${Number(scan.timestamp) || 0}`;
