@@ -11,7 +11,7 @@ import { CsvUploader } from './components/CsvUploader';
 import { StatsSummary } from './components/StatsSummary';
 import { ControleRefugo } from './components/ControleRefugo';
 import { ListasColeta } from './components/ListasColeta';
-import { BrancasPanel } from './components/BrancasPanel';
+import { BrancasPanelWithCsvFallback } from './components/BrancasPanelWithCsvFallback';
 import { Login } from './components/Login';
 import { Navigate } from 'react-router-dom';
 import { AdminPanel } from './components/AdminPanel';
@@ -210,7 +210,7 @@ export default function App() {
                   <Route path="/upload" element={<CsvUploader onLoadText={(text) => { handleParseAndSave(text); navigate('/'); }} currentTotalRows={rows.length} />} />
                 )}
 
-                <Route path="/brancas" element={<BrancasPanel currentUser={currentUser} />} />
+                <Route path="/brancas" element={<BrancasPanelWithCsvFallback currentUser={currentUser} />} />
               </>
             )}
             
