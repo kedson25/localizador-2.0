@@ -1,2 +1,2 @@
-import relatorioHandler from '../_brancas/relatorio';
+import relatorioHandler from '../_brancas/relatorioV2';
 export default relatorioHandler;
