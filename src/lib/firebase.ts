@@ -9,11 +9,13 @@ import {
   listenToListas as listenToCoreListas,
   listenToRefugoHistoricoMetricas as listenToLegacyRefugoHistoricoMetricas,
   listenToRefugoScans as listenToTransientRefugoScans,
+  listenToRefugoScansIncremental as listenToCoreRefugoScansIncremental,
 } from './firebase-core';
-import type { RefugoScan } from './firebase-core';
+import type { RefugoScan, RefugoScanChange } from './firebase-core';
 import type { ColetaLista, RefugoHistoricoMetrica } from '../types';
 import {
   listenToRefugoMetricItems,
+  persistRefugoMetricScan,
   RefugoMetricItem,
 } from './refugoMetrics';
 
@@ -76,14 +78,74 @@ function isBrancaOrWithoutRoute(scan: RefugoScan): boolean {
   );
 }
 
+// Evita que o backfill inicial de milhares de scans abra milhares de transações
+// simultâneas. A carga é processada em pequenos grupos e cada item continua
+// idempotente pelo eventKey no Firestore.
+const metricBackfillKeys = new Set<string>();
+let metricBackfillChain: Promise<void> = Promise.resolve();
+
+function schedulePermanentBackfill(scans: RefugoScan[]): void {
+  const unique: RefugoScan[] = [];
+
+  for (const scan of scans) {
+    if (!scan?.normalizedId) continue;
+    const key = eventKeyFromScan(scan);
+    if (metricBackfillKeys.has(key)) continue;
+    metricBackfillKeys.add(key);
+    unique.push(scan);
+  }
+
+  if (unique.length === 0) return;
+
+  metricBackfillChain = metricBackfillChain
+    .then(async () => {
+      const concurrency = 4;
+      for (let i = 0; i < unique.length; i += concurrency) {
+        const chunk = unique.slice(i, i + concurrency);
+        await Promise.allSettled(
+          chunk.map(scan => persistRefugoMetricScan(scan))
+        );
+      }
+    })
+    .catch(error => {
+      console.warn('Falha parcial ao migrar scans atuais para métricas permanentes:', error);
+    });
+}
+
+/**
+ * Wrapper do listener operacional incremental.
+ *
+ * A UI recebe exatamente os mesmos eventos do core, mas todo scan já existente
+ * na mesa (inclusive dados anteriores ao deploy desta versão) entra em backfill
+ * para a coleção permanente. Assim, limpar a mesa depois do deploy não perde os
+ * IDs que já estavam carregados.
+ */
+export function listenToRefugoScansIncremental(
+  callback: (changes: RefugoScanChange[], isInitial: boolean, initialScans?: RefugoScan[]) => void,
+  onError?: (error: any) => void
+): () => void {
+  return listenToCoreRefugoScansIncremental(
+    (changes, isInitial, initialScans) => {
+      if (isInitial && initialScans?.length) {
+        schedulePermanentBackfill(initialScans);
+      } else if (changes.length > 0) {
+        const changedScans = changes
+          .filter(change => change.type !== 'removed')
+          .map(change => change.scan);
+        schedulePermanentBackfill(changedScans);
+      }
+
+      callback(changes, isInitial, initialScans);
+    },
+    onError
+  );
+}
+
 /**
  * Para o dashboard, "scans ativos" passam a significar somente gravações que
  * ainda não chegaram à coleção permanente. Assim que o registro permanente é
  * confirmado, ele sai desta lista e passa a ser representado pelo histórico
  * diário consolidado, eliminando dupla contagem.
- *
- * O scanner operacional continua usando `listenToRefugoScansIncremental`, que
- * vem diretamente do core e não é alterado por esta facade.
  */
 export function listenToRefugoScans(
   callback: (scans: RefugoScan[]) => void
@@ -108,8 +170,6 @@ export function listenToRefugoScans(
         return !permanent || permanent.lastEventKey !== eventKeyFromScan(scan);
       })
       .map(scan => {
-        // Enquanto ainda estiver pendente, aplica a mesma semântica da métrica:
-        // Sem Rota/Branca não conta como "rota encontrada".
         if (isBrancaOrWithoutRoute(scan)) {
           return { ...scan, status: 'not_found' as const };
         }
@@ -121,6 +181,7 @@ export function listenToRefugoScans(
 
   const unsubTransient = listenToTransientRefugoScans(scans => {
     transientScans = scans;
+    schedulePermanentBackfill(scans);
     emit();
   });
 
@@ -131,8 +192,6 @@ export function listenToRefugoScans(
       emit();
     },
     () => {
-      // Em falha do listener permanente, mantém a visão operacional antiga
-      // em vez de esconder os scans atuais.
       permanentReady = false;
       emit();
     }
