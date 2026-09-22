@@ -207,6 +207,7 @@ export const BrancasPanelWithCsvFallback: React.FC<BrancasPanelWithCsvFallbackPr
       <BrancasPanel key={panelKey} currentUser={currentUser} />
 
       <BrancasCsvFallback
+        key={`${panelKey}-${csvModalOpen ? 'open' : 'closed'}`}
         open={csvModalOpen}
         onClose={() => setCsvModalOpen(false)}
         onAnalysisReady={handleCsvAnalysisReady}
