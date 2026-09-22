@@ -134,7 +134,7 @@ export default function App() {
   return (
     <div className="min-h-screen w-full max-w-full overflow-x-hidden bg-[#EBEBEB] text-[#333333] flex flex-col font-sans selection:bg-[#3483FA] selection:text-white">
       {/* Main Content Area */}
-      <main className={`flex-1 w-full min-w-0 mx-auto ${location.pathname === "/login" ? "" : location.pathname === "/listas" ? "px-3 sm:px-6 py-4 sm:py-6 space-y-4" : "max-w-7xl px-3 sm:px-6 lg:px-8 py-4 sm:py-6 space-y-4"}`}>
+      <main className={`flex-1 w-full min-w-0 mx-auto ${location.pathname === "/login" ? "" : isHome ? "max-w-none p-0" : location.pathname === "/listas" ? "px-3 sm:px-6 py-4 sm:py-6 space-y-4" : "max-w-7xl px-3 sm:px-6 lg:px-8 py-4 sm:py-6 space-y-4"}`}>
         {/* Floating Notification */}
         {notification && (
           <div className="bg-[#111827] text-white px-3.5 py-2.5 rounded-lg shadow-md text-xs font-mono flex items-center justify-between border border-gray-700 animate-in fade-in max-w-full">
