@@ -1,4 +1,5 @@
 import { RefugoScan, addRefugoScan } from '../lib/firebase';
+import { persistRefugoMetricScan } from '../lib/refugoMetrics';
 
 export interface QueueItem {
   scan: Omit<RefugoScan, 'firestoreId'>;
@@ -9,14 +10,18 @@ export interface QueueItem {
 
 /**
  * Fila de sincronização em memória para gravações do Refugo no Firestore.
- * 
+ *
+ * Cada bip é salvo em duas camadas:
+ * 1. `refugo_scans_items`: estado operacional atual da mesa, que pode ser limpo.
+ * 2. `refugo_metricas_items`: histórico permanente/idempotente, que NÃO é apagado na limpeza.
+ *
  * - O scanner aceita o bip imediatamente (< 2ms) e enfileira aqui.
  * - Sincroniza em background sem travar a UI ou o próximo bip.
  * - Concorrência controlada (2 a 4 conexões simultâneas).
  * - Retry automático com backoff exponencial curto em erros temporários.
  * - Evita duplicidades na fila pelo normalizedId.
- * - Não usa localStorage/IndexedDB.
- * - Em falhas definitivas, notifica discretamente via callback sem bloquear o operador.
+ * - O histórico permanente também é protegido contra duplicação por eventKey.
+ * - Não usa localStorage/IndexedDB como fonte de verdade.
  */
 export class RefugoSyncQueue {
   private queue: QueueItem[] = [];
@@ -57,7 +62,7 @@ export class RefugoSyncQueue {
     const id = scan.normalizedId;
     if (!id) return;
 
-    // Se já está na fila de espera aguardando envio, atualiza o item existente
+    // Se já está na fila de espera aguardando envio, atualiza o item existente.
     const existingIndex = this.queue.findIndex(item => item.scan.normalizedId === id);
     if (existingIndex >= 0) {
       this.queue[existingIndex].scan = scan;
@@ -68,7 +73,7 @@ export class RefugoSyncQueue {
       scan,
       retries: 0,
       addedAt: Date.now(),
-      generation: this.generation
+      generation: this.generation,
     });
     this.queuedIds.add(id);
 
@@ -147,13 +152,20 @@ export class RefugoSyncQueue {
     this.activeWrites.add(id);
     this.notifyQueueChange();
 
-    // Inicia concorrentemente outro item se houver capacidade disponível
     if (this.activeWrites.size < this.maxConcurrency && this.queue.length > 0) {
       this.scheduleProcess();
     }
 
     try {
-      await addRefugoScan(item.scan);
+      // As duas gravações fazem parte da confirmação lógica do bip.
+      // Se uma falhar, o retry executa ambas novamente. Ambas são idempotentes:
+      // - addRefugoScan usa setDoc no mesmo normalizedId;
+      // - persistRefugoMetricScan ignora retry do mesmo eventKey.
+      await Promise.all([
+        addRefugoScan(item.scan),
+        persistRefugoMetricScan(item.scan),
+      ]);
+
       this.activeWrites.delete(id);
       this.notifyQueueChange();
       if (this.onSyncSuccess) {
@@ -164,14 +176,12 @@ export class RefugoSyncQueue {
       this.notifyQueueChange();
 
       if (itemGeneration === this.generation && item.retries < this.maxRetries) {
-        // Backoff exponencial curto: 300ms, 600ms, 1200ms
         const delay = Math.min(1500, 300 * Math.pow(2, item.retries));
         item.retries++;
         setTimeout(() => {
           if (item.generation !== this.generation) {
             return;
           }
-          // Só reinsere se o item não estiver atualmente em escrita ou cancelado
           if (!this.activeWrites.has(id)) {
             this.queue.push(item);
             this.queuedIds.add(id);
