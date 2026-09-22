@@ -9,7 +9,7 @@ import { IdRemover } from './components/IdRemover';
 import { WhatsappReport } from './components/WhatsappReport';
 import { CsvUploader } from './components/CsvUploader';
 import { StatsSummary } from './components/StatsSummary';
-import { ControleRefugo } from './components/ControleRefugo';
+import { ControleRefugoClean } from './components/ControleRefugoClean';
 import { ListasColeta } from './components/ListasColeta';
 import { ListasDashboard } from './components/ListasDashboard';
 import { BrancasPanelWithCsvFallback } from './components/BrancasPanelWithCsvFallback';
@@ -174,7 +174,7 @@ export default function App() {
 
           <Routes>
             {/* Public Routes */}
-            <Route path="/refugo" element={<ControleRefugo currentUser={currentUser} />} />
+            <Route path="/refugo" element={<ControleRefugoClean currentUser={currentUser} />} />
             <Route path="/login" element={
               isAuthenticated ? <Navigate to="/" replace /> : <Login onLogin={(user) => { setCurrentUser(user); navigate('/'); }} />
             } />

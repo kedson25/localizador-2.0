@@ -1,0 +1,150 @@
+.refugo-clean {
+  --refugo-blue: #3483fa;
+  --refugo-border: #dfe5ec;
+  --refugo-text: #1f2937;
+}
+
+/* O histórico permanente já é salvo automaticamente a cada bip.
+   O botão manual antigo só poluía a operação e podia sugerir que o operador
+   precisava lembrar de salvar as métricas. */
+.refugo-clean button[title*="Salva as métricas"] {
+  display: none !important;
+}
+
+/* Estrutura geral mais compacta */
+.refugo-clean > div {
+  padding-bottom: 24px !important;
+}
+
+.refugo-clean div[class*="grid-cols-1"][class*="lg:grid-cols-2"] {
+  gap: 16px !important;
+  align-items: start !important;
+}
+
+.refugo-clean div[class*="bg-white"][class*="border-gray-200"][class*="rounded-xl"] {
+  border-color: var(--refugo-border) !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05) !important;
+}
+
+/* Scanner: menos espaço vazio, sem perder destaque */
+.refugo-clean div[class*="p-4"][class*="sm:p-8"][class*="shadow-sm"] {
+  padding: 20px !important;
+}
+
+.refugo-clean form {
+  margin: 0 !important;
+}
+
+.refugo-clean form div.relative input[type="text"] {
+  min-height: 66px !important;
+  padding-top: 14px !important;
+  padding-bottom: 14px !important;
+  border-radius: 10px !important;
+  font-size: clamp(1.35rem, 2.3vw, 1.9rem) !important;
+  line-height: 1.1 !important;
+}
+
+/* Texto de ajuda abaixo do campo não precisa ocupar espaço durante a operação */
+.refugo-clean form div.relative + p {
+  display: none !important;
+}
+
+/* Resultado do último bip continua colorido, porém menos gigante */
+.refugo-clean div[class*="animate-in"][class*="zoom-in"][class*="border-2"] {
+  margin-top: 14px !important;
+  padding: 16px !important;
+  border-radius: 12px !important;
+}
+
+.refugo-clean div[class*="animate-in"][class*="zoom-in"][class*="border-2"] > svg {
+  width: 42px !important;
+  height: 42px !important;
+  margin-bottom: 8px !important;
+}
+
+.refugo-clean div[class*="animate-in"][class*="zoom-in"][class*="border-2"] div[class*="font-black"] {
+  font-size: clamp(1.1rem, 1.8vw, 1.45rem) !important;
+  gap: 6px !important;
+}
+
+.refugo-clean div[class*="animate-in"][class*="zoom-in"][class*="border-2"] p {
+  font-size: 0.9rem !important;
+  margin-top: 6px !important;
+}
+
+/* Histórico */
+.refugo-clean div[class*="min-h-[400px]"][class*="sm:min-h-[500px]"] {
+  min-height: 460px !important;
+  padding: 18px !important;
+}
+
+.refugo-clean div[class*="flex flex-col gap-3"][class*="border-b"] {
+  gap: 10px !important;
+  margin-bottom: 12px !important;
+  padding-bottom: 12px !important;
+}
+
+/* Contadores continuam com as cores funcionais, só ficam mais alinhados */
+.refugo-clean span[class*="bg-yellow-100"],
+.refugo-clean span[class*="bg-emerald-100"],
+.refugo-clean span[class*="bg-red-100"],
+.refugo-clean span[class*="bg-blue-100"] {
+  border-radius: 7px !important;
+  box-shadow: none !important;
+  white-space: nowrap;
+}
+
+/* Barra de ações: todos os controles no mesmo peso visual */
+.refugo-clean label[class*="cursor-pointer"][class*="bg-[#3483FA]"],
+.refugo-clean button[class*="min-h-[36px]"] {
+  min-height: 34px !important;
+  border-radius: 8px !important;
+  box-shadow: none !important;
+}
+
+.refugo-clean button[class*="bg-white"][class*="border-gray-300"] {
+  color: #475569 !important;
+  background: #f8fafc !important;
+  border-color: #d8e0e8 !important;
+}
+
+/* Cartões do histórico mais baixos e mais fáceis de escanear */
+.refugo-clean div[class*="p-3"][class*="transition-opacity"] {
+  padding: 10px 12px !important;
+  border-radius: 9px !important;
+}
+
+.refugo-clean div[class*="p-3"][class*="transition-opacity"] span[class*="font-mono"] {
+  font-size: 0.82rem !important;
+}
+
+.refugo-clean div[class*="p-3"][class*="transition-opacity"] button[title="Remover pacote"] {
+  padding: 5px !important;
+}
+
+/* Modal de exportação segue colorido, mas sem excesso de arredondamento */
+.refugo-clean div[class*="fixed inset-0"] > div[class*="bg-white"] {
+  border-radius: 14px !important;
+}
+
+@media (max-width: 1023px) {
+  .refugo-clean div[class*="min-h-[400px]"][class*="sm:min-h-[500px]"] {
+    min-height: 420px !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .refugo-clean div[class*="p-4"][class*="sm:p-8"][class*="shadow-sm"],
+  .refugo-clean div[class*="min-h-[400px]"][class*="sm:min-h-[500px]"] {
+    padding: 14px !important;
+  }
+
+  .refugo-clean form div.relative input[type="text"] {
+    min-height: 58px !important;
+    font-size: 1.3rem !important;
+  }
+
+  .refugo-clean div[class*="flex flex-wrap items-center gap-2"] {
+    gap: 6px !important;
+  }
+}
