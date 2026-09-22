@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { Routes, Route, useLocation, useNavigate } from 'react-router-dom';
-import { ArrowLeft } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { CsvRow, GroupSummary } from './types';
 import { parseCsvText } from './utils/csvParser';
 import { ToolsHub } from './components/ToolsHub';
+import { DashboardShell } from './components/DashboardShell';
 import { IdLookup } from './components/IdLookup';
 import { IdRemover } from './components/IdRemover';
 import { WhatsappReport } from './components/WhatsappReport';
@@ -15,24 +15,20 @@ import { ListasDashboard } from './components/ListasDashboard';
 import { BrancasPanelWithCsvFallback } from './components/BrancasPanelWithCsvFallback';
 import { SettingsPage } from './components/SettingsPage';
 import { Login } from './components/Login';
-import { Navigate } from 'react-router-dom';
 import { AdminPanel } from './components/AdminPanel';
 import { User, getCurrentUser } from './lib/auth';
 import { ErrorBoundary } from './components/ErrorBoundary';
-
 import { saveToColetor, loadFromColetor, clearColetor } from './lib/firebase';
 
 export default function App() {
   const location = useLocation();
   const navigate = useNavigate();
-  const isHome = location.pathname === '/';
 
   const [rawText, setRawText] = useState<string>('');
   const [rows, setRows] = useState<CsvRow[]>([]);
   const [groups, setGroups] = useState<GroupSummary[]>([]);
   const [headers, setHeaders] = useState<string[]>([]);
   const [notification, setNotification] = useState<string | null>(null);
-  const [loadingFirebase, setLoadingFirebase] = useState<boolean>(true);
   const [currentUser, setCurrentUser] = useState<User | null>(() => getCurrentUser());
   const isAuthenticated = !!currentUser;
 
@@ -52,7 +48,7 @@ export default function App() {
         activePresences[currentUser.id || currentUser.username] = {
           username: currentUser.username,
           tab: tabName,
-          lastActive: Date.now()
+          lastActive: Date.now(),
         };
         localStorage.setItem('app_active_presences', JSON.stringify(activePresences));
       } catch {}
@@ -61,15 +57,16 @@ export default function App() {
 
   const showNotification = (msg: string) => {
     setNotification(msg);
-    setTimeout(() => setNotification(null), 4000);
+    window.setTimeout(() => setNotification(null), 4000);
   };
 
   useEffect(() => {
     let isMounted = true;
+
     async function initFromFirebase() {
       try {
         const savedData = await loadFromColetor();
-        if (isMounted && savedData && savedData.rawText) {
+        if (isMounted && savedData?.rawText) {
           setRawText(savedData.rawText);
           const parsed = parseCsvText(savedData.rawText);
           setRows(parsed.rows);
@@ -78,12 +75,9 @@ export default function App() {
         }
       } catch (err) {
         console.error('Erro ao carregar dados:', err);
-      } finally {
-        if (isMounted) {
-          setLoadingFirebase(false);
-        }
       }
     }
+
     initFromFirebase();
     return () => {
       isMounted = false;
@@ -111,111 +105,154 @@ export default function App() {
     setGroups([]);
     setHeaders([]);
     navigate('/');
-
     await clearColetor();
     showNotification('Dados zerados com sucesso!');
   };
 
-  const getPageTitle = () => {
-    switch (location.pathname) {
-      case '/consulta': return 'Buscar grupos';
-      case '/remover': return 'Remover IDs';
-      case '/reporte': return 'Reporte WhatsApp';
-      case '/upload': return 'Importar CSV';
-      case '/listas': return 'Listas de Coleta';
-      case '/refugo': return 'Controle Refugo';
-      case '/brancas': return 'Análise de Brancas';
-      case '/configuracoes': return 'Configurações';
-      case '/admin': return 'Painel Admin';
-      default: return '';
-    }
-  };
+  const insideDashboard = (content: React.ReactNode) => (
+    <DashboardShell currentUser={currentUser}>
+      {content}
+    </DashboardShell>
+  );
+
+  const dedicatedOperation = (content: React.ReactNode) => (
+    <div className="min-h-screen bg-[#EBEBEB] text-[#333333]">
+      <main className="mx-auto w-full max-w-7xl space-y-4 px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
+        {content}
+      </main>
+    </div>
+  );
 
   return (
-    <div className="min-h-screen w-full max-w-full overflow-x-hidden bg-[#EBEBEB] text-[#333333] flex flex-col font-sans selection:bg-[#3483FA] selection:text-white">
-      <main className={`flex-1 w-full min-w-0 mx-auto ${location.pathname === '/login' ? '' : isHome ? 'max-w-none p-0' : location.pathname === '/listas' ? 'px-3 sm:px-6 py-4 sm:py-6 space-y-4' : 'max-w-7xl px-3 sm:px-6 lg:px-8 py-4 sm:py-6 space-y-4'}`}>
-        {notification && (
-          <div className="bg-[#111827] text-white px-3.5 py-2.5 rounded-lg shadow-md text-xs font-mono flex items-center justify-between border border-gray-700 animate-in fade-in max-w-full">
-            <span className="flex items-center gap-2 min-w-0 break-words pr-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse shrink-0"></span>
-              <span className="break-words">{notification}</span>
-            </span>
-            <button
-              onClick={() => setNotification(null)}
-              className="ml-2 hover:text-gray-300 font-bold px-2 py-1 min-h-[36px] min-w-[36px] flex items-center justify-center shrink-0 cursor-pointer"
-            >
-              ✕
-            </button>
-          </div>
-        )}
+    <div className="min-h-screen w-full max-w-full overflow-x-hidden bg-[#EBEBEB] font-sans text-[#333333] selection:bg-[#3483FA] selection:text-white">
+      {notification && (
+        <div className="fixed left-1/2 top-4 z-[100] flex w-[min(92vw,720px)] -translate-x-1/2 items-center justify-between rounded-lg border border-gray-700 bg-[#111827] px-3.5 py-2.5 text-xs text-white shadow-xl">
+          <span className="flex min-w-0 items-center gap-2 pr-2">
+            <span className="h-2.5 w-2.5 shrink-0 animate-pulse rounded-full bg-amber-400" />
+            <span className="break-words">{notification}</span>
+          </span>
+          <button
+            type="button"
+            onClick={() => setNotification(null)}
+            className="ml-2 flex min-h-[36px] min-w-[36px] shrink-0 items-center justify-center px-2 py-1 font-bold hover:text-gray-300"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
-        <ErrorBoundary>
-          {isAuthenticated && location.pathname !== '/' && location.pathname !== '/login' && location.pathname !== '/configuracoes' && !location.pathname.startsWith('/listas/') && (
-            <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
-              <button
-                onClick={() => navigate('/')}
-                className="flex items-center gap-2 px-3.5 py-2 sm:py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-bold text-gray-700 hover:bg-gray-50 transition-colors shadow-sm cursor-pointer min-h-[40px] sm:min-h-0"
-              >
-                <ArrowLeft className="w-4 h-4 text-[#3483FA]" />
-                <span>Voltar para o Hub</span>
-              </button>
-              {getPageTitle() && (
+      <ErrorBoundary>
+        <Routes>
+          <Route
+            path="/login"
+            element={
+              isAuthenticated
+                ? <Navigate to="/" replace />
+                : <Login onLogin={(user) => { setCurrentUser(user); navigate('/'); }} />
+            }
+          />
+
+          {/* Telas operacionais dedicadas: sem menu lateral. */}
+          <Route
+            path="/refugo"
+            element={dedicatedOperation(<ControleRefugoClean currentUser={currentUser} />)}
+          />
+
+          {isAuthenticated && (
+            <>
+              {/* O Hub continua sendo a página de Módulos. */}
+              <Route
+                path="/"
+                element={
+                  <ToolsHub
+                    totalRows={rows.length}
+                    groups={groups}
+                    onClear={handleClear}
+                    currentUser={currentUser}
+                  />
+                }
+              />
+
+              {/* Páginas normais permanecem dentro do mesmo dashboard/sidebar. */}
+              <Route
+                path="/configuracoes"
+                element={insideDashboard(<SettingsPage currentUser={currentUser} />)}
+              />
+
+              {currentUser?.isAdmin && (
+                <Route
+                  path="/admin"
+                  element={insideDashboard(<AdminPanel currentUser={currentUser} />)}
+                />
+              )}
+
+              {(currentUser?.isAdmin || currentUser?.allowedGroups?.includes('consulta')) && (
+                <Route
+                  path="/consulta"
+                  element={insideDashboard(
+                    <div className="space-y-4">
+                      <StatsSummary totalRows={rows.length} groups={groups} />
+                      <IdLookup rows={rows} onNavigateToUpload={() => navigate('/upload')} />
+                    </div>
+                  )}
+                />
+              )}
+
+              {(currentUser?.isAdmin || currentUser?.allowedGroups?.includes('remover')) && (
+                <Route
+                  path="/remover"
+                  element={insideDashboard(<IdRemover rows={rows} headers={headers} />)}
+                />
+              )}
+
+              {(currentUser?.isAdmin || currentUser?.allowedGroups?.includes('reporte')) && (
+                <Route
+                  path="/reporte"
+                  element={insideDashboard(<WhatsappReport rows={rows} />)}
+                />
+              )}
+
+              {(currentUser?.isAdmin || currentUser?.allowedGroups?.includes('listas')) && (
                 <>
-                  <div className="h-4 w-px bg-gray-300 mx-1 hidden sm:block"></div>
-                  <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">
-                    {getPageTitle()}
-                  </span>
+                  <Route
+                    path="/listas"
+                    element={insideDashboard(<ListasDashboard currentUser={currentUser} />)}
+                  />
+                  <Route
+                    path="/listas/:id"
+                    element={dedicatedOperation(<ListasColeta currentUser={currentUser} />)}
+                  />
                 </>
               )}
-            </div>
+
+              {(currentUser?.isAdmin || currentUser?.allowedGroups?.includes('upload')) && (
+                <Route
+                  path="/upload"
+                  element={insideDashboard(
+                    <CsvUploader
+                      onLoadText={(text) => {
+                        handleParseAndSave(text);
+                        navigate('/');
+                      }}
+                      currentTotalRows={rows.length}
+                    />
+                  )}
+                />
+              )}
+
+              <Route
+                path="/brancas"
+                element={insideDashboard(<BrancasPanelWithCsvFallback currentUser={currentUser} />)}
+              />
+            </>
           )}
 
-          <Routes>
-            <Route path="/refugo" element={<ControleRefugoClean currentUser={currentUser} />} />
-            <Route path="/login" element={
-              isAuthenticated ? <Navigate to="/" replace /> : <Login onLogin={(user) => { setCurrentUser(user); navigate('/'); }} />
-            } />
-
-            {isAuthenticated && (
-              <>
-                <Route path="/" element={<ToolsHub totalRows={rows.length} groups={groups} onClear={handleClear} currentUser={currentUser} />} />
-                <Route path="/configuracoes" element={<SettingsPage currentUser={currentUser} />} />
-
-                {currentUser?.isAdmin && (
-                  <Route path="/admin" element={<AdminPanel currentUser={currentUser} />} />
-                )}
-
-                {(currentUser?.isAdmin || currentUser?.allowedGroups?.includes('consulta')) && (
-                  <Route path="/consulta" element={<><StatsSummary totalRows={rows.length} groups={groups} /><IdLookup rows={rows} onNavigateToUpload={() => navigate('/upload')} /></>} />
-                )}
-
-                {(currentUser?.isAdmin || currentUser?.allowedGroups?.includes('remover')) && (
-                  <Route path="/remover" element={<IdRemover rows={rows} headers={headers} />} />
-                )}
-
-                {(currentUser?.isAdmin || currentUser?.allowedGroups?.includes('reporte')) && (
-                  <Route path="/reporte" element={<WhatsappReport rows={rows} />} />
-                )}
-
-                {(currentUser?.isAdmin || currentUser?.allowedGroups?.includes('listas')) && (
-                  <>
-                    <Route path="/listas" element={<ListasDashboard currentUser={currentUser} />} />
-                    <Route path="/listas/:id" element={<ListasColeta currentUser={currentUser} />} />
-                  </>
-                )}
-
-                {(currentUser?.isAdmin || currentUser?.allowedGroups?.includes('upload')) && (
-                  <Route path="/upload" element={<CsvUploader onLoadText={(text) => { handleParseAndSave(text); navigate('/'); }} currentTotalRows={rows.length} />} />
-                )}
-
-                <Route path="/brancas" element={<BrancasPanelWithCsvFallback currentUser={currentUser} />} />
-              </>
-            )}
-
-            <Route path="*" element={isAuthenticated ? <Navigate to="/" replace /> : <Navigate to="/login" replace />} />
-          </Routes>
-        </ErrorBoundary>
-      </main>
+          <Route
+            path="*"
+            element={isAuthenticated ? <Navigate to="/" replace /> : <Navigate to="/login" replace />}
+          />
+        </Routes>
+      </ErrorBoundary>
     </div>
   );
 }
