@@ -1,2 +1,10 @@
-import syncHandler from '../_brancas/syncV3';
-export default syncHandler;
+import { runSafeBrancasHandler } from '../_lib/safe-brancas-entry';
+
+export default async function handler(req: any, res: any) {
+  return runSafeBrancasHandler(
+    req,
+    res,
+    'sync',
+    () => import('../_brancas/syncV3')
+  );
+}
