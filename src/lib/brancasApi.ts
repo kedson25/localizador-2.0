@@ -1,4 +1,5 @@
 import { VisaoGeralCategoria, OperationalPatternInsight } from './operationalTranslator';
+import { readJsonResponse } from './safeJsonResponse';
 
 export interface MudancaMotivoDetalhe {
   idPacote: string;
@@ -158,6 +159,7 @@ export async function registrarTentativaBrancas(
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      Accept: 'application/json',
     },
     body: JSON.stringify({
       observacao,
@@ -165,11 +167,11 @@ export async function registrarTentativaBrancas(
     }),
   });
 
-  const json = await res.json();
-  if (!res.ok || json.ok === false) {
-    const errorMsg = json.error?.message || json.message || 'Falha ao processar sincronização.';
-    throw new Error(errorMsg);
-  }
+  const json = await readJsonResponse<any>(res, {
+    fallbackMessage: 'Falha ao processar sincronização de Brancas.',
+    serverErrorMessage:
+      'A API de Brancas está temporariamente indisponível. Tente novamente em alguns instantes ou use o modo CSV.',
+  });
 
   return json.data || json;
 }
@@ -178,26 +180,32 @@ export async function registrarTentativaBrancas(
  * Obtém o relatório consolidado do último snapshot (ou de um snapshot específico).
  * Se autoCheck=true, verifica silenciosamente se há nova extração nas planilhas.
  */
-export async function getRelatorioBrancas(snapshotId?: string, autoCheck: boolean = true): Promise<BrancaRelatorioResponse> {
+export async function getRelatorioBrancas(
+  snapshotId?: string,
+  autoCheck: boolean = true
+): Promise<BrancaRelatorioResponse> {
   const params = new URLSearchParams();
   if (snapshotId) params.append('snapshotId', snapshotId);
   if (autoCheck) params.append('autoCheck', 'true');
 
   const queryString = params.toString();
-  const url = queryString ? `/api/brancas/relatorio?${queryString}` : '/api/brancas/relatorio';
+  const url = queryString
+    ? `/api/brancas/relatorio?${queryString}`
+    : '/api/brancas/relatorio';
 
   const res = await fetch(url, {
     method: 'GET',
     headers: {
-      'Accept': 'application/json',
+      Accept: 'application/json',
     },
+    cache: 'no-store',
   });
 
-  const json = await res.json();
-  if (!res.ok || json.ok === false) {
-    const errorMsg = json.error?.message || json.message || 'Falha ao carregar relatório.';
-    throw new Error(errorMsg);
-  }
+  const json = await readJsonResponse<any>(res, {
+    fallbackMessage: 'Falha ao carregar relatório de Brancas.',
+    serverErrorMessage:
+      'A API de Brancas está temporariamente indisponível. A tela não perdeu seus dados; tente novamente ou use o modo CSV.',
+  });
 
   return json.data || json;
 }
@@ -205,19 +213,25 @@ export async function getRelatorioBrancas(snapshotId?: string, autoCheck: boolea
 /**
  * Carrega a linha do tempo cronológica com todo o histórico de um pacote.
  */
-export async function getHistoricoPacote(idPacote: string): Promise<PacoteHistoricoResponse> {
-  const res = await fetch(`/api/brancas/historico?id=${encodeURIComponent(idPacote)}`, {
-    method: 'GET',
-    headers: {
-      'Accept': 'application/json',
-    },
-  });
+export async function getHistoricoPacote(
+  idPacote: string
+): Promise<PacoteHistoricoResponse> {
+  const res = await fetch(
+    `/api/brancas/historico?id=${encodeURIComponent(idPacote)}`,
+    {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+      },
+      cache: 'no-store',
+    }
+  );
 
-  const json = await res.json();
-  if (!res.ok || json.ok === false) {
-    const errorMsg = json.error?.message || json.message || 'Falha ao carregar histórico do pacote.';
-    throw new Error(errorMsg);
-  }
+  const json = await readJsonResponse<any>(res, {
+    fallbackMessage: 'Falha ao carregar histórico do pacote.',
+    serverErrorMessage:
+      'O histórico de Brancas está temporariamente indisponível. Tente novamente em alguns instantes.',
+  });
 
   return json.data || json;
 }
