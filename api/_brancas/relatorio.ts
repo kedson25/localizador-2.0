@@ -1,6 +1,4 @@
 import { getDocRest, runQueryRest } from '../_lib/firestore-rest';
-import { isGoogleSheetsConfigured } from '../_lib/googleSheets';
-import syncHandler from './sync';
 import { sendSuccess, sendError } from '../_lib/response';
 import { logApi } from '../_lib/logger';
 import { buildVisaoGeral } from '../_lib/operationalTranslator';
@@ -10,31 +8,12 @@ export default async function relatorioHandler(req: any, res: any) {
     return sendError(res, 405, 'METHOD_NOT_ALLOWED', 'Método não permitido');
   }
 
-  const { runId: requestedRunId, snapshotId: requestedSnapshotId, autoCheck } = req.query || {};
+  const { runId: requestedRunId, snapshotId: requestedSnapshotId } = req.query || {};
   const targetId = requestedSnapshotId || requestedRunId;
 
   try {
-    // Se autoCheck estiver ativo ou se nenhum ID foi passado, dispara verificação leve.
-    // Snapshots parciais são reprocessados pelo sync até que os writes pendentes concluam.
-    if ((autoCheck === 'true' || autoCheck === true || !targetId) && isGoogleSheetsConfigured()) {
-      try {
-        const mockReq = {
-          method: 'POST',
-          query: {},
-          body: { forceManual: false },
-          headers: req.headers || {},
-        };
-        const mockRes = {
-          statusCode: 200,
-          setHeader: () => {},
-          end: () => {},
-        };
-        await syncHandler(mockReq, mockRes);
-      } catch (autoErr) {
-        console.warn('[Relatorio AutoCheck Warn]:', autoErr);
-      }
-    }
-
+    // O relatório deve ser somente leitura. Não dispara sincronização pesada aqui.
+    // Isso evita que a abertura da tela fique bloqueada por Google Sheets/Firestore.
     let snapshotDoc: any = null;
 
     if (targetId) {
@@ -44,7 +23,6 @@ export default async function relatorioHandler(req: any, res: any) {
       }
     }
 
-    // Busca os snapshots mais recentes
     let recentSnapshotsDocs = await runQueryRest('routing_snapshots', {
       orderByField: 'timestamp',
       orderDirection: 'DESCENDING',
@@ -81,7 +59,7 @@ export default async function relatorioHandler(req: any, res: any) {
     if (!snapshotDoc) {
       return sendSuccess(res, {
         hasData: false,
-        message: 'Nenhum snapshot de roteirização registrado ainda. O sistema verificará automaticamente assim que as planilhas estiverem acessíveis.',
+        message: 'Nenhum snapshot registrado ainda. Use Atualizar para processar as planilhas.',
         recentRuns: [],
         lastCheckTime: new Date().toISOString(),
       });
@@ -129,7 +107,7 @@ export default async function relatorioHandler(req: any, res: any) {
 
     const statusBanner = partialSuccess
       ? `Sincronização parcial: ${successfulPackageWrites}/${totalPackageWrites} gravações concluídas. ${failedPackageWrites} pendente(s) de nova tentativa.`
-      : `Nenhuma alteração encontrada desde ${formattedTime}.`;
+      : `Última análise registrada às ${formattedTime}.`;
 
     return sendSuccess(res, {
       hasData: true,
@@ -176,7 +154,7 @@ export default async function relatorioHandler(req: any, res: any) {
       recentRuns,
     });
   } catch (err: any) {
-    logApi('error', 'Falha ao buscar relatório/snapshot de brancas', { error: err.message });
-    return sendError(res, 500, 'RELATORIO_ERROR', `Erro ao carregar relatório: ${err.message}`);
+    logApi('error', 'Falha ao buscar relatório/snapshot de brancas', { error: err?.message || String(err) });
+    return sendError(res, 500, 'RELATORIO_ERROR', `Erro ao carregar relatório: ${err?.message || String(err)}`);
   }
 }
