@@ -8,7 +8,8 @@ import {
   runTransaction,
   serverTimestamp,
 } from 'firebase/firestore';
-import { db, RefugoScan } from './firebase';
+import { db } from './firebase-core';
+import type { RefugoScan } from './firebase-core';
 
 export const REFUGO_METRIC_ITEMS_COLLECTION = 'refugo_metricas_items';
 export const REFUGO_DAILY_METRICS_COLLECTION = 'refugo_metricas_diarias';
@@ -138,7 +139,6 @@ export async function persistRefugoMetricScan(
     const snap = await transaction.get(metricRef);
     const previous = snap.exists() ? (snap.data() as Partial<RefugoMetricItem>) : null;
 
-    // Retry do mesmo bip: devolve o registro sem incrementar qualquer contador.
     if (previous?.lastEventKey === eventKey) {
       return {
         ...(previous as RefugoMetricItem),
@@ -192,15 +192,9 @@ export async function persistRefugoMetricScan(
       updatedAt: serverTimestamp(),
     };
 
-    if (isFirstSeen) {
-      dailyUpdates.totalUniqueBipados = increment(1);
-    }
-    if (isFirstRouteFound) {
-      dailyUpdates.totalRotasEncontradas = increment(1);
-    }
-    if (isFirstBranca) {
-      dailyUpdates.totalBrancasEncontradas = increment(1);
-    }
+    if (isFirstSeen) dailyUpdates.totalUniqueBipados = increment(1);
+    if (isFirstRouteFound) dailyUpdates.totalRotasEncontradas = increment(1);
+    if (isFirstBranca) dailyUpdates.totalBrancasEncontradas = increment(1);
 
     if (isFirstSeen || isFirstRouteFound || isFirstBranca) {
       transaction.set(dailyRef, dailyUpdates, { merge: true });
