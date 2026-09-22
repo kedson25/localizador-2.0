@@ -1,8 +1,6 @@
 // Facade público do Firebase.
-//
-// O núcleo original permanece em `firebase-core.ts`. Esta camada mantém todos os
-// exports existentes e substitui somente as leituras que precisam de semântica
-// consolidada para o dashboard e para as métricas permanentes.
+// Mantém o núcleo original em firebase-core.ts e consolida as leituras usadas
+// pelas métricas permanentes e pelo painel Admin.
 export * from './firebase-core';
 
 import {
@@ -19,15 +17,6 @@ import {
   RefugoMetricItem,
 } from './refugoMetrics';
 
-/**
- * Normaliza a porcentagem de acerto das listas para a Visão Geral.
- *
- * Regra:
- * 1. Se já existe porcentagemAcerto gravada, ela é a fonte oficial.
- * 2. Se não existe e há total + itensFaltaram, deriva o acerto real.
- * 3. Se não existe fechamento, usa validação/total como fallback mensurável.
- * 4. Nunca assume 100% só porque o campo ainda não foi preenchido.
- */
 function deriveListaAccuracy(lista: ColetaLista): number {
   const explicit = Number(lista.porcentagemAcerto);
   if (lista.porcentagemAcerto !== undefined && Number.isFinite(explicit)) {
@@ -46,10 +35,6 @@ function deriveListaAccuracy(lista: ColetaLista): number {
   return Number(((validados / total) * 100).toFixed(2));
 }
 
-/**
- * Mantém as listas vindas do servidor, mas garante que a média de acerto do
- * Admin não transforme automaticamente campo ausente em 100%.
- */
 export function listenToListas(
   callback: (listas: ColetaLista[]) => void
 ): () => void {
@@ -78,9 +63,44 @@ function isBrancaOrWithoutRoute(scan: RefugoScan): boolean {
   );
 }
 
-// Evita que o backfill inicial de milhares de scans abra milhares de transações
-// simultâneas. A carga é processada em pequenos grupos e cada item continua
-// idempotente pelo eventKey no Firestore.
+/**
+ * O AdminPanel historicamente recebe `scannedAt` e faz `new Date(scannedAt)`.
+ * Strings pt-BR como `22/09/2026, 03:55:27` não são portáveis entre browsers e
+ * podem virar Invalid Date, fazendo o painel descartar o scan até em "Todas as Datas".
+ * Para o dashboard usamos sempre o timestamp numérico como fonte e entregamos ISO.
+ */
+function normalizeScanForDashboard(scan: RefugoScan): RefugoScan {
+  const timestamp = Number(scan.timestamp);
+  if (Number.isFinite(timestamp) && timestamp > 0) {
+    return {
+      ...scan,
+      scannedAt: new Date(timestamp).toISOString(),
+    };
+  }
+
+  const raw = String(scan.scannedAt || '').trim();
+  const br = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:,?\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+  if (br) {
+    const [, dd, mm, yyyy, hh = '0', min = '0', ss = '0'] = br;
+    const parsed = new Date(
+      Number(yyyy),
+      Number(mm) - 1,
+      Number(dd),
+      Number(hh),
+      Number(min),
+      Number(ss)
+    );
+    if (!Number.isNaN(parsed.getTime())) {
+      return {
+        ...scan,
+        scannedAt: parsed.toISOString(),
+      };
+    }
+  }
+
+  return scan;
+}
+
 const metricBackfillKeys = new Set<string>();
 let metricBackfillChain: Promise<void> = Promise.resolve();
 
@@ -112,14 +132,6 @@ function schedulePermanentBackfill(scans: RefugoScan[]): void {
     });
 }
 
-/**
- * Wrapper do listener operacional incremental.
- *
- * A UI recebe exatamente os mesmos eventos do core, mas todo scan já existente
- * na mesa (inclusive dados anteriores ao deploy desta versão) entra em backfill
- * para a coleção permanente. Assim, limpar a mesa depois do deploy não perde os
- * IDs que já estavam carregados.
- */
 export function listenToRefugoScansIncremental(
   callback: (changes: RefugoScanChange[], isInitial: boolean, initialScans?: RefugoScan[]) => void,
   onError?: (error: any) => void
@@ -129,10 +141,11 @@ export function listenToRefugoScansIncremental(
       if (isInitial && initialScans?.length) {
         schedulePermanentBackfill(initialScans);
       } else if (changes.length > 0) {
-        const changedScans = changes
-          .filter(change => change.type !== 'removed')
-          .map(change => change.scan);
-        schedulePermanentBackfill(changedScans);
+        schedulePermanentBackfill(
+          changes
+            .filter(change => change.type !== 'removed')
+            .map(change => change.scan)
+        );
       }
 
       callback(changes, isInitial, initialScans);
@@ -141,12 +154,6 @@ export function listenToRefugoScansIncremental(
   );
 }
 
-/**
- * Para o dashboard, "scans ativos" passam a significar somente gravações que
- * ainda não chegaram à coleção permanente. Assim que o registro permanente é
- * confirmado, ele sai desta lista e passa a ser representado pelo histórico
- * diário consolidado, eliminando dupla contagem.
- */
 export function listenToRefugoScans(
   callback: (scans: RefugoScan[]) => void
 ): () => void {
@@ -180,7 +187,8 @@ export function listenToRefugoScans(
   };
 
   const unsubTransient = listenToTransientRefugoScans(scans => {
-    transientScans = scans;
+    // Corrige imediatamente a métrica ativa, antes mesmo do backfill terminar.
+    transientScans = scans.map(normalizeScanForDashboard);
     schedulePermanentBackfill(scans);
     emit();
   });
@@ -227,14 +235,6 @@ function getDailyAccumulator(
   return current;
 }
 
-/**
- * Une o histórico legado (somente o período anterior ao primeiro registro
- * permanente) com resumos diários derivados dos documentos permanentes.
- *
- * O AdminPanel já sabe filtrar `RefugoHistoricoMetrica` por data, então esta
- * adaptação corrige automaticamente os cards "Rotas encontradas" e "Rotas
- * brancas" da visão geral sem depender da limpeza da mesa.
- */
 export function listenToRefugoHistoricoMetricas(
   callback: (metricas: RefugoHistoricoMetrica[]) => void
 ): () => void {
