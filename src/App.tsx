@@ -11,6 +11,7 @@ import { CsvUploader } from './components/CsvUploader';
 import { StatsSummary } from './components/StatsSummary';
 import { ControleRefugo } from './components/ControleRefugo';
 import { ListasColeta } from './components/ListasColeta';
+import { ListasDashboard } from './components/ListasDashboard';
 import { BrancasPanelWithCsvFallback } from './components/BrancasPanelWithCsvFallback';
 import { Login } from './components/Login';
 import { Navigate } from 'react-router-dom';
@@ -201,7 +202,7 @@ export default function App() {
 
                 {(currentUser?.isAdmin || currentUser?.allowedGroups?.includes('listas')) && (
                   <>
-                    <Route path="/listas" element={<ListasColeta currentUser={currentUser} />} />
+                    <Route path="/listas" element={<ListasDashboard currentUser={currentUser} />} />
                     <Route path="/listas/:id" element={<ListasColeta currentUser={currentUser} />} />
                   </>
                 )}
