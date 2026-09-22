@@ -29,10 +29,21 @@ interface ListasDashboardProps {
   currentUser?: User | null;
 }
 
+type DateFilter = 'hoje' | 'ontem' | '7dias' | '15dias' | 'mes' | 'todas';
+
 const CICLOS = [
   'Ciclo 1 - Saída AM',
   'Ciclo 2 - Saída PM',
   'Ciclo 3 - Saída SD',
+];
+
+const DATE_FILTERS: Array<{ id: DateFilter; label: string }> = [
+  { id: 'hoje', label: 'Hoje' },
+  { id: 'ontem', label: 'Ontem' },
+  { id: '7dias', label: '7 dias' },
+  { id: '15dias', label: '15 dias' },
+  { id: 'mes', label: 'Mês' },
+  { id: 'todas', label: 'Todas' },
 ];
 
 function localDateKey(date: Date): string {
@@ -40,6 +51,10 @@ function localDateKey(date: Date): string {
   const mm = String(date.getMonth() + 1).padStart(2, '0');
   const dd = String(date.getDate()).padStart(2, '0');
   return `${yyyy}-${mm}-${dd}`;
+}
+
+function normalizeLocalDay(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 12, 0, 0, 0);
 }
 
 function parseListaDate(lista: ColetaLista): Date {
@@ -78,19 +93,45 @@ function parseListaDate(lista: ColetaLista): Date {
   return new Date(0);
 }
 
+function matchesDateFilter(date: Date, filter: DateFilter): boolean {
+  if (filter === 'todas') return true;
+  if (!date || Number.isNaN(date.getTime()) || date.getTime() === 0) return false;
+
+  const today = normalizeLocalDay(new Date());
+  const target = normalizeLocalDay(date);
+
+  if (filter === 'hoje') {
+    return localDateKey(target) === localDateKey(today);
+  }
+
+  if (filter === 'ontem') {
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    return localDateKey(target) === localDateKey(yesterday);
+  }
+
+  if (filter === 'mes') {
+    return target.getFullYear() === today.getFullYear() && target.getMonth() === today.getMonth();
+  }
+
+  const days = filter === '7dias' ? 7 : 15;
+  const firstDay = new Date(today);
+  firstDay.setDate(firstDay.getDate() - (days - 1));
+
+  return target.getTime() >= firstDay.getTime() && target.getTime() <= today.getTime();
+}
+
 function formatDate(date: Date): string {
   if (!date || Number.isNaN(date.getTime()) || date.getTime() === 0) return '-';
   return date.toLocaleDateString('pt-BR');
 }
 
 function groupLabel(date: Date): string {
-  const today = new Date();
-  today.setHours(12, 0, 0, 0);
-
+  const today = normalizeLocalDay(new Date());
   const yesterday = new Date(today);
   yesterday.setDate(yesterday.getDate() - 1);
 
-  const key = localDateKey(date);
+  const key = localDateKey(normalizeLocalDay(date));
   if (key === localDateKey(today)) return 'Hoje';
   if (key === localDateKey(yesterday)) return 'Ontem';
 
@@ -115,6 +156,7 @@ export const ListasDashboard: React.FC<ListasDashboardProps> = ({ currentUser })
   const [listas, setListas] = useState<ColetaLista[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [dateFilter, setDateFilter] = useState<DateFilter>('hoje');
   const [syncing, setSyncing] = useState(false);
   const [openingId, setOpeningId] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
@@ -135,6 +177,7 @@ export const ListasDashboard: React.FC<ListasDashboardProps> = ({ currentUser })
     const term = search.trim().toLowerCase();
 
     return [...listas]
+      .filter(lista => matchesDateFilter(parseListaDate(lista), dateFilter))
       .filter(lista => {
         if (!term) return true;
         return [
@@ -153,7 +196,7 @@ export const ListasDashboard: React.FC<ListasDashboardProps> = ({ currentUser })
         if (ta !== tb) return tb - ta;
         return String(b.id || '').localeCompare(String(a.id || ''));
       });
-  }, [listas, search]);
+  }, [listas, search, dateFilter]);
 
   const grouped = useMemo(() => {
     const groups = new Map<string, { label: string; date: Date; items: ColetaLista[] }>();
@@ -162,6 +205,7 @@ export const ListasDashboard: React.FC<ListasDashboardProps> = ({ currentUser })
       const date = parseListaDate(lista);
       const key = localDateKey(date);
       const existing = groups.get(key);
+
       if (existing) {
         existing.items.push(lista);
       } else {
@@ -176,10 +220,12 @@ export const ListasDashboard: React.FC<ListasDashboardProps> = ({ currentUser })
     return Array.from(groups.values()).sort((a, b) => b.date.getTime() - a.date.getTime());
   }, [filtered]);
 
-  const totalItens = useMemo(
-    () => listas.reduce((sum, lista) => sum + Number(lista.totalItens ?? lista.itens?.length ?? 0), 0),
-    [listas]
+  const filteredTotalItens = useMemo(
+    () => filtered.reduce((sum, lista) => sum + Number(lista.totalItens ?? lista.itens?.length ?? 0), 0),
+    [filtered]
   );
+
+  const currentFilterLabel = DATE_FILTERS.find(item => item.id === dateFilter)?.label || 'Hoje';
 
   const abrirLista = (id: string) => {
     setOpeningId(id);
@@ -299,8 +345,8 @@ export const ListasDashboard: React.FC<ListasDashboardProps> = ({ currentUser })
             <div className="min-w-0">
               <h1 className="text-lg font-bold text-gray-900">Listas de Coleta</h1>
               <div className="mt-0.5 flex flex-wrap gap-x-3 text-xs text-gray-500">
-                <span>{listas.length} {listas.length === 1 ? 'lista' : 'listas'}</span>
-                <span>{totalItens.toLocaleString('pt-BR')} pacotes</span>
+                <span>{filtered.length} {filtered.length === 1 ? 'lista' : 'listas'} em {currentFilterLabel.toLowerCase()}</span>
+                <span>{filteredTotalItens.toLocaleString('pt-BR')} pacotes</span>
               </div>
             </div>
           </div>
@@ -317,6 +363,25 @@ export const ListasDashboard: React.FC<ListasDashboardProps> = ({ currentUser })
       </section>
 
       <section className="rounded-2xl border border-gray-200 bg-white shadow-sm">
+        <div className="border-b border-gray-100 p-4">
+          <div className="flex flex-wrap gap-2">
+            {DATE_FILTERS.map(filter => (
+              <button
+                key={filter.id}
+                type="button"
+                onClick={() => setDateFilter(filter.id)}
+                className={`rounded-lg px-3.5 py-2 text-xs font-bold transition ${
+                  dateFilter === filter.id
+                    ? 'bg-[#3483FA] text-white shadow-sm'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200 hover:text-gray-900'
+                }`}
+              >
+                {filter.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="flex flex-col gap-3 border-b border-gray-100 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="relative w-full sm:max-w-sm">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
@@ -348,8 +413,17 @@ export const ListasDashboard: React.FC<ListasDashboardProps> = ({ currentUser })
         ) : grouped.length === 0 ? (
           <div className="px-4 py-14 text-center">
             <Package className="mx-auto h-9 w-9 text-gray-300" />
-            <p className="mt-2 text-sm font-bold text-gray-600">Nenhuma lista encontrada</p>
-            <p className="mt-1 text-xs text-gray-400">Crie uma nova lista ou altere a busca.</p>
+            <p className="mt-2 text-sm font-bold text-gray-600">Nenhuma lista em {currentFilterLabel.toLowerCase()}</p>
+            <p className="mt-1 text-xs text-gray-400">Altere o período ou crie uma nova lista.</p>
+            {dateFilter !== 'todas' && (
+              <button
+                type="button"
+                onClick={() => setDateFilter('todas')}
+                className="mt-4 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-[#3483FA] hover:bg-blue-50"
+              >
+                Ver todas
+              </button>
+            )}
           </div>
         ) : (
           <div className="space-y-6 p-4 sm:p-5">
