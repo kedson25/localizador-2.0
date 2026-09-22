@@ -10,19 +10,17 @@ import {
   ChevronRight,
   CircleHelp,
   FileSearch,
-  FileSpreadsheet,
   Folder,
-  Handshake,
   Home,
   ListTodo,
   MessageSquare,
   PackageOpen,
-  Rocket,
   Search,
   Settings,
   Trash2,
   UploadCloud,
   UserCircle2,
+  Zap,
 } from 'lucide-react';
 import type { GroupSummary } from '../types';
 import type { User } from '../lib/auth';
@@ -93,7 +91,7 @@ function ModuleGroup({
       <button
         type="button"
         onClick={onToggle}
-        className="flex w-full items-center justify-between gap-4 border-b border-slate-200 bg-white px-5 py-3.5 text-left transition-colors hover:bg-slate-50/80 sm:px-6"
+        className={`flex w-full items-center justify-between gap-4 bg-white px-5 py-3.5 text-left transition-colors hover:bg-slate-50/80 sm:px-6 ${isOpen ? 'border-b border-slate-200' : ''}`}
       >
         <div className="flex min-w-0 items-center gap-3.5">
           {isOpen ? (
@@ -121,7 +119,7 @@ function ModuleGroup({
       {isOpen && (
         <div>
           <div className="divide-y divide-slate-200">
-            {tools.map(tool => {
+            {tools.length > 0 ? tools.map(tool => {
               const Icon = tool.icon;
               return (
                 <button
@@ -155,7 +153,9 @@ function ModuleGroup({
                   </span>
                 </button>
               );
-            })}
+            }) : (
+              <div className="px-6 py-5 text-sm text-slate-500">Nenhum módulo encontrado.</div>
+            )}
           </div>
           {footer}
         </div>
@@ -172,9 +172,11 @@ export const ToolsHub: React.FC<ToolsHubProps> = ({
 }) => {
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
-  const [isBacklogOpen, setIsBacklogOpen] = useState(true);
-  const [isRefugoOpen, setIsRefugoOpen] = useState(true);
-  const [isBrancasOpen, setIsBrancasOpen] = useState(true);
+
+  // Sempre inicia fechado quando a página é carregada/recarregada.
+  const [isBacklogOpen, setIsBacklogOpen] = useState(false);
+  const [isRefugoOpen, setIsRefugoOpen] = useState(false);
+  const [isBrancasOpen, setIsBrancasOpen] = useState(false);
 
   const allBacklogTools: ToolItem[] = [
     {
@@ -273,23 +275,14 @@ export const ToolsHub: React.FC<ToolsHubProps> = ({
     window.location.href = '/login';
   };
 
-  const reportsPath = currentUser?.isAdmin
-    ? '/admin'
-    : currentUser?.allowedGroups?.includes('reporte')
-      ? '/reporte'
-      : '/';
-
   return (
     <div className="min-h-screen bg-[#f6f8fb] text-slate-900">
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-[238px] flex-col border-r border-slate-200 bg-white lg:flex">
         <div className="flex h-[72px] items-center gap-3 bg-[#FFE600] px-7">
-          <span className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-[#253b80] bg-white/70 text-[#253b80]">
-            <Handshake className="h-6 w-6" />
+          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#253b80] text-white shadow-sm">
+            <Zap className="h-5 w-5" />
           </span>
-          <div className="leading-[0.95] text-[#253b80]">
-            <div className="text-lg font-black">mercado</div>
-            <div className="text-lg font-black">livre</div>
-          </div>
+          <div className="text-[22px] font-black tracking-[-0.04em] text-[#253b80]">ecooy</div>
         </div>
 
         <nav className="flex-1 px-4 py-7">
@@ -298,19 +291,25 @@ export const ToolsHub: React.FC<ToolsHubProps> = ({
               <Home className="h-5 w-5" />
               Início
             </button>
+
             <button type="button" className="relative flex w-full items-center gap-4 rounded-xl bg-[#fff5bd] px-4 py-3 text-sm font-extrabold text-slate-900">
               <span className="absolute -left-4 h-9 w-1 rounded-r bg-[#FFE600]" />
               <Boxes className="h-5 w-5" />
               Módulos
             </button>
-            <button type="button" onClick={() => navigate(reportsPath)} className="flex w-full items-center gap-4 rounded-xl px-4 py-3 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900">
-              <BarChart3 className="h-5 w-5" />
-              Relatórios
-            </button>
-            <button type="button" onClick={() => currentUser?.isAdmin && navigate('/admin')} className="flex w-full items-center gap-4 rounded-xl px-4 py-3 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900">
+
+            {currentUser?.isAdmin && (
+              <button type="button" onClick={() => navigate('/admin')} className="flex w-full items-center gap-4 rounded-xl px-4 py-3 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900">
+                <BarChart3 className="h-5 w-5" />
+                Relatórios
+              </button>
+            )}
+
+            <button type="button" onClick={() => navigate('/configuracoes')} className="flex w-full items-center gap-4 rounded-xl px-4 py-3 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900">
               <Settings className="h-5 w-5" />
               Configurações
             </button>
+
             <button type="button" onClick={() => window.alert('Ajuda: escolha um módulo ou utilize a busca no topo.')} className="flex w-full items-center gap-4 rounded-xl px-4 py-3 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900">
               <CircleHelp className="h-5 w-5" />
               Ajuda
@@ -322,9 +321,8 @@ export const ToolsHub: React.FC<ToolsHubProps> = ({
           <div className="flex gap-3 text-slate-500">
             <PackageOpen className="mt-0.5 h-6 w-6 shrink-0" />
             <div className="text-xs font-medium leading-4">
-              Mais agilidade<br />
-              para um mundo<br />
-              em movimento.
+              Operação simples,<br />
+              rápida e precisa.
               <div className="mt-3 h-0.5 w-10 bg-[#FFE600]" />
             </div>
           </div>
@@ -363,110 +361,98 @@ export const ToolsHub: React.FC<ToolsHubProps> = ({
         </header>
 
         <main className="mx-auto max-w-[1180px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
-          <div className="mb-5 flex items-center gap-2 text-xs font-medium text-slate-500">
+          <div className="mb-5 flex items-center gap-2 text-xs font-medium text-slate-400">
             <span className="text-[#1769ff]">Início</span>
-            <ChevronRight className="h-4 w-4" />
-            <span className="font-bold text-slate-800">Módulos</span>
+            <ChevronRight className="h-3.5 w-3.5" />
+            <span className="font-bold text-slate-700">Módulos</span>
           </div>
 
-          <div className="mb-6 flex flex-col justify-between gap-4 md:flex-row md:items-start">
+          <div className="mb-7 flex flex-col justify-between gap-4 xl:flex-row xl:items-end">
             <div>
-              <h1 className="text-4xl font-black tracking-tight text-slate-950 sm:text-5xl">Módulos</h1>
-              <p className="mt-1.5 text-sm text-slate-500 sm:text-base">
-                Ferramentas para otimizar sua operação logística.
-              </p>
+              <h1 className="text-3xl font-black tracking-[-0.04em] text-slate-950 sm:text-4xl">Módulos</h1>
+              <p className="mt-1 text-sm text-slate-500 sm:text-base">Ferramentas para otimizar sua operação logística.</p>
             </div>
 
-            <div className="hidden min-w-[310px] items-center gap-4 rounded-xl bg-blue-50/70 px-5 py-4 text-slate-600 md:flex">
-              <Rocket className="h-8 w-8 shrink-0 text-slate-500" />
-              <div className="text-sm leading-5">
-                Operações mais inteligentes<br />
-                entregam grandes resultados.
-                <div className="mt-3 h-0.5 w-10 bg-[#FFE600]" />
+            <div className="hidden items-center gap-4 rounded-2xl bg-blue-50/70 px-5 py-4 text-slate-600 xl:flex">
+              <Zap className="h-7 w-7 text-[#1769ff]" />
+              <div>
+                <div className="text-sm font-medium">Operações mais simples</div>
+                <div className="text-sm font-medium">entregam grandes resultados.</div>
+                <div className="mt-2 h-0.5 w-10 bg-[#FFE600]" />
               </div>
             </div>
+          </div>
+
+          <div className="mb-5 flex gap-2 overflow-x-auto pb-1 lg:hidden">
+            <button onClick={() => navigate('/')} className="rounded-xl bg-[#fff5bd] px-4 py-2 text-xs font-bold text-slate-900">Módulos</button>
+            {currentUser?.isAdmin && (
+              <button onClick={() => navigate('/admin')} className="rounded-xl bg-white px-4 py-2 text-xs font-bold text-slate-600 shadow-sm">Relatórios</button>
+            )}
+            <button onClick={() => navigate('/configuracoes')} className="rounded-xl bg-white px-4 py-2 text-xs font-bold text-slate-600 shadow-sm">Configurações</button>
           </div>
 
           <div className="space-y-4">
-            {(filteredBacklog.length > 0 || !query) && (
-              <ModuleGroup
-                title="Lista Backlog"
-                count={backlogTools.length}
-                accent="yellow"
-                icon={Folder}
-                tools={filteredBacklog}
-                isOpen={isBacklogOpen}
-                onToggle={() => setIsBacklogOpen(value => !value)}
-                onOpenTool={navigate}
-                status={(
-                  <div className="hidden items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-medium text-slate-600 sm:flex">
-                    <span className={`h-2.5 w-2.5 rounded-full ${totalRows > 0 ? 'bg-emerald-500' : 'bg-amber-500'}`} />
-                    {totalRows > 0 ? `${totalRows.toLocaleString('pt-BR')} IDs carregados` : 'Aguardando CSV'}
-                  </div>
-                )}
-                footer={canUpload ? (
-                  <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-200 px-5 py-3 sm:px-7">
-                    {totalRows > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (window.confirm('Tem certeza que deseja zerar os dados da base principal?')) onClear();
-                        }}
-                        className="rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-xs font-bold text-red-600 transition hover:bg-red-100"
-                      >
-                        Zerar base
-                      </button>
-                    )}
+            <ModuleGroup
+              title="Lista Backlog"
+              count={backlogTools.length}
+              accent="yellow"
+              icon={Folder}
+              tools={filteredBacklog}
+              isOpen={isBacklogOpen}
+              onToggle={() => setIsBacklogOpen(value => !value)}
+              onOpenTool={navigate}
+              status={(
+                <div className="hidden items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 sm:flex">
+                  <span className={`h-2.5 w-2.5 rounded-full ${totalRows > 0 ? 'bg-emerald-500' : 'bg-amber-400'}`} />
+                  {totalRows > 0 ? `${totalRows.toLocaleString('pt-BR')} IDs` : 'Aguardando CSV'}
+                </div>
+              )}
+              footer={canUpload ? (
+                <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 bg-slate-50/40 px-5 py-3 sm:px-7">
+                  {totalRows > 0 && (
                     <button
                       type="button"
-                      onClick={() => navigate('/upload')}
-                      className="flex items-center gap-2 rounded-lg bg-[#1769ff] px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-blue-700"
+                      onClick={() => {
+                        if (window.confirm('Tem certeza que deseja zerar os dados da base principal?')) onClear();
+                      }}
+                      className="rounded-xl border border-red-200 bg-white px-3.5 py-2 text-xs font-bold text-red-600 hover:bg-red-50"
                     >
-                      <UploadCloud className="h-4 w-4" />
-                      {totalRows > 0 ? 'Atualizar CSV' : 'Carregar CSV'}
+                      Zerar base
                     </button>
-                  </div>
-                ) : undefined}
-              />
-            )}
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => navigate('/upload')}
+                    className="inline-flex items-center gap-2 rounded-xl bg-[#1769ff] px-4 py-2.5 text-xs font-extrabold text-white shadow-sm hover:bg-blue-700"
+                  >
+                    <UploadCloud className="h-4 w-4" />
+                    {totalRows > 0 ? 'Atualizar CSV' : 'Carregar CSV'}
+                  </button>
+                </div>
+              ) : undefined}
+            />
 
-            {(filteredRefugo.length > 0 || !query) && (
-              <ModuleGroup
-                title="Controle Refugo"
-                count={refugoTools.length}
-                accent="blue"
-                icon={Folder}
-                tools={filteredRefugo}
-                isOpen={isRefugoOpen}
-                onToggle={() => setIsRefugoOpen(value => !value)}
-                onOpenTool={navigate}
-              />
-            )}
+            <ModuleGroup
+              title="Controle Refugo"
+              count={refugoTools.length}
+              accent="blue"
+              icon={Folder}
+              tools={filteredRefugo}
+              isOpen={isRefugoOpen}
+              onToggle={() => setIsRefugoOpen(value => !value)}
+              onOpenTool={navigate}
+            />
 
-            {(filteredBrancas.length > 0 || !query) && (
-              <ModuleGroup
-                title="Análise de Brancas"
-                accent="orange"
-                icon={FileSpreadsheet}
-                tools={filteredBrancas}
-                isOpen={isBrancasOpen}
-                onToggle={() => setIsBrancasOpen(value => !value)}
-                onOpenTool={navigate}
-                status={(
-                  <span className="hidden rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-[10px] font-extrabold uppercase text-amber-700 sm:inline-flex">
-                    Novo
-                  </span>
-                )}
-              />
-            )}
-
-            {query && filteredBacklog.length === 0 && filteredRefugo.length === 0 && filteredBrancas.length === 0 && (
-              <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-14 text-center">
-                <Search className="mx-auto h-8 w-8 text-slate-300" />
-                <p className="mt-3 text-sm font-bold text-slate-700">Nenhum módulo encontrado</p>
-                <p className="mt-1 text-xs text-slate-400">Tente buscar por outro nome ou ferramenta.</p>
-              </div>
-            )}
+            <ModuleGroup
+              title="Análise de Brancas"
+              accent="orange"
+              icon={FileSearch}
+              tools={filteredBrancas}
+              isOpen={isBrancasOpen}
+              onToggle={() => setIsBrancasOpen(value => !value)}
+              onOpenTool={navigate}
+              status={<span className="rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-[10px] font-black uppercase text-amber-700">Novo</span>}
+            />
           </div>
         </main>
       </div>
