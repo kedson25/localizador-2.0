@@ -15,7 +15,12 @@ import { BrancasPanelWithCsvFallback } from './components/BrancasPanelWithCsvFal
 import { Login } from './components/Login';
 import { Navigate } from 'react-router-dom';
 import { AdminPanel } from './components/AdminPanel';
-import { User, getCurrentUser } from './lib/auth';
+import {
+  User,
+  getCurrentUser,
+  getUserById,
+  setCurrentUser as persistCurrentUser,
+} from './lib/auth';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
 import { saveToColetor, loadFromColetor, clearColetor } from './lib/firebase';
@@ -33,6 +38,42 @@ export default function App() {
   const [loadingFirebase, setLoadingFirebase] = useState<boolean>(true);
   const [currentUser, setCurrentUser] = useState<User | null>(() => getCurrentUser());
   const isAuthenticated = !!currentUser;
+
+  // Revalida as permissões diretamente no Firestore sempre que o usuário
+  // navega entre rotas. O localStorage continua sendo apenas cache de sessão,
+  // nunca a fonte definitiva de autorização.
+  useEffect(() => {
+    let cancelled = false;
+
+    async function refreshCurrentPermissions() {
+      if (!currentUser?.id) return;
+
+      try {
+        const freshUser = await getUserById(currentUser.id);
+        if (!freshUser || cancelled) return;
+
+        const refreshedUser: User = {
+          ...currentUser,
+          ...freshUser,
+          token: currentUser.token,
+        };
+
+        delete refreshedUser.password;
+
+        // Atualiza o cache somente depois de consultar o Firebase.
+        persistCurrentUser(refreshedUser);
+        setCurrentUser(refreshedUser);
+      } catch (error) {
+        console.warn('[Auth] Não foi possível revalidar permissões no Firebase:', error);
+      }
+    }
+
+    refreshCurrentPermissions();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [location.pathname, currentUser?.id]);
 
   useEffect(() => {
     if (currentUser) {
@@ -182,10 +223,15 @@ export default function App() {
             {isAuthenticated && (
               <>
                 <Route path="/" element={<ToolsHub totalRows={rows.length} groups={groups} onClear={handleClear} currentUser={currentUser} />} />
-                
-                {currentUser?.isAdmin && (
-                  <Route path="/admin" element={<AdminPanel currentUser={currentUser} />} />
-                )}
+
+                {/*
+                  A rota existe para qualquer usuário autenticado.
+                  A autorização real acontece dentro do AdminPanel, que consulta
+                  o documento atual do usuário no Firebase via getUserById().
+                  Isso evita bloquear um usuário promovido a admin por causa de
+                  um valor antigo salvo no localStorage.
+                */}
+                <Route path="/admin" element={<AdminPanel currentUser={currentUser} />} />
 
                 {(currentUser?.isAdmin || currentUser?.allowedGroups?.includes('consulta')) && (
                   <Route path="/consulta" element={<><StatsSummary totalRows={rows.length} groups={groups} /><IdLookup rows={rows} onNavigateToUpload={() => navigate('/upload')} /></>} />
