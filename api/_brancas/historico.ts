@@ -1,7 +1,13 @@
 import { getDocRest, listDocsRest } from '../_lib/firestore-rest';
 import { sendSuccess, sendError } from '../_lib/response';
-import { normalizePackageId } from '../_lib/googleSheets';
 import { logApi } from '../_lib/logger';
+
+function normalizePackageId(value: any): string {
+  if (value === null || value === undefined) return '';
+  let normalized = String(value).trim();
+  if (normalized.endsWith('.0')) normalized = normalized.slice(0, -2);
+  return normalized;
+}
 
 export default async function historicoHandler(req: any, res: any) {
   if (req.method !== 'GET') {
@@ -17,12 +23,9 @@ export default async function historicoHandler(req: any, res: any) {
 
   try {
     const pkgData = await getDocRest(`packages/${idPacote}`);
-
-    // Busca todas as movimentações do pacote na subcoleção
     const movRes = await listDocsRest(`packages/${idPacote}/movimentacoes`, 100);
     const movDocs = movRes.documents || [];
 
-    // Ordena cronologicamente por timestamp
     movDocs.sort((a: any, b: any) => (a.timestamp || 0) - (b.timestamp || 0));
 
     const movimentacoes = movDocs.map((data: any) => ({
@@ -30,21 +33,35 @@ export default async function historicoHandler(req: any, res: any) {
       cicloTentativa: data.cicloTentativa || '',
       resultado: data.resultado || '',
       transicao: data.transicao || '',
-      motivo: data.motivoMacro || '',
-      status: data.statusTraduzido || '',
+      motivo: data.motivoMacro || data.motivo || '',
+      status: data.statusTraduzido || data.status || '',
       dataRegistro: data.dataRegistro || '',
       timestamp: data.timestamp || 0,
+      snapshotId: data.snapshotId || '',
     }));
 
     return sendSuccess(res, {
       idPacote,
       found: Boolean(pkgData) || movimentacoes.length > 0,
-      ultimoResultado: pkgData?.ultimoResultado || (movimentacoes.length > 0 ? movimentacoes[movimentacoes.length - 1].resultado : null),
-      ultimoCicloTentativa: pkgData?.ultimoCicloTentativa || (movimentacoes.length > 0 ? movimentacoes[movimentacoes.length - 1].cicloTentativa : null),
+      ultimoResultado:
+        pkgData?.ultimoResultado ||
+        (movimentacoes.length > 0 ? movimentacoes[movimentacoes.length - 1].resultado : null),
+      ultimoCicloTentativa:
+        pkgData?.ultimoCicloTentativa ||
+        pkgData?.ultimoCiclo ||
+        (movimentacoes.length > 0 ? movimentacoes[movimentacoes.length - 1].cicloTentativa : null),
       movimentacoes,
     });
   } catch (err: any) {
-    logApi('error', 'Falha ao buscar histórico do pacote', { idPacote, error: err.message });
-    return sendError(res, 500, 'HISTORICO_ERROR', `Erro ao buscar histórico do pacote: ${err.message}`);
+    logApi('error', 'Falha ao buscar histórico do pacote', {
+      idPacote,
+      error: err?.message || String(err),
+    });
+    return sendError(
+      res,
+      500,
+      'HISTORICO_ERROR',
+      `Erro ao buscar histórico do pacote: ${err?.message || String(err)}`
+    );
   }
 }
