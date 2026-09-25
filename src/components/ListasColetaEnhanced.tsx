@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronLeft, ChevronRight, LocateFixed } from 'lucide-react';
+import { useParams } from 'react-router-dom';
 import { ListasColeta } from './ListasColeta';
 import type { User } from '../lib/auth';
 
@@ -23,9 +24,58 @@ const getActiveIndex = (cards: HTMLElement[]) => {
   return index >= 0 ? index : 0;
 };
 
+function getAuthHeader(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem('app_current_user');
+    if (!raw) return {};
+    const user = JSON.parse(raw);
+    const token = user?.token || (user?.id ? `user_${user.id}` : '');
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  } catch (_) {
+    return {};
+  }
+}
+
 export const ListasColetaEnhanced: React.FC<ListasColetaEnhancedProps> = ({ currentUser }) => {
+  const params = useParams();
+  const activeListaId = params.id || null;
   const [rail, setRail] = useState<GroupRailState | null>(null);
   const focusTimerRef = useRef<number | null>(null);
+
+  // Corrige uma vez os itens antigos cuja saída ficou diferente da saída padrão da lista.
+  // O endpoint possui marcador de sincronização e não relê milhares de itens sem necessidade.
+  useEffect(() => {
+    if (!activeListaId) return;
+
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      try {
+        const response = await fetch('/api/coleta?action=normalize-saida', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...getAuthHeader(),
+          },
+          body: JSON.stringify({ listaId: activeListaId }),
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          const text = await response.text().catch(() => '');
+          console.warn('[Lista] Não foi possível normalizar a saída dos itens:', response.status, text);
+        }
+      } catch (error: any) {
+        if (error?.name !== 'AbortError') {
+          console.warn('[Lista] Falha ao normalizar saída dos itens:', error);
+        }
+      }
+    }, 180);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [activeListaId]);
 
   const focusActiveGroup = useCallback((scroller?: HTMLDivElement | null, behavior: ScrollBehavior = 'smooth') => {
     if (!scroller) return;
