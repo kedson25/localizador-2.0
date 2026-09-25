@@ -2,6 +2,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { adminDb } from '../_lib/firebase-admin';
 import { BatchImportSchema } from '../_lib/validation';
 import { normalizeCodigo, cleanDigits, getDeterministicItemId } from '../_lib/id';
+import { resolveCanonicalListaSaida } from '../_lib/lista-saida';
 import { sendSuccess, sendError } from '../_lib/response';
 import { logApi } from '../_lib/logger';
 
@@ -28,6 +29,7 @@ export default async function handler(req: any, res: any) {
     }
 
     const listaData = listaSnap.data() || {};
+    const officialSaida = resolveCanonicalListaSaida(listaData);
     const itemsCol = listaRef.collection('itens');
 
     let inserted = 0;
@@ -37,11 +39,8 @@ export default async function handler(req: any, res: any) {
 
     const nowMs = Date.now();
     const nowBR = new Date().toLocaleString('pt-BR');
-
-    // Chunks seguros de 400 (limite do Firestore é 500 por batch)
     const CHUNK_SIZE = 400;
 
-    // Deduplicação inicial em memória pelo código normalizado
     const uniqueMap = new Map<string, any>();
     for (const rawItem of items) {
       const code = normalizeCodigo(rawItem.codigo);
@@ -62,7 +61,6 @@ export default async function handler(req: any, res: any) {
       const chunk = uniqueItems.slice(i, i + CHUNK_SIZE);
       const batch = db.batch();
 
-      // Busca prévia em paralelo para verificar documentos existentes neste chunk
       const refs = chunk.map((item) => {
         const cleanCode = normalizeCodigo(item.codigo);
         const docId = getDeterministicItemId(cleanCode);
@@ -87,8 +85,8 @@ export default async function handler(req: any, res: any) {
           codigo: cleanCode,
           codigoClean: cleanDigits(cleanCode),
           rota: item.rota || listaData.rota || 'Sem Rota',
-          // A saída configurada na lista é a fonte de verdade para todos os itens.
-          saida: listaData.saidaPadrao || item.saida || 'Ciclo 2 - Saída PM',
+          // O ciclo oficial da lista sempre prevalece sobre valores enviados no lote.
+          saida: officialSaida,
           motivo: item.motivo || listaData.motivoPadrao || 'Pendente',
           scannedAt: item.scannedAt || nowBR,
           responsavel: item.responsavel || 'Operador',
@@ -101,23 +99,21 @@ export default async function handler(req: any, res: any) {
 
         batch.set(itemObj.ref, itemData, { merge: true });
 
-        if (exists) {
-          updated++;
-        } else {
-          inserted++;
-        }
+        if (exists) updated++;
+        else inserted++;
       });
 
       await batch.commit();
     }
 
-    // Atualizar contadores na lista pai com contagem real e exata
     try {
       const countSnap = await listaRef.collection('itens').count().get();
       const realTotal = countSnap.data().count;
       await listaRef.set(
         {
+          saidaPadrao: officialSaida,
           totalItens: realTotal,
+          saidasCount: realTotal > 0 ? { [officialSaida]: realTotal } : {},
           updatedAt: FieldValue.serverTimestamp(),
         },
         { merge: true }
@@ -135,6 +131,7 @@ export default async function handler(req: any, res: any) {
     logApi('info', 'Importação em lote concluída', {
       endpoint: '/api/coleta/batch',
       listaId,
+      saida: officialSaida,
       ...summary,
       durationMs: Date.now() - startTime,
     });
