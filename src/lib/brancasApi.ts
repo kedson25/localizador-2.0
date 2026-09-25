@@ -94,6 +94,9 @@ export interface RecentRunSummary {
   naoRoteirizados: number;
   recuperados?: number;
   taxaRoteirizacao?: number;
+  attemptDate?: string;
+  attemptCycle?: string;
+  attemptKey?: string;
 }
 
 export interface BrancaRelatorioResponse {
@@ -101,6 +104,10 @@ export interface BrancaRelatorioResponse {
   snapshotId?: string;
   runId?: string;
   ciclosDetectados?: string[];
+  baseDate?: string;
+  baseCycle?: string;
+  attemptDate?: string;
+  attemptCycle?: string;
   createdAt?: string;
   timestamp?: number;
   totalBrancas: number;

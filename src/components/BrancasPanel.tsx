@@ -803,6 +803,42 @@ export const BrancasPanel: React.FC<BrancasPanelProps> = () => {
         ))}
       </section>
 
+      <section className="bg-white border border-slate-200 rounded-xl p-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
+          <div>
+            <h2 className="text-sm font-bold text-slate-900">Relatórios diários</h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Base inicial: {relatorio?.baseDate || 'aguardando primeira carga'} {relatorio?.baseCycle ? `• ${relatorio.baseCycle}` : ''}
+            </p>
+          </div>
+          {relatorio?.attemptDate && (
+            <span className="text-xs font-semibold px-2.5 py-1 rounded-md bg-indigo-50 text-[#2D3277]">
+              Atual: {relatorio.attemptDate} • {relatorio.attemptCycle || 'sem ciclo'}
+            </span>
+          )}
+        </div>
+
+        {(relatorio?.recentRuns || []).length === 0 ? (
+          <p className="text-xs text-slate-500 py-3">Carregue a base inicial para criar o primeiro relatório.</p>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {relatorio!.recentRuns.map((run) => (
+              <button
+                key={run.runId}
+                onClick={() => carregarRelatorio(run.snapshotId || run.runId, false)}
+                className="w-full grid grid-cols-[1fr_auto] sm:grid-cols-5 gap-2 text-left py-3 hover:bg-slate-50 rounded-lg px-2"
+              >
+                <span className="text-xs font-semibold text-slate-800">{run.attemptDate || run.createdAt?.slice(0, 10) || 'Sem data'} • {run.attemptCycle || run.ciclosDetectados?.[0] || 'Base inicial'}</span>
+                <span className="text-xs text-slate-500 sm:text-center">{run.totalBrancas} base</span>
+                <span className="text-xs text-emerald-700 sm:text-center">{run.roteirizados} roteirizados</span>
+                <span className="text-xs text-amber-700 sm:text-center">{run.naoRoteirizados} pendentes</span>
+                <span className="text-xs font-semibold text-[#2D3277] sm:text-right">{run.recuperados || 0} recuperados</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </section>
+
       {/* MOTIVOS */}
       <section className="bg-white border border-slate-200 rounded-xl p-4">
         <div className="flex items-center justify-between mb-4">
