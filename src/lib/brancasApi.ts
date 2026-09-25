@@ -3,6 +3,7 @@ import { readJsonResponse } from './safeJsonResponse';
 import { auth as firebaseAuth } from './firebase-core';
 
 async function authorizedHeaders(headers: HeadersInit = {}): Promise<HeadersInit> {
+  await firebaseAuth.authStateReady();
   const user = firebaseAuth.currentUser;
   if (!user) throw new Error('FaÃ§a login para acessar a AnÃ¡lise de Brancas.');
   return { ...headers, Authorization: `Bearer ${await user.getIdToken()}` };
