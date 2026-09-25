@@ -168,14 +168,14 @@ const cleanDigits = (str: string) => (str || '').replace(/\D/g, '');
 export const formatSaidaCiclo = (saida: string) => {
   if (!saida) return '';
   const trimmed = saida.trim();
+  if (/\bam\b/i.test(trimmed)) return 'AM';
+  if (/\bpm\b/i.test(trimmed)) return 'PM';
+  if (/\bsd\b/i.test(trimmed)) return 'SD';
   const match = trimmed.match(/Ciclo\s*\d+/i);
   if (match) {
     return match[0].replace(/ciclo/i, 'Ciclo');
   }
   // Se for "AM", "PM", "SD", converte para o respectivo ciclo padrão
-  if (/am\b/i.test(trimmed)) return 'Ciclo 1';
-  if (/pm\b/i.test(trimmed)) return 'Ciclo 2';
-  if (/sd\b/i.test(trimmed)) return 'Ciclo 3';
   return trimmed;
 };
 
@@ -396,6 +396,9 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
   const lastRefugoTextRef = useRef<string>('');
 
   const inputRef = useRef<HTMLInputElement>(null);
+  const gruposScrollRef = useRef<HTMLDivElement>(null);
+  const [editingGrupoId, setEditingGrupoId] = useState<string | null>(null);
+  const [editingGrupoName, setEditingGrupoName] = useState('');
 
   const operanteNome = currentUser?.username || 'Usuário Atual';
 
@@ -424,6 +427,15 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
 
   const rawListaAtiva = listas.find(l => l.id === activeListaId);
   const listaAtiva = rawListaAtiva ? { ...rawListaAtiva, itens: activeItens } : undefined;
+
+  useEffect(() => {
+    if (!listaAtiva?.grupos?.length || !gruposScrollRef.current) return;
+    const container = gruposScrollRef.current;
+    const frame = requestAnimationFrame(() => {
+      container.scrollTo({ left: container.scrollWidth, behavior: 'smooth' });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [activeListaId, listaAtiva?.grupos?.length]);
 
   useEffect(() => {
     if (activeListaId) {
@@ -880,11 +892,6 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
       const saidaBruta = (i.saida || listaAtiva.saidaPadrao || '').trim();
       const ciclo = formatSaidaCiclo(saidaBruta);
       const motivo = (i.motivo || 'Pendente').trim();
-      const grupoNome = (listaAtiva.grupos?.find(g => g.id === i.grupoId)?.nome || '').trim();
-
-      if (listaAtiva.tipo === 'grupos' && grupoNome) {
-        return `${codigoLimpo}\t${ciclo}\t${motivo}\t${grupoNome}`;
-      }
       return `${codigoLimpo}\t${ciclo}\t${motivo}`;
     });
 
@@ -910,10 +917,6 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
       const saidaBruta = (i.saida || listaAtiva.saidaPadrao || '').trim();
       const ciclo = formatSaidaCiclo(saidaBruta);
       const motivo = (i.motivo || 'Pendente').trim();
-      const grupoNome = (listaAtiva.grupos?.find(g => g.id === i.grupoId)?.nome || '').trim();
-      if (listaAtiva.tipo === 'grupos' && grupoNome) {
-        return `${codigoLimpo}\t${ciclo}\t${motivo}\t${grupoNome}`;
-      }
       return `${codigoLimpo}\t${ciclo}\t${motivo}`;
     }).join('\n');
 
@@ -1980,6 +1983,20 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
     await saveLista(updatedLista);
   };
 
+  const handleRenomearGrupo = async (grupoId: string) => {
+    if (!listaAtiva) return;
+    const nome = editingGrupoName.trim();
+    if (!nome) return;
+    await saveLista({
+      ...listaAtiva,
+      grupos: (listaAtiva.grupos || []).map(grupo =>
+        grupo.id === grupoId ? { ...grupo, nome } : grupo
+      ),
+    });
+    setEditingGrupoId(null);
+    setEditingGrupoName('');
+  };
+
   const handleAdicionarLote = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!loteText.trim() || !listaAtiva) return;
@@ -2862,7 +2879,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
 
               {/* Lista de Grupos */}
               {listaAtiva.grupos && listaAtiva.grupos.length > 0 ? (
-                <div className="flex flex-col sm:flex-row gap-3 overflow-x-auto pb-2 snap-x w-full">
+                <div ref={gruposScrollRef} className="flex flex-col sm:flex-row gap-3 overflow-x-auto pb-2 snap-x w-full">
                   {listaAtiva.grupos.map((grupo) => {
                     const isAtivo = listaAtiva.grupoAtivoId === grupo.id;
                     const qtdPacotes = listaAtiva.itens.filter(i => i.grupoId === grupo.id).length;
@@ -2878,9 +2895,33 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
                         }`}
                       >
                         <div className="flex items-center justify-between">
-                          <span className={`font-black text-sm ${isAtivo ? 'text-purple-700' : 'text-gray-700'}`}>
-                            {grupo.nome}
-                          </span>
+                          {editingGrupoId === grupo.id ? (
+                            <input
+                              autoFocus
+                              value={editingGrupoName}
+                              onClick={event => event.stopPropagation()}
+                              onChange={event => setEditingGrupoName(event.target.value)}
+                              onBlur={() => handleRenomearGrupo(grupo.id)}
+                              onKeyDown={event => {
+                                if (event.key === 'Enter') handleRenomearGrupo(grupo.id);
+                                if (event.key === 'Escape') setEditingGrupoId(null);
+                              }}
+                              className="min-w-0 w-28 px-1 py-0.5 text-sm font-black border border-purple-300 rounded"
+                            />
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={event => {
+                                event.stopPropagation();
+                                setEditingGrupoId(grupo.id);
+                                setEditingGrupoName(grupo.nome);
+                              }}
+                              className={`inline-flex items-center gap-1 font-black text-sm ${isAtivo ? 'text-purple-700' : 'text-gray-700'}`}
+                              title="Editar nome do grupo"
+                            >
+                              {grupo.nome}<Edit2 className="w-3 h-3" />
+                            </button>
+                          )}
                           <div className="flex items-center gap-2">
                             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
                               isAtivo ? 'bg-purple-200 text-purple-800' : 'bg-gray-100 text-gray-500'
