@@ -36,10 +36,18 @@ function isListaFromToday(lista: ColetaLista, now = new Date()): boolean {
   const { br, iso } = getTodayDateKeys(now);
   const rawData = String(lista.data || '').trim();
 
-  if (rawData === br || rawData === iso || rawData.startsWith(`${br} `) || rawData.startsWith(`${iso}T`)) {
-    return true;
+  // Se a lista possui uma data operacional explícita, ela é a fonte da verdade.
+  // Isso impede que uma lista marcada como ontem apareça apenas porque foi criada hoje.
+  if (rawData) {
+    return (
+      rawData === br ||
+      rawData === iso ||
+      rawData.startsWith(`${br} `) ||
+      rawData.startsWith(`${iso}T`)
+    );
   }
 
+  // Compatibilidade com documentos antigos que não possuem o campo `data`.
   const createdAt: any = lista.createdAt;
   let createdDate: Date | null = null;
 
