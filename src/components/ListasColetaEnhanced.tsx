@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronLeft, ChevronRight, LocateFixed } from 'lucide-react';
+import { ChevronLeft, ChevronRight, LocateFixed, Loader2 } from 'lucide-react';
 import { useParams } from 'react-router-dom';
 import { ListasColeta } from './ListasColeta';
 import type { User } from '../lib/auth';
@@ -8,6 +8,8 @@ import type { User } from '../lib/auth';
 interface ListasColetaEnhancedProps {
   currentUser?: User | null;
 }
+
+type Cycle = 'AM' | 'PM' | 'SD';
 
 type GroupRailState = {
   panel: HTMLElement;
@@ -36,21 +38,52 @@ function getAuthHeader(): Record<string, string> {
   }
 }
 
-function extractCycle(text: string | null | undefined): 'AM' | 'PM' | 'SD' | null {
+function extractCycle(text: string | null | undefined): Cycle | null {
   const match = String(text || '').toUpperCase().match(/(?:SA[ÍI]DA\s*)?\b(AM|PM|SD)\b/);
-  return match ? (match[1] as 'AM' | 'PM' | 'SD') : null;
+  return match ? (match[1] as Cycle) : null;
+}
+
+function canonicalSaida(cycle: Cycle): string {
+  if (cycle === 'AM') return 'Ciclo 1 - Saída AM';
+  if (cycle === 'SD') return 'Ciclo 3 - Saída SD';
+  return 'Ciclo 2 - Saída PM';
+}
+
+function parseHeaderDate(text: string | null | undefined): Date | null {
+  const match = String(text || '').match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (!match) return null;
+  const [, dd, mm, yyyy] = match;
+  const date = new Date(Number(yyyy), Number(mm) - 1, Number(dd));
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function isToday(date: Date | null): boolean {
+  if (!date) return false;
+  const now = new Date();
+  return (
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate()
+  );
 }
 
 export const ListasColetaEnhanced: React.FC<ListasColetaEnhancedProps> = ({ currentUser }) => {
   const params = useParams();
   const activeListaId = params.id || null;
   const [rail, setRail] = useState<GroupRailState | null>(null);
+  const [headerHost, setHeaderHost] = useState<HTMLElement | null>(null);
+  const [headerCycle, setHeaderCycle] = useState<Cycle | null>(null);
+  const [changingCycle, setChangingCycle] = useState(false);
   const focusTimerRef = useRef<number | null>(null);
   const normalizeInFlightRef = useRef(false);
   const lastForcedNormalizeRef = useRef(0);
+  const lastAutoNormalizeKeyRef = useRef('');
 
-  const normalizeSaida = useCallback(async (force = false) => {
-    if (!activeListaId || normalizeInFlightRef.current) return;
+  const normalizeSaida = useCallback(async (
+    targetCycle?: Cycle,
+    options?: { force?: boolean; updateName?: boolean }
+  ) => {
+    if (!activeListaId || normalizeInFlightRef.current) return null;
     normalizeInFlightRef.current = true;
 
     try {
@@ -60,49 +93,118 @@ export const ListasColetaEnhanced: React.FC<ListasColetaEnhancedProps> = ({ curr
           'Content-Type': 'application/json',
           ...getAuthHeader(),
         },
-        body: JSON.stringify({ listaId: activeListaId, force }),
+        body: JSON.stringify({
+          listaId: activeListaId,
+          force: options?.force === true,
+          ...(targetCycle ? { targetSaida: canonicalSaida(targetCycle) } : {}),
+          updateName: options?.updateName === true,
+        }),
       });
 
+      const payload = await response.json().catch(() => null);
+
       if (!response.ok) {
-        const text = await response.text().catch(() => '');
-        console.warn('[Lista] Não foi possível normalizar a saída dos itens:', response.status, text);
+        console.warn('[Lista] Não foi possível normalizar a saída dos itens:', response.status, payload);
+        return null;
       }
+
+      return payload?.data || null;
     } catch (error) {
       console.warn('[Lista] Falha ao normalizar saída dos itens:', error);
+      return null;
     } finally {
       normalizeInFlightRef.current = false;
     }
   }, [activeListaId]);
 
-  // Primeira correção ao abrir a lista. O servidor também repara saidaPadrao legado.
+  // Descobre o cabeçalho real da lista. A correção automática só roda nas listas
+  // do DIA ATUAL. Isso impede que abrir um histórico altere AM/PM/SD antigo.
   useEffect(() => {
-    if (!activeListaId) return;
-    const timer = window.setTimeout(() => void normalizeSaida(false), 180);
-    return () => window.clearTimeout(timer);
+    if (!activeListaId) {
+      setHeaderHost(null);
+      setHeaderCycle(null);
+      return;
+    }
+
+    let disposed = false;
+    let timer: number | null = null;
+
+    const inspectHeader = () => {
+      if (disposed) return;
+
+      const candidates = Array.from(document.querySelectorAll('span'));
+      const titleNode = candidates.find(node => {
+        const text = node.textContent?.trim() || '';
+        return /SA[ÍI]DA\s+(AM|PM|SD)/i.test(text) && /\d{1,2}\/\d{1,2}\/\d{4}/.test(text);
+      });
+
+      if (!(titleNode instanceof HTMLElement)) return;
+
+      const text = titleNode.textContent?.trim() || '';
+      const cycle = extractCycle(text);
+      const date = parseHeaderDate(text);
+      const host = titleNode.parentElement;
+
+      if (host instanceof HTMLElement) setHeaderHost(host);
+      if (cycle) setHeaderCycle(cycle);
+
+      if (!cycle || !isToday(date)) return;
+
+      const autoKey = `${activeListaId}:${cycle}`;
+      if (lastAutoNormalizeKeyRef.current === autoKey) return;
+      lastAutoNormalizeKeyRef.current = autoKey;
+
+      void normalizeSaida(cycle, { force: false, updateName: false }).then(result => {
+        if (!result?.metadataRepaired) return;
+
+        // O componente principal mantém selectedSaida em estado. Recarregar uma vez
+        // garante que lote/bip local também passem a usar o ciclo corrigido.
+        const reloadKey = `coleta_cycle_reloaded:${activeListaId}:${cycle}`;
+        try {
+          if (sessionStorage.getItem(reloadKey) !== '1') {
+            sessionStorage.setItem(reloadKey, '1');
+            window.location.reload();
+          }
+        } catch (_) {}
+      });
+    };
+
+    const schedule = () => {
+      if (timer !== null) window.clearTimeout(timer);
+      timer = window.setTimeout(inspectHeader, 180);
+    };
+
+    const observer = new MutationObserver(schedule);
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+    schedule();
+
+    return () => {
+      disposed = true;
+      observer.disconnect();
+      if (timer !== null) window.clearTimeout(timer);
+    };
   }, [activeListaId, normalizeSaida]);
 
-  // Proteção adicional: se a tela disser "Saída SD" mas alguma linha ainda mostrar PM,
-  // força uma reparação. Isso também cobre lotes antigos gravados pelo cliente com ciclo errado.
+  // Se a lista de HOJE disser SD no cabeçalho e alguma linha ainda estiver PM/AM,
+  // força a correção. Listas antigas são apenas exibidas e nunca alteradas aqui.
   useEffect(() => {
     if (!activeListaId) return;
 
     let inspectTimer: number | null = null;
 
-    const findOfficialCycle = (): 'AM' | 'PM' | 'SD' | null => {
+    const getOperationalInfo = () => {
       const candidates = Array.from(document.querySelectorAll('span'));
       for (const node of candidates) {
         const text = node.textContent?.trim() || '';
-        if (!/SA[ÍI]DA\s+(AM|PM|SD)/i.test(text)) continue;
+        if (!/SA[ÍI]DA\s+(AM|PM|SD)/i.test(text) || !/\d{1,2}\/\d{1,2}\/\d{4}/.test(text)) continue;
         const cycle = extractCycle(text);
-        if (cycle) return cycle;
+        const date = parseHeaderDate(text);
+        if (cycle) return { cycle, date };
       }
       return null;
     };
 
-    const hasVisibleMismatch = () => {
-      const officialCycle = findOfficialCycle();
-      if (!officialCycle) return false;
-
+    const hasVisibleMismatch = (officialCycle: Cycle) => {
       const tables = Array.from(document.querySelectorAll('table'));
       for (const table of tables) {
         const headers = Array.from(table.querySelectorAll('thead th'));
@@ -118,21 +220,22 @@ export const ListasColetaEnhanced: React.FC<ListasColetaEnhancedProps> = ({ curr
           if (cellCycle && cellCycle !== officialCycle) return true;
         }
       }
-
       return false;
     };
 
     const inspect = () => {
-      if (!hasVisibleMismatch()) return;
+      const info = getOperationalInfo();
+      if (!info || !isToday(info.date) || !hasVisibleMismatch(info.cycle)) return;
+
       const now = Date.now();
-      if (now - lastForcedNormalizeRef.current < 1500) return;
+      if (now - lastForcedNormalizeRef.current < 2000) return;
       lastForcedNormalizeRef.current = now;
-      void normalizeSaida(true);
+      void normalizeSaida(info.cycle, { force: true, updateName: false });
     };
 
     const scheduleInspect = () => {
       if (inspectTimer !== null) window.clearTimeout(inspectTimer);
-      inspectTimer = window.setTimeout(inspect, 300);
+      inspectTimer = window.setTimeout(inspect, 320);
     };
 
     const observer = new MutationObserver(scheduleInspect);
@@ -142,7 +245,7 @@ export const ListasColetaEnhanced: React.FC<ListasColetaEnhancedProps> = ({ curr
       characterData: true,
     });
 
-    const initialTimer = window.setTimeout(inspect, 650);
+    const initialTimer = window.setTimeout(inspect, 700);
 
     return () => {
       observer.disconnect();
@@ -150,6 +253,34 @@ export const ListasColetaEnhanced: React.FC<ListasColetaEnhancedProps> = ({ curr
       if (inspectTimer !== null) window.clearTimeout(inspectTimer);
     };
   }, [activeListaId, normalizeSaida]);
+
+  const handleManualCycleChange = async (cycle: Cycle) => {
+    if (!activeListaId || changingCycle || cycle === headerCycle) return;
+
+    const confirmed = window.confirm(
+      `Alterar esta lista para Saída ${cycle}? Todos os pacotes desta lista serão atualizados para o mesmo ciclo.`
+    );
+    if (!confirmed) return;
+
+    setChangingCycle(true);
+    try {
+      const result = await normalizeSaida(cycle, { force: true, updateName: true });
+      if (!result) {
+        window.alert('Não foi possível alterar a saída da lista.');
+        return;
+      }
+
+      setHeaderCycle(cycle);
+      try {
+        sessionStorage.removeItem(`coleta_cycle_reloaded:${activeListaId}:AM`);
+        sessionStorage.removeItem(`coleta_cycle_reloaded:${activeListaId}:PM`);
+        sessionStorage.removeItem(`coleta_cycle_reloaded:${activeListaId}:SD`);
+      } catch (_) {}
+      window.location.reload();
+    } finally {
+      setChangingCycle(false);
+    }
+  };
 
   const focusActiveGroup = useCallback((scroller?: HTMLDivElement | null, behavior: ScrollBehavior = 'smooth') => {
     if (!scroller) return;
@@ -293,7 +424,7 @@ export const ListasColetaEnhanced: React.FC<ListasColetaEnhancedProps> = ({ curr
     cards[nextIndex]?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
   };
 
-  const controls = rail && rail.total > 0 ? (
+  const groupControls = rail && rail.total > 0 ? (
     <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-purple-100 pt-3">
       <div className="text-[11px] font-bold text-gray-500">
         Grupo atual: <span className="text-purple-700">{rail.activeIndex + 1}</span> de {rail.total}
@@ -333,10 +464,31 @@ export const ListasColetaEnhanced: React.FC<ListasColetaEnhancedProps> = ({ curr
     </div>
   ) : null;
 
+  const cycleControl = headerHost && headerCycle ? (
+    <div className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2 py-1 shadow-sm">
+      <span className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Saída</span>
+      {changingCycle ? (
+        <Loader2 className="h-3.5 w-3.5 animate-spin text-[#3483FA]" />
+      ) : (
+        <select
+          value={headerCycle}
+          onChange={event => void handleManualCycleChange(event.target.value as Cycle)}
+          className="bg-transparent text-[11px] font-black text-gray-700 outline-none cursor-pointer"
+          title="Corrigir a saída/ciclo desta lista"
+        >
+          <option value="AM">AM</option>
+          <option value="PM">PM</option>
+          <option value="SD">SD</option>
+        </select>
+      )}
+    </div>
+  ) : null;
+
   return (
     <>
       <ListasColeta currentUser={currentUser} />
-      {rail && controls ? createPortal(controls, rail.panel) : null}
+      {rail && groupControls ? createPortal(groupControls, rail.panel) : null}
+      {headerHost && cycleControl ? createPortal(cycleControl, headerHost) : null}
     </>
   );
 };

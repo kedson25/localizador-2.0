@@ -6,11 +6,26 @@ import {
   listDocsRest,
   patchDocRest,
 } from '../_lib/firestore-rest';
-import { cycleKey, resolveCanonicalListaSaida } from '../_lib/lista-saida';
+import {
+  canonicalSaidaForCycle,
+  cycleKey,
+  resolveCanonicalListaSaida,
+  rewriteListaNameCycle,
+} from '../_lib/lista-saida';
 import { sendError, sendSuccess } from '../_lib/response';
 import { logApi } from '../_lib/logger';
 
-async function normalizeWithAdmin(listaId: string, force = false) {
+function resolveRequestedSaida(value: unknown): string {
+  const cycle = cycleKey(value);
+  return cycle ? canonicalSaidaForCycle(cycle) : '';
+}
+
+async function normalizeWithAdmin(
+  listaId: string,
+  force = false,
+  requestedSaida = '',
+  updateName = false
+) {
   const { db } = adminDb;
   const listaRef = db.collection('coleta_listas').doc(listaId);
   const listaSnap = await listaRef.get();
@@ -18,16 +33,23 @@ async function normalizeWithAdmin(listaId: string, force = false) {
   if (!listaSnap.exists) throw new Error('LISTA_NOT_FOUND');
 
   const listaData = listaSnap.data() || {};
-  const targetSaida = resolveCanonicalListaSaida(listaData);
+  const targetSaida = requestedSaida || resolveCanonicalListaSaida(listaData);
   const targetKey = cycleKey(targetSaida);
   const knownTotal = Number(listaData.totalItens || 0);
   const syncedValue = String(listaData.saidaItensSincronizadaValor || '').trim();
   const syncedTotal = Number(listaData.saidaItensSincronizadaTotal ?? -1);
   const metadataNeedsRepair = cycleKey(listaData.saidaPadrao) !== targetKey;
 
+  const currentName = String(listaData.nome || '').trim();
+  const nextName = updateName && targetKey
+    ? rewriteListaNameCycle(currentName, targetKey)
+    : currentName;
+  const nameNeedsRepair = Boolean(updateName && nextName && nextName !== currentName);
+
   if (
     !force &&
     !metadataNeedsRepair &&
+    !nameNeedsRepair &&
     cycleKey(syncedValue) === targetKey &&
     syncedTotal === knownTotal &&
     knownTotal >= 0
@@ -39,6 +61,7 @@ async function normalizeWithAdmin(listaId: string, force = false) {
       total: knownTotal,
       skipped: true,
       metadataRepaired: false,
+      nameRepaired: false,
     };
   }
 
@@ -65,6 +88,7 @@ async function normalizeWithAdmin(listaId: string, force = false) {
   await listaRef.set(
     {
       saidaPadrao: targetSaida,
+      ...(nameNeedsRepair ? { nome: nextName } : {}),
       totalItens: total,
       saidasCount: total > 0 ? { [targetSaida]: total } : {},
       saidaItensSincronizadaValor: targetSaida,
@@ -82,23 +106,36 @@ async function normalizeWithAdmin(listaId: string, force = false) {
     total,
     skipped: false,
     metadataRepaired: metadataNeedsRepair,
+    nameRepaired: nameNeedsRepair,
   };
 }
 
-async function normalizeWithRest(listaId: string, force = false) {
+async function normalizeWithRest(
+  listaId: string,
+  force = false,
+  requestedSaida = '',
+  updateName = false
+) {
   const listaData = await getDocRest(`coleta_listas/${listaId}`);
   if (!listaData) throw new Error('LISTA_NOT_FOUND');
 
-  const targetSaida = resolveCanonicalListaSaida(listaData);
+  const targetSaida = requestedSaida || resolveCanonicalListaSaida(listaData);
   const targetKey = cycleKey(targetSaida);
   const knownTotal = Number(listaData.totalItens || 0);
   const syncedValue = String(listaData.saidaItensSincronizadaValor || '').trim();
   const syncedTotal = Number(listaData.saidaItensSincronizadaTotal ?? -1);
   const metadataNeedsRepair = cycleKey(listaData.saidaPadrao) !== targetKey;
 
+  const currentName = String(listaData.nome || '').trim();
+  const nextName = updateName && targetKey
+    ? rewriteListaNameCycle(currentName, targetKey)
+    : currentName;
+  const nameNeedsRepair = Boolean(updateName && nextName && nextName !== currentName);
+
   if (
     !force &&
     !metadataNeedsRepair &&
+    !nameNeedsRepair &&
     cycleKey(syncedValue) === targetKey &&
     syncedTotal === knownTotal &&
     knownTotal >= 0
@@ -110,6 +147,7 @@ async function normalizeWithRest(listaId: string, force = false) {
       total: knownTotal,
       skipped: true,
       metadataRepaired: false,
+      nameRepaired: false,
     };
   }
 
@@ -135,27 +173,28 @@ async function normalizeWithRest(listaId: string, force = false) {
   }
 
   const total = allItems.length;
-  await patchDocRest(
-    `coleta_listas/${listaId}`,
-    {
-      saidaPadrao: targetSaida,
-      totalItens: total,
-      saidasCount: total > 0 ? { [targetSaida]: total } : {},
-      saidaItensSincronizadaValor: targetSaida,
-      saidaItensSincronizadaTotal: total,
-      saidaItensSincronizadaAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-    [
-      'saidaPadrao',
-      'totalItens',
-      'saidasCount',
-      'saidaItensSincronizadaValor',
-      'saidaItensSincronizadaTotal',
-      'saidaItensSincronizadaAt',
-      'updatedAt',
-    ]
-  );
+  const parentData = {
+    saidaPadrao: targetSaida,
+    ...(nameNeedsRepair ? { nome: nextName } : {}),
+    totalItens: total,
+    saidasCount: total > 0 ? { [targetSaida]: total } : {},
+    saidaItensSincronizadaValor: targetSaida,
+    saidaItensSincronizadaTotal: total,
+    saidaItensSincronizadaAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  const updateMask = [
+    'saidaPadrao',
+    ...(nameNeedsRepair ? ['nome'] : []),
+    'totalItens',
+    'saidasCount',
+    'saidaItensSincronizadaValor',
+    'saidaItensSincronizadaTotal',
+    'saidaItensSincronizadaAt',
+    'updatedAt',
+  ];
+
+  await patchDocRest(`coleta_listas/${listaId}`, parentData, updateMask);
 
   return {
     listaId,
@@ -164,6 +203,7 @@ async function normalizeWithRest(listaId: string, force = false) {
     total,
     skipped: false,
     metadataRepaired: metadataNeedsRepair,
+    nameRepaired: nameNeedsRepair,
   };
 }
 
@@ -176,14 +216,22 @@ export default async function handler(req: any, res: any) {
 
   const listaId = String(req.body?.listaId || '').trim();
   const force = req.body?.force === true;
+  const updateName = req.body?.updateName === true;
+  const rawTargetSaida = String(req.body?.targetSaida || '').trim();
+  const requestedSaida = resolveRequestedSaida(rawTargetSaida);
+
   if (!listaId) {
     return sendError(res, 400, 'INVALID_LISTA_ID', 'listaId é obrigatório');
   }
 
+  if (rawTargetSaida && !requestedSaida) {
+    return sendError(res, 400, 'INVALID_SAIDA', 'targetSaida deve ser AM, PM ou SD');
+  }
+
   try {
     const result = isFirebaseAdminConfigured()
-      ? await normalizeWithAdmin(listaId, force)
-      : await normalizeWithRest(listaId, force);
+      ? await normalizeWithAdmin(listaId, force, requestedSaida, updateName)
+      : await normalizeWithRest(listaId, force, requestedSaida, updateName);
 
     logApi('info', 'Saída da lista normalizada', {
       endpoint: '/api/coleta/normalize-saida',
@@ -192,7 +240,10 @@ export default async function handler(req: any, res: any) {
       total: result.total,
       saida: result.saida,
       metadataRepaired: result.metadataRepaired,
+      nameRepaired: result.nameRepaired,
       force,
+      requestedSaida: requestedSaida || undefined,
+      updateName,
       durationMs: Date.now() - startTime,
     });
 
