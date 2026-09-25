@@ -36,46 +36,120 @@ function getAuthHeader(): Record<string, string> {
   }
 }
 
+function extractCycle(text: string | null | undefined): 'AM' | 'PM' | 'SD' | null {
+  const match = String(text || '').toUpperCase().match(/(?:SA[ÍI]DA\s*)?\b(AM|PM|SD)\b/);
+  return match ? (match[1] as 'AM' | 'PM' | 'SD') : null;
+}
+
 export const ListasColetaEnhanced: React.FC<ListasColetaEnhancedProps> = ({ currentUser }) => {
   const params = useParams();
   const activeListaId = params.id || null;
   const [rail, setRail] = useState<GroupRailState | null>(null);
   const focusTimerRef = useRef<number | null>(null);
+  const normalizeInFlightRef = useRef(false);
+  const lastForcedNormalizeRef = useRef(0);
 
-  // Corrige uma vez os itens antigos cuja saída ficou diferente da saída padrão da lista.
-  // O endpoint possui marcador de sincronização e não relê milhares de itens sem necessidade.
+  const normalizeSaida = useCallback(async (force = false) => {
+    if (!activeListaId || normalizeInFlightRef.current) return;
+    normalizeInFlightRef.current = true;
+
+    try {
+      const response = await fetch('/api/coleta?action=normalize-saida', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeader(),
+        },
+        body: JSON.stringify({ listaId: activeListaId, force }),
+      });
+
+      if (!response.ok) {
+        const text = await response.text().catch(() => '');
+        console.warn('[Lista] Não foi possível normalizar a saída dos itens:', response.status, text);
+      }
+    } catch (error) {
+      console.warn('[Lista] Falha ao normalizar saída dos itens:', error);
+    } finally {
+      normalizeInFlightRef.current = false;
+    }
+  }, [activeListaId]);
+
+  // Primeira correção ao abrir a lista. O servidor também repara saidaPadrao legado.
+  useEffect(() => {
+    if (!activeListaId) return;
+    const timer = window.setTimeout(() => void normalizeSaida(false), 180);
+    return () => window.clearTimeout(timer);
+  }, [activeListaId, normalizeSaida]);
+
+  // Proteção adicional: se a tela disser "Saída SD" mas alguma linha ainda mostrar PM,
+  // força uma reparação. Isso também cobre lotes antigos gravados pelo cliente com ciclo errado.
   useEffect(() => {
     if (!activeListaId) return;
 
-    const controller = new AbortController();
-    const timer = window.setTimeout(async () => {
-      try {
-        const response = await fetch('/api/coleta?action=normalize-saida', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...getAuthHeader(),
-          },
-          body: JSON.stringify({ listaId: activeListaId }),
-          signal: controller.signal,
-        });
+    let inspectTimer: number | null = null;
 
-        if (!response.ok) {
-          const text = await response.text().catch(() => '');
-          console.warn('[Lista] Não foi possível normalizar a saída dos itens:', response.status, text);
-        }
-      } catch (error: any) {
-        if (error?.name !== 'AbortError') {
-          console.warn('[Lista] Falha ao normalizar saída dos itens:', error);
+    const findOfficialCycle = (): 'AM' | 'PM' | 'SD' | null => {
+      const candidates = Array.from(document.querySelectorAll('span'));
+      for (const node of candidates) {
+        const text = node.textContent?.trim() || '';
+        if (!/SA[ÍI]DA\s+(AM|PM|SD)/i.test(text)) continue;
+        const cycle = extractCycle(text);
+        if (cycle) return cycle;
+      }
+      return null;
+    };
+
+    const hasVisibleMismatch = () => {
+      const officialCycle = findOfficialCycle();
+      if (!officialCycle) return false;
+
+      const tables = Array.from(document.querySelectorAll('table'));
+      for (const table of tables) {
+        const headers = Array.from(table.querySelectorAll('thead th'));
+        const saidaIndex = headers.findIndex(
+          th => (th.textContent || '').trim().toUpperCase() === 'SAÍDA'
+        );
+        if (saidaIndex < 0) continue;
+
+        const rows = Array.from(table.querySelectorAll('tbody tr'));
+        for (const row of rows) {
+          const cells = Array.from(row.querySelectorAll('td'));
+          const cellCycle = extractCycle(cells[saidaIndex]?.textContent);
+          if (cellCycle && cellCycle !== officialCycle) return true;
         }
       }
-    }, 180);
+
+      return false;
+    };
+
+    const inspect = () => {
+      if (!hasVisibleMismatch()) return;
+      const now = Date.now();
+      if (now - lastForcedNormalizeRef.current < 1500) return;
+      lastForcedNormalizeRef.current = now;
+      void normalizeSaida(true);
+    };
+
+    const scheduleInspect = () => {
+      if (inspectTimer !== null) window.clearTimeout(inspectTimer);
+      inspectTimer = window.setTimeout(inspect, 300);
+    };
+
+    const observer = new MutationObserver(scheduleInspect);
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    });
+
+    const initialTimer = window.setTimeout(inspect, 650);
 
     return () => {
-      window.clearTimeout(timer);
-      controller.abort();
+      observer.disconnect();
+      window.clearTimeout(initialTimer);
+      if (inspectTimer !== null) window.clearTimeout(inspectTimer);
     };
-  }, [activeListaId]);
+  }, [activeListaId, normalizeSaida]);
 
   const focusActiveGroup = useCallback((scroller?: HTMLDivElement | null, behavior: ScrollBehavior = 'smooth') => {
     if (!scroller) return;
@@ -95,9 +169,7 @@ export const ListasColetaEnhanced: React.FC<ListasColetaEnhancedProps> = ({ curr
     let disposed = false;
 
     const scheduleFocus = (scroller: HTMLDivElement, behavior: ScrollBehavior = 'auto') => {
-      if (focusTimerRef.current !== null) {
-        window.clearTimeout(focusTimerRef.current);
-      }
+      if (focusTimerRef.current !== null) window.clearTimeout(focusTimerRef.current);
       focusTimerRef.current = window.setTimeout(() => {
         if (!disposed) focusActiveGroup(scroller, behavior);
       }, 120);
@@ -153,9 +225,7 @@ export const ListasColetaEnhanced: React.FC<ListasColetaEnhancedProps> = ({ curr
           current.scroller === scroller &&
           current.activeIndex === activeIndex &&
           current.total === cards.length
-        ) {
-          return current;
-        }
+        ) return current;
         return { panel, scroller, activeIndex, total: cards.length };
       });
 
@@ -174,12 +244,7 @@ export const ListasColetaEnhanced: React.FC<ListasColetaEnhancedProps> = ({ curr
         });
 
         const updatedActiveIndex = getActiveIndex(updatedCards);
-        setRail({
-          panel,
-          scroller,
-          activeIndex: updatedActiveIndex,
-          total: updatedCards.length,
-        });
+        setRail({ panel, scroller, activeIndex: updatedActiveIndex, total: updatedCards.length });
         scheduleFocus(scroller, 'smooth');
       });
 
@@ -202,9 +267,7 @@ export const ListasColetaEnhanced: React.FC<ListasColetaEnhancedProps> = ({ curr
       pageObserver.disconnect();
       observer?.disconnect();
       window.clearTimeout(initialTimer);
-      if (focusTimerRef.current !== null) {
-        window.clearTimeout(focusTimerRef.current);
-      }
+      if (focusTimerRef.current !== null) window.clearTimeout(focusTimerRef.current);
     };
   }, [focusActiveGroup]);
 
