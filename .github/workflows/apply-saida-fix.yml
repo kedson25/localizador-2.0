@@ -1,0 +1,87 @@
+name: Apply saida list fix
+
+on:
+  push:
+    branches:
+      - fix-saida-criacao-lista
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix-saida-criacao-lista
+          fetch-depth: 0
+
+      - name: Patch ListasColeta
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('src/components/ListasColeta.tsx')
+          text = path.read_text(encoding='utf-8')
+          original = text
+
+          replacements = [
+              (
+                  "const [selectedSaida, setSelectedSaida] = useState('Ciclo 2 - Saída PM');",
+                  "const [selectedSaida, setSelectedSaida] = useState('');",
+              ),
+              (
+                  "  }, [activeListaId]);\n\n  // Timeout de segurança caso a conexão de rede demore ou caia",
+                  "  }, [activeListaId, listaAtiva?.saidaPadrao, listaAtiva?.rota, listaAtiva?.motivoPadrao]);\n\n  // Timeout de segurança caso a conexão de rede demore ou caia",
+              ),
+              (
+                  "      setListas(prev => [novaLista, ...prev.filter(l => l.id !== novaLista.id)]);\n\n      setShowModalNovaLista(false);",
+                  "      setListas(prev => [novaLista, ...prev.filter(l => l.id !== novaLista.id)]);\n      setSelectedSaida(novaSaida);\n\n      setShowModalNovaLista(false);",
+              ),
+              (
+                  "const saidaItemFinal = selectedSaida || listaAtiva.saidaPadrao || 'Ciclo 2 - Saída PM';",
+                  "const saidaItemFinal = listaAtiva.saidaPadrao || selectedSaida || 'Ciclo 2 - Saída PM';",
+              ),
+              (
+                  "const saidaCicloFinal = selectedSaida || listaAtiva.saidaPadrao || 'Ciclo 2 - Saída PM';",
+                  "const saidaCicloFinal = listaAtiva.saidaPadrao || selectedSaida || 'Ciclo 2 - Saída PM';",
+              ),
+              (
+                  "Vinculados ao ciclo <strong className=\"text-blue-700\">{selectedSaida}</strong>.",
+                  "Vinculados ao ciclo <strong className=\"text-blue-700\">{listaAtiva?.saidaPadrao || selectedSaida || 'Ciclo 2 - Saída PM'}</strong>.",
+              ),
+          ]
+
+          for old, new in replacements:
+              if old in text:
+                  text = text.replace(old, new, 1)
+              elif new not in text:
+                  raise SystemExit(f'Expected pattern not found: {old[:120]}')
+
+          if text != original:
+              path.write_text(text, encoding='utf-8')
+              print('ListasColeta.tsx patched successfully')
+          else:
+              print('Patch already applied; no changes needed')
+
+      - name: Install dependencies
+        if: ${{ hashFiles('src/components/ListasColeta.tsx') != '' }}
+        run: npm ci
+
+      - name: Type check
+        run: npm run lint
+
+      - name: Commit patch if needed
+        shell: bash
+        run: |
+          if git diff --quiet -- src/components/ListasColeta.tsx; then
+            echo "No patch changes to commit"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/components/ListasColeta.tsx
+          git commit -m "fix: respeitar saida da lista ao criar e bipar"
+          git push origin HEAD:fix-saida-criacao-lista
