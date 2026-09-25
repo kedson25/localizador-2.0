@@ -1,23 +1,49 @@
 // Facade público do Firebase.
-// Mantém o núcleo original em firebase-core.ts e consolida as leituras usadas
-// pelas métricas permanentes e pelo painel Admin.
+// Mantém o núcleo original em firebase-core.ts e adiciona uma camada resiliente
+// de persistência local para evitar perda visual de dados em refresh/instabilidade.
 export * from './firebase-core';
 
 import {
   listenToListas as listenToCoreListas,
+  saveLista as saveListaCore,
+  deleteLista as deleteListaCore,
+  listenToListaItens as listenToListaItensCore,
+  addItemToLista as addItemToListaCore,
+  updateItemInLista as updateItemInListaCore,
+  deleteItemFromLista as deleteItemFromListaCore,
+  addItemsBatchToLista as addItemsBatchToListaCore,
+  deleteItemsBatchFromLista as deleteItemsBatchFromListaCore,
+  updateItemsBatchMotivo as updateItemsBatchMotivoCore,
+  saveRefugo as saveRefugoCore,
+  clearRefugo as clearRefugoCore,
+  listenToRefugo as listenToRefugoCore,
   listenToRefugoHistoricoMetricas as listenToLegacyRefugoHistoricoMetricas,
   listenToRefugoScans as listenToTransientRefugoScans,
   listenToRefugoScansIncremental as listenToCoreRefugoScansIncremental,
+  addRefugoScan as addRefugoScanCore,
+  deleteRefugoScan as deleteRefugoScanCore,
+  clearRefugoScans as clearRefugoScansCore,
   searchItemsAcrossAllListas as searchItemsAcrossAllListasCore,
   getAllItemsForExport as getAllItemsForExportCore,
 } from './firebase-core';
-import type { RefugoScan, RefugoScanChange } from './firebase-core';
+import type { RefugoData, RefugoScan, RefugoScanChange } from './firebase-core';
 import type { ColetaItem, ColetaLista, RefugoHistoricoMetrica } from '../types';
 import {
   listenToRefugoMetricItems,
   persistRefugoMetricScan,
   RefugoMetricItem,
 } from './refugoMetrics';
+import {
+  deleteLocalValue,
+  getLocalValue,
+  mutateLocalValue,
+  setLocalValue,
+} from './localPersistence';
+
+const LOCAL_LISTAS_KEY = 'coleta:listas:v3';
+const LOCAL_REFUGO_KEY = 'refugo:base:v3';
+const LOCAL_REFUGO_SCANS_KEY = 'refugo:scans:v3';
+const localListaItensKey = (listaId: string) => `coleta:lista:${listaId}:itens:v3`;
 
 let todayListasCache: ColetaLista[] = [];
 let todayListasCacheReady = false;
@@ -37,8 +63,6 @@ function isListaFromToday(lista: ColetaLista, now = new Date()): boolean {
   const { br, iso } = getTodayDateKeys(now);
   const rawData = String(lista.data || '').trim();
 
-  // Se a lista possui uma data operacional explícita, ela é a fonte da verdade.
-  // Isso impede que uma lista marcada como ontem apareça apenas porque foi criada hoje.
   if (rawData) {
     return (
       rawData === br ||
@@ -48,7 +72,6 @@ function isListaFromToday(lista: ColetaLista, now = new Date()): boolean {
     );
   }
 
-  // Compatibilidade com documentos antigos que não possuem o campo `data`.
   const createdAt: any = lista.createdAt;
   let createdDate: Date | null = null;
 
@@ -98,13 +121,32 @@ function deriveListaAccuracy(lista: ColetaLista): number {
   return Number(((validados / total) * 100).toFixed(2));
 }
 
+function prepareAllListas(listas: ColetaLista[]): ColetaLista[] {
+  return listas.map(lista => ({
+    ...lista,
+    porcentagemAcerto: deriveListaAccuracy(lista),
+  }));
+}
+
 function prepareTodayListas(listas: ColetaLista[]): ColetaLista[] {
-  return listas
-    .filter(lista => isListaFromToday(lista))
-    .map(lista => ({
-      ...lista,
-      porcentagemAcerto: deriveListaAccuracy(lista),
-    }));
+  return prepareAllListas(listas.filter(lista => isListaFromToday(lista)));
+}
+
+function listaWithoutEmbeddedItems(lista: Partial<ColetaLista> & { id: string }): ColetaLista {
+  const { itens: _itens, ...metadata } = lista as any;
+  return metadata as ColetaLista;
+}
+
+async function upsertListaLocal(lista: Partial<ColetaLista> & { id: string }): Promise<void> {
+  const metadata = listaWithoutEmbeddedItems(lista);
+  await mutateLocalValue<ColetaLista[]>(LOCAL_LISTAS_KEY, current => {
+    const existing = current || [];
+    const index = existing.findIndex(item => item.id === metadata.id);
+    if (index < 0) return [metadata, ...existing];
+    const next = [...existing];
+    next[index] = { ...next[index], ...metadata };
+    return next;
+  });
 }
 
 async function ensureTodayListasCache(): Promise<void> {
@@ -130,24 +172,235 @@ async function ensureTodayListasCache(): Promise<void> {
     unsubscribe = listenToCoreListas(listas => finish(listas));
     window.setTimeout(() => finish(), 2500);
   });
+
+  if (!todayListasCacheReady) {
+    const cached = await getLocalValue<ColetaLista[]>(LOCAL_LISTAS_KEY);
+    if (cached) {
+      todayListasCache = prepareTodayListas(cached);
+      todayListasCacheReady = true;
+    }
+  }
 }
 
+/**
+ * Entrega TODAS as listas para que filtros de Hoje/Ontem/7 dias/15 dias funcionem.
+ * A regra "consulta apenas listas do dia" fica isolada em searchItemsAcrossAllListas.
+ * IndexedDB é usado apenas como fallback visual/local; o Firestore continua sendo
+ * a fonte compartilhada principal.
+ */
 export function listenToListas(
   callback: (listas: ColetaLista[]) => void
 ): () => void {
+  let remoteSeen = false;
+  let remoteWasEmpty = false;
+  let cachedListas: ColetaLista[] = [];
+
+  void getLocalValue<ColetaLista[]>(LOCAL_LISTAS_KEY).then(cached => {
+    cachedListas = prepareAllListas(cached || []);
+    if (cachedListas.length > 0 && (!remoteSeen || remoteWasEmpty)) {
+      callback(cachedListas);
+    }
+  });
+
   return listenToCoreListas(listas => {
-    const listasDoDia = prepareTodayListas(listas);
-    todayListasCache = listasDoDia;
+    remoteSeen = true;
+    remoteWasEmpty = listas.length === 0;
+
+    if (listas.length === 0 && cachedListas.length > 0) {
+      todayListasCache = prepareTodayListas(cachedListas);
+      todayListasCacheReady = true;
+      callback(cachedListas);
+      return;
+    }
+
+    const prepared = prepareAllListas(listas);
+    todayListasCache = prepareTodayListas(prepared);
     todayListasCacheReady = true;
-    callback(listasDoDia);
+
+    void setLocalValue(LOCAL_LISTAS_KEY, prepared);
+    callback(prepared);
+  });
+}
+
+export async function saveLista(
+  lista: Partial<ColetaLista> & { id: string },
+  immediate = false
+): Promise<boolean> {
+  await upsertListaLocal(lista);
+
+  if (Array.isArray((lista as any).itens)) {
+    await setLocalValue(localListaItensKey(lista.id), (lista as any).itens as ColetaItem[]);
+  }
+
+  try {
+    return await saveListaCore(lista, immediate);
+  } catch (error) {
+    console.warn('Lista preservada localmente; sincronização remota falhou:', error);
+    throw error;
+  }
+}
+
+export async function deleteLista(listaId: string): Promise<boolean> {
+  const result = await deleteListaCore(listaId);
+  if (result) {
+    await mutateLocalValue<ColetaLista[]>(LOCAL_LISTAS_KEY, current =>
+      (current || []).filter(lista => lista.id !== listaId)
+    );
+    await deleteLocalValue(localListaItensKey(listaId));
+  }
+  return result;
+}
+
+export function listenToListaItens(
+  listaId: string,
+  callback: (itens: ColetaItem[]) => void,
+  maxLimit = 10000
+): () => void {
+  if (!listaId) return () => {};
+
+  const key = localListaItensKey(listaId);
+  let remoteSeen = false;
+  let remoteWasEmpty = false;
+  let cachedItens: ColetaItem[] = [];
+
+  void getLocalValue<ColetaItem[]>(key).then(cached => {
+    cachedItens = cached || [];
+    if (cachedItens.length > 0 && (!remoteSeen || remoteWasEmpty)) {
+      callback(cachedItens);
+    }
+  });
+
+  return listenToListaItensCore(listaId, itens => {
+    remoteSeen = true;
+    remoteWasEmpty = itens.length === 0;
+
+    if (itens.length === 0 && cachedItens.length > 0) {
+      callback(cachedItens);
+      return;
+    }
+
+    void setLocalValue(key, itens);
+    callback(itens);
+  }, maxLimit);
+}
+
+export async function addItemToLista(
+  listaId: string,
+  item: Omit<ColetaItem, 'id'> & { id?: string }
+): Promise<ColetaItem> {
+  const itemWithId = {
+    ...item,
+    id: item.id || `item-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+  } as ColetaItem;
+
+  await mutateLocalValue<ColetaItem[]>(localListaItensKey(listaId), current => [
+    itemWithId,
+    ...(current || []).filter(existing => existing.id !== itemWithId.id),
+  ]);
+
+  return addItemToListaCore(listaId, itemWithId);
+}
+
+export async function updateItemInLista(
+  listaId: string,
+  itemId: string,
+  updates: Partial<ColetaItem>,
+  prevItem?: Partial<ColetaItem>
+): Promise<boolean> {
+  await mutateLocalValue<ColetaItem[]>(localListaItensKey(listaId), current =>
+    (current || []).map(item => item.id === itemId ? { ...item, ...updates } : item)
+  );
+  return updateItemInListaCore(listaId, itemId, updates, prevItem);
+}
+
+export async function deleteItemFromLista(
+  listaId: string,
+  itemId: string,
+  itemData?: Partial<ColetaItem>
+): Promise<boolean> {
+  await mutateLocalValue<ColetaItem[]>(localListaItensKey(listaId), current =>
+    (current || []).filter(item => item.id !== itemId)
+  );
+  return deleteItemFromListaCore(listaId, itemId, itemData);
+}
+
+export async function addItemsBatchToLista(listaId: string, items: ColetaItem[]): Promise<boolean> {
+  if (!items || items.length === 0) return true;
+  await mutateLocalValue<ColetaItem[]>(localListaItensKey(listaId), current => {
+    const byId = new Map((current || []).map(item => [item.id, item]));
+    items.forEach(item => byId.set(item.id, item));
+    return Array.from(byId.values());
+  });
+  return addItemsBatchToListaCore(listaId, items);
+}
+
+export async function deleteItemsBatchFromLista(listaId: string, itemIds: string[]): Promise<boolean> {
+  if (!itemIds || itemIds.length === 0) return true;
+  const ids = new Set(itemIds);
+  await mutateLocalValue<ColetaItem[]>(localListaItensKey(listaId), current =>
+    (current || []).filter(item => !ids.has(item.id))
+  );
+  return deleteItemsBatchFromListaCore(listaId, itemIds);
+}
+
+export async function updateItemsBatchMotivo(
+  listaId: string,
+  itemIds: string[],
+  novoMotivo: string
+): Promise<boolean> {
+  if (!itemIds || itemIds.length === 0) return true;
+  const ids = new Set(itemIds);
+  await mutateLocalValue<ColetaItem[]>(localListaItensKey(listaId), current =>
+    (current || []).map(item => ids.has(item.id) ? { ...item, motivo: novoMotivo } : item)
+  );
+  return updateItemsBatchMotivoCore(listaId, itemIds, novoMotivo);
+}
+
+export async function saveRefugo(rawText: string, totalRows: number, fileName?: string): Promise<boolean> {
+  const localData: RefugoData = {
+    rawText,
+    totalRows,
+    fileName: fileName || 'refugo.csv',
+    updatedAt: new Date().toISOString(),
+  };
+  await setLocalValue(LOCAL_REFUGO_KEY, localData);
+  return saveRefugoCore(rawText, totalRows, fileName);
+}
+
+export async function clearRefugo(): Promise<boolean> {
+  const result = await clearRefugoCore();
+  if (result) await deleteLocalValue(LOCAL_REFUGO_KEY);
+  return result;
+}
+
+export function listenToRefugo(callback: (data: RefugoData | null) => void): () => void {
+  let remoteSeen = false;
+  let remoteIsEmpty = false;
+  let cachedData: RefugoData | null = null;
+
+  void getLocalValue<RefugoData>(LOCAL_REFUGO_KEY).then(cached => {
+    cachedData = cached;
+    if (cachedData && (!remoteSeen || remoteIsEmpty)) callback(cachedData);
+  });
+
+  return listenToRefugoCore(data => {
+    remoteSeen = true;
+    remoteIsEmpty = !data;
+
+    if (!data && cachedData) {
+      callback(cachedData);
+      return;
+    }
+
+    if (data) void setLocalValue(LOCAL_REFUGO_KEY, data);
+    callback(data);
   });
 }
 
 /**
  * Consulta IDs apenas nas listas do dia atual.
- * O núcleo antigo ainda pode localizar um registro histórico primeiro, então a
- * resposta é filtrada e, quando necessário, fazemos uma conferência direta nas
- * listas de hoje para garantir que um ID repetido em dias diferentes priorize hoje.
+ * Histórico continua visível nas telas de listas, mas IDs de dias anteriores
+ * não são retornados na consulta operacional.
  */
 export async function searchItemsAcrossAllListas(
   terms: string[]
@@ -204,9 +457,7 @@ export async function searchItemsAcrossAllListas(
       if (!codigo) continue;
 
       const normalized = normalizeLookupCode(codigo);
-      if (!wanted.has(normalized.upper) && (!normalized.digits || !wanted.has(normalized.digits))) {
-        continue;
-      }
+      if (!wanted.has(normalized.upper) && (!normalized.digits || !wanted.has(normalized.digits))) continue;
 
       const item: ColetaItem = {
         ...rawItem,
@@ -222,57 +473,77 @@ export async function searchItemsAcrossAllListas(
   return results;
 }
 
+function normalizeRefugoRouteStatus(scan: RefugoScan): RefugoScan {
+  const route = String(scan.rota || '').trim();
+  const upper = route.toUpperCase();
+  const hasValidRoute = Boolean(route) && !upper.includes('SEM ROTA') && !upper.includes('BRANCA');
+
+  if (hasValidRoute && scan.status !== 'found') {
+    return { ...scan, rota: route, status: 'found' };
+  }
+
+  if (!hasValidRoute && scan.status !== 'not_found') {
+    return { ...scan, rota: route, status: 'not_found' };
+  }
+
+  return route === scan.rota ? scan : { ...scan, rota: route };
+}
+
 function eventKeyFromScan(scan: RefugoScan): string {
   return `${scan.normalizedId}:${Number(scan.timestamp) || 0}`;
 }
 
 function isBrancaOrWithoutRoute(scan: RefugoScan): boolean {
-  const route = String(scan.rota || '').trim();
-  const upper = route.toUpperCase();
-  return (
-    scan.status !== 'found' ||
-    !route ||
-    upper.includes('SEM ROTA') ||
-    upper.includes('BRANCA')
-  );
+  const normalized = normalizeRefugoRouteStatus(scan);
+  return normalized.status !== 'found';
 }
 
-/**
- * O AdminPanel historicamente recebe `scannedAt` e faz `new Date(scannedAt)`.
- * Strings pt-BR como `22/09/2026, 03:55:27` não são portáveis entre browsers e
- * podem virar Invalid Date, fazendo o painel descartar o scan até em "Todas as Datas".
- * Para o dashboard usamos sempre o timestamp numérico como fonte e entregamos ISO.
- */
 function normalizeScanForDashboard(scan: RefugoScan): RefugoScan {
-  const timestamp = Number(scan.timestamp);
+  const normalized = normalizeRefugoRouteStatus(scan);
+  const timestamp = Number(normalized.timestamp);
   if (Number.isFinite(timestamp) && timestamp > 0) {
     return {
-      ...scan,
+      ...normalized,
       scannedAt: new Date(timestamp).toISOString(),
     };
   }
 
-  const raw = String(scan.scannedAt || '').trim();
+  const raw = String(normalized.scannedAt || '').trim();
   const br = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:,?\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
   if (br) {
     const [, dd, mm, yyyy, hh = '0', min = '0', ss = '0'] = br;
-    const parsed = new Date(
-      Number(yyyy),
-      Number(mm) - 1,
-      Number(dd),
-      Number(hh),
-      Number(min),
-      Number(ss)
-    );
+    const parsed = new Date(Number(yyyy), Number(mm) - 1, Number(dd), Number(hh), Number(min), Number(ss));
     if (!Number.isNaN(parsed.getTime())) {
       return {
-        ...scan,
+        ...normalized,
         scannedAt: parsed.toISOString(),
       };
     }
   }
 
-  return scan;
+  return normalized;
+}
+
+export async function addRefugoScan(scan: Omit<RefugoScan, 'firestoreId'>): Promise<void> {
+  const normalized = normalizeRefugoRouteStatus(scan as RefugoScan);
+  await mutateLocalValue<RefugoScan[]>(LOCAL_REFUGO_SCANS_KEY, current => [
+    normalized,
+    ...(current || []).filter(item => item.normalizedId !== normalized.normalizedId),
+  ]);
+  await addRefugoScanCore(normalized);
+}
+
+export async function deleteRefugoScan(normalizedId: string): Promise<void> {
+  await mutateLocalValue<RefugoScan[]>(LOCAL_REFUGO_SCANS_KEY, current =>
+    (current || []).filter(item => item.normalizedId !== normalizedId)
+  );
+  await deleteRefugoScanCore(normalizedId);
+}
+
+export async function clearRefugoScans(): Promise<boolean> {
+  const result = await clearRefugoScansCore();
+  if (result) await deleteLocalValue(LOCAL_REFUGO_SCANS_KEY);
+  return result;
 }
 
 const metricBackfillKeys = new Set<string>();
@@ -281,7 +552,8 @@ let metricBackfillChain: Promise<void> = Promise.resolve();
 function schedulePermanentBackfill(scans: RefugoScan[]): void {
   const unique: RefugoScan[] = [];
 
-  for (const scan of scans) {
+  for (const rawScan of scans) {
+    const scan = normalizeRefugoRouteStatus(rawScan);
     if (!scan?.normalizedId) continue;
     const key = eventKeyFromScan(scan);
     if (metricBackfillKeys.has(key)) continue;
@@ -296,9 +568,7 @@ function schedulePermanentBackfill(scans: RefugoScan[]): void {
       const concurrency = 4;
       for (let i = 0; i < unique.length; i += concurrency) {
         const chunk = unique.slice(i, i + concurrency);
-        await Promise.allSettled(
-          chunk.map(scan => persistRefugoMetricScan(scan))
-        );
+        await Promise.allSettled(chunk.map(scan => persistRefugoMetricScan(scan)));
       }
     })
     .catch(error => {
@@ -310,19 +580,49 @@ export function listenToRefugoScansIncremental(
   callback: (changes: RefugoScanChange[], isInitial: boolean, initialScans?: RefugoScan[]) => void,
   onError?: (error: any) => void
 ): () => void {
+  let remoteInitialSeen = false;
+  let cachedScans: RefugoScan[] = [];
+
+  void getLocalValue<RefugoScan[]>(LOCAL_REFUGO_SCANS_KEY).then(cached => {
+    cachedScans = (cached || []).map(normalizeRefugoRouteStatus);
+    if (!remoteInitialSeen && cachedScans.length > 0) {
+      callback([], true, cachedScans);
+    }
+  });
+
   return listenToCoreRefugoScansIncremental(
     (changes, isInitial, initialScans) => {
-      if (isInitial && initialScans?.length) {
-        schedulePermanentBackfill(initialScans);
-      } else if (changes.length > 0) {
+      if (isInitial) {
+        remoteInitialSeen = true;
+        const normalizedInitial = (initialScans || []).map(normalizeRefugoRouteStatus);
+        const effectiveInitial = normalizedInitial.length > 0 ? normalizedInitial : cachedScans;
+        if (normalizedInitial.length > 0) void setLocalValue(LOCAL_REFUGO_SCANS_KEY, normalizedInitial);
+        if (effectiveInitial.length > 0) schedulePermanentBackfill(effectiveInitial);
+        callback([], true, effectiveInitial);
+        return;
+      }
+
+      const normalizedChanges = changes.map(change => ({
+        ...change,
+        scan: normalizeRefugoRouteStatus(change.scan),
+      }));
+
+      if (normalizedChanges.length > 0) {
+        void mutateLocalValue<RefugoScan[]>(LOCAL_REFUGO_SCANS_KEY, current => {
+          const map = new Map((current || []).map(scan => [scan.normalizedId, scan]));
+          normalizedChanges.forEach(change => {
+            if (change.type === 'removed') map.delete(change.scan.normalizedId);
+            else map.set(change.scan.normalizedId, change.scan);
+          });
+          return Array.from(map.values()).sort((a, b) => Number(b.timestamp || 0) - Number(a.timestamp || 0));
+        });
+
         schedulePermanentBackfill(
-          changes
-            .filter(change => change.type !== 'removed')
-            .map(change => change.scan)
+          normalizedChanges.filter(change => change.type !== 'removed').map(change => change.scan)
         );
       }
 
-      callback(changes, isInitial, initialScans);
+      callback(normalizedChanges, false);
     },
     onError
   );
@@ -341,29 +641,29 @@ export function listenToRefugoScans(
       return;
     }
 
-    const permanentById = new Map(
-      permanentItems.map(item => [item.normalizedId, item])
-    );
+    const permanentById = new Map(permanentItems.map(item => [item.normalizedId, item]));
 
     const pending = transientScans
       .filter(scan => {
         const permanent = permanentById.get(scan.normalizedId);
         return !permanent || permanent.lastEventKey !== eventKeyFromScan(scan);
       })
-      .map(scan => {
-        if (isBrancaOrWithoutRoute(scan)) {
-          return { ...scan, status: 'not_found' as const };
-        }
-        return scan;
-      });
+      .map(normalizeRefugoRouteStatus);
 
     callback(pending);
   };
 
+  void getLocalValue<RefugoScan[]>(LOCAL_REFUGO_SCANS_KEY).then(cached => {
+    if (transientScans.length === 0 && cached?.length) {
+      transientScans = cached.map(normalizeScanForDashboard);
+      emit();
+    }
+  });
+
   const unsubTransient = listenToTransientRefugoScans(scans => {
-    // Corrige imediatamente a métrica ativa, antes mesmo do backfill terminar.
     transientScans = scans.map(normalizeScanForDashboard);
-    schedulePermanentBackfill(scans);
+    void setLocalValue(LOCAL_REFUGO_SCANS_KEY, transientScans);
+    schedulePermanentBackfill(transientScans);
     emit();
   });
 
@@ -392,10 +692,7 @@ interface DailyAccumulator {
   rotasEncontradas: Record<string, number>;
 }
 
-function getDailyAccumulator(
-  map: Map<string, DailyAccumulator>,
-  date: string
-): DailyAccumulator {
+function getDailyAccumulator(map: Map<string, DailyAccumulator>, date: string): DailyAccumulator {
   let current = map.get(date);
   if (!current) {
     current = {
@@ -436,9 +733,7 @@ export function listenToRefugoHistoricoMetricas(
     const daily = new Map<string, DailyAccumulator>();
 
     for (const item of permanentItems) {
-      if (item.firstSeenDate) {
-        getDailyAccumulator(daily, item.firstSeenDate).totalBipados += 1;
-      }
+      if (item.firstSeenDate) getDailyAccumulator(daily, item.firstSeenDate).totalBipados += 1;
 
       if (item.everRouteFound && item.firstRouteFoundDate) {
         const bucket = getDailyAccumulator(daily, item.firstRouteFoundDate);
