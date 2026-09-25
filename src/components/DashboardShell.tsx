@@ -2,12 +2,12 @@ import React, { useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
+  ArrowRight,
   BarChart3,
   Bell,
   Boxes,
   ChevronDown,
   CircleHelp,
-  Home,
   PackageOpen,
   PanelLeftClose,
   PanelLeftOpen,
@@ -33,7 +33,7 @@ type QuickLink = {
 };
 
 const QUICK_LINKS: QuickLink[] = [
-  { label: 'Módulos', path: '/', keywords: 'modulos inicio ferramentas' },
+  { label: 'Módulos', path: '/', keywords: 'modulos ferramentas' },
   { label: 'Listas de Coleta', path: '/listas', keywords: 'lista coleta backlog' },
   { label: 'Buscar IDs', path: '/consulta', keywords: 'buscar ids consulta rota pacote' },
   { label: 'Correlação de IDs', path: '/correlacao', keywords: 'correlacao conciliar ids fos returns devolucao' },
@@ -66,8 +66,7 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
 
   const isAdminArea = location.pathname.startsWith('/admin');
   const isSettings = location.pathname.startsWith('/configuracoes');
-  const isModulesArea = !isAdminArea && !isSettings;
-  const showBackButton = location.pathname !== '/';
+  const isModulesArea = location.pathname === '/';
 
   const results = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -103,6 +102,10 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
     navigate('/');
   };
 
+  const handleForward = () => {
+    navigate(1);
+  };
+
   const navClass = (active: boolean) =>
     `relative flex w-full items-center rounded-xl py-3 text-sm transition ${
       sidebarCollapsed ? 'justify-center px-3' : 'gap-4 px-4'
@@ -130,7 +133,7 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
             type="button"
             onClick={() => navigate('/')}
             className={`flex h-full w-full items-center text-left ${sidebarCollapsed ? 'justify-center px-3' : 'gap-3 px-7'}`}
-            title={sidebarCollapsed ? 'Ecooy - Início' : undefined}
+            title={sidebarCollapsed ? 'Ecooy - Módulos' : undefined}
           >
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#253b80] text-white shadow-sm">
               <Zap className="h-5 w-5" />
@@ -153,17 +156,6 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
 
         <nav className={sidebarCollapsed ? 'flex-1 px-3 py-7' : 'flex-1 px-4 py-7'}>
           <div className="space-y-2">
-            <button
-              type="button"
-              onClick={() => navigate('/')}
-              className={navClass(location.pathname === '/')}
-              title={sidebarCollapsed ? 'Início' : undefined}
-            >
-              {location.pathname === '/' && <span className="absolute -left-3 h-9 w-1 rounded-r bg-[#FFE600]" />}
-              <Home className="h-5 w-5 shrink-0" />
-              {!sidebarCollapsed && <span>Início</span>}
-            </button>
-
             <button
               type="button"
               onClick={() => navigate('/')}
@@ -231,18 +223,39 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
 
       <div className={`transition-[padding] duration-200 ${sidebarCollapsed ? 'lg:pl-[82px]' : 'lg:pl-[238px]'}`}>
         <header className="sticky top-0 z-20 flex h-[72px] items-center gap-3 border-b border-slate-200 bg-white/95 px-4 shadow-sm backdrop-blur sm:px-6 lg:px-8">
-          {showBackButton && (
+          <div className="flex shrink-0 items-center gap-1.5">
             <button
               type="button"
               onClick={handleBack}
-              className="flex h-10 shrink-0 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 shadow-sm transition hover:bg-slate-50"
+              className="flex h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 shadow-sm transition hover:bg-slate-50"
               aria-label="Voltar"
               title="Voltar"
             >
               <ArrowLeft className="h-4 w-4 text-[#1769ff]" />
-              <span className="hidden xl:inline">Voltar</span>
+              <span className="hidden 2xl:inline">Voltar</span>
             </button>
-          )}
+
+            <button
+              type="button"
+              onClick={() => navigate('/')}
+              className="flex h-10 items-center gap-2 rounded-lg bg-[#FFE600] px-3 text-sm font-black text-[#253b80] shadow-sm transition hover:brightness-95"
+              title="Módulos"
+            >
+              <Boxes className="h-4 w-4" />
+              <span className="hidden xl:inline">Módulos</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleForward}
+              className="flex h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 shadow-sm transition hover:bg-slate-50"
+              aria-label="Avançar"
+              title="Avançar"
+            >
+              <span className="hidden 2xl:inline">Avançar</span>
+              <ArrowRight className="h-4 w-4 text-[#1769ff]" />
+            </button>
+          </div>
 
           <div className="relative max-w-[650px] flex-1">
             <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-500" />
