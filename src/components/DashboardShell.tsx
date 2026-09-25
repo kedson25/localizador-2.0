@@ -36,6 +36,7 @@ const QUICK_LINKS: QuickLink[] = [
   { label: 'Módulos', path: '/', keywords: 'modulos inicio ferramentas' },
   { label: 'Listas de Coleta', path: '/listas', keywords: 'lista coleta backlog' },
   { label: 'Buscar IDs', path: '/consulta', keywords: 'buscar ids consulta rota pacote' },
+  { label: 'Correlação de IDs', path: '/correlacao', keywords: 'correlacao conciliar ids fos returns devolucao' },
   { label: 'Remover IDs', path: '/remover', keywords: 'remover ids baixa filtro' },
   { label: 'Reporte WhatsApp', path: '/reporte', keywords: 'reporte whatsapp relatorio' },
   { label: 'Análise de Brancas', path: '/brancas', keywords: 'brancas auditoria rota' },

@@ -11,6 +11,7 @@ import {
   CircleHelp,
   FileSearch,
   Folder,
+  GitCompareArrows,
   Home,
   ListTodo,
   MessageSquare,
@@ -177,6 +178,7 @@ export const ToolsHub: React.FC<ToolsHubProps> = ({
   const [isBacklogOpen, setIsBacklogOpen] = useState(false);
   const [isRefugoOpen, setIsRefugoOpen] = useState(false);
   const [isBrancasOpen, setIsBrancasOpen] = useState(false);
+  const [isCorrelacaoOpen, setIsCorrelacaoOpen] = useState(false);
 
   const allBacklogTools: ToolItem[] = [
     {
@@ -259,6 +261,20 @@ export const ToolsHub: React.FC<ToolsHubProps> = ({
     },
   ];
 
+  const correlacaoTools: ToolItem[] = [
+    {
+      id: 'correlacao',
+      path: '/correlacao',
+      name: 'Correlação de IDs',
+      description: 'Compare IDs da lista com a base FOS, motivo e data.',
+      tag: 'Conciliação',
+      icon: GitCompareArrows,
+      iconClass: 'text-violet-600',
+      iconBoxClass: 'bg-violet-50',
+      badgeClass: 'border-violet-200 bg-violet-50 text-violet-700',
+    },
+  ];
+
   const matchesQuery = (tool: ToolItem) => {
     const normalized = query.trim().toLowerCase();
     if (!normalized) return true;
@@ -268,6 +284,7 @@ export const ToolsHub: React.FC<ToolsHubProps> = ({
   const filteredBacklog = useMemo(() => backlogTools.filter(matchesQuery), [backlogTools, query]);
   const filteredRefugo = useMemo(() => refugoTools.filter(matchesQuery), [query]);
   const filteredBrancas = useMemo(() => brancasTools.filter(matchesQuery), [query]);
+  const filteredCorrelacao = useMemo(() => correlacaoTools.filter(matchesQuery), [query]);
 
   const logout = async () => {
     const auth = await import('../lib/auth');
@@ -452,6 +469,18 @@ export const ToolsHub: React.FC<ToolsHubProps> = ({
               onToggle={() => setIsBrancasOpen(value => !value)}
               onOpenTool={navigate}
               status={<span className="rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-[10px] font-black uppercase text-amber-700">Novo</span>}
+            />
+
+            <ModuleGroup
+              title="Correlação"
+              count={correlacaoTools.length}
+              accent="blue"
+              icon={GitCompareArrows}
+              tools={filteredCorrelacao}
+              isOpen={isCorrelacaoOpen}
+              onToggle={() => setIsCorrelacaoOpen(value => !value)}
+              onOpenTool={navigate}
+              status={<span className="rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-[10px] font-black uppercase text-violet-700">Novo</span>}
             />
           </div>
         </main>

@@ -5,6 +5,7 @@ import { parseCsvText } from './utils/csvParser';
 import { ToolsHub } from './components/ToolsHub';
 import { DashboardShell } from './components/DashboardShell';
 import { IdLookup } from './components/IdLookup';
+import { CorrelacaoIds } from './components/CorrelacaoIds';
 import { IdRemover } from './components/IdRemover';
 import { WhatsappReport } from './components/WhatsappReport';
 import { CsvUploader } from './components/CsvUploader';
@@ -38,6 +39,7 @@ export default function App() {
                       location.pathname.startsWith('/brancas') ? 'Brancas' :
                       location.pathname.startsWith('/listas') ? 'Coleta (Listas)' :
                       location.pathname.startsWith('/consulta') ? 'Consulta' :
+                      location.pathname.startsWith('/correlacao') ? 'Correlação' :
                       location.pathname.startsWith('/remover') ? 'Remover' :
                       location.pathname.startsWith('/reporte') ? 'Reporte' :
                       location.pathname.startsWith('/configuracoes') ? 'Configurações' :
@@ -197,6 +199,11 @@ export default function App() {
                   )}
                 />
               )}
+
+              <Route
+                path="/correlacao"
+                element={insideDashboard(<CorrelacaoIds />)}
+              />
 
               {(currentUser?.isAdmin || currentUser?.allowedGroups?.includes('remover')) && (
                 <Route
