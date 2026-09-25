@@ -4,7 +4,7 @@ import { CsvRow, GroupSummary } from './types';
 import { parseCsvText } from './utils/csvParser';
 import { ToolsHub } from './components/ToolsHub';
 import { DashboardShell } from './components/DashboardShell';
-import { IdLookup } from './components/IdLookup';
+import { IdLookupEnhanced } from './components/IdLookupEnhanced';
 import { CorrelacaoIds } from './components/CorrelacaoIds';
 import { IdRemover } from './components/IdRemover';
 import { WhatsappReportEnhanced } from './components/WhatsappReportEnhanced';
@@ -195,7 +195,7 @@ export default function App() {
                   element={insideDashboard(
                     <div className="space-y-4">
                       <StatsSummary totalRows={rows.length} groups={groups} />
-                      <IdLookup rows={rows} onNavigateToUpload={() => navigate('/upload')} />
+                      <IdLookupEnhanced rows={rows} onNavigateToUpload={() => navigate('/upload')} />
                     </div>
                   )}
                 />
