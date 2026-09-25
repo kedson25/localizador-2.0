@@ -1,4 +1,6 @@
-export function cycleKey(value: unknown): 'AM' | 'PM' | 'SD' | '' {
+export type ListaCycle = 'AM' | 'PM' | 'SD';
+
+export function cycleKey(value: unknown): ListaCycle | '' {
   const raw = String(value || '').trim().toUpperCase();
   if (!raw) return '';
   if (/(^|[^A-Z])AM([^A-Z]|$)/.test(raw)) return 'AM';
@@ -7,32 +9,48 @@ export function cycleKey(value: unknown): 'AM' | 'PM' | 'SD' | '' {
   return '';
 }
 
-export function canonicalSaidaForCycle(cycle: 'AM' | 'PM' | 'SD'): string {
+export function canonicalSaidaForCycle(cycle: ListaCycle): string {
   if (cycle === 'AM') return 'Ciclo 1 - Saída AM';
   if (cycle === 'SD') return 'Ciclo 3 - Saída SD';
   return 'Ciclo 2 - Saída PM';
 }
 
+export function cycleFromListaName(nome: unknown): ListaCycle | '' {
+  return cycleKey(nome);
+}
+
+export function rewriteListaNameCycle(nome: unknown, cycle: ListaCycle): string {
+  const current = String(nome || '').trim();
+  if (!current) return current;
+
+  const label = `Saída ${cycle}`;
+  if (/Sa[íi]da\s+(AM|PM|SD)/i.test(current)) {
+    return current.replace(/Sa[íi]da\s+(AM|PM|SD)/i, label);
+  }
+
+  return current;
+}
+
 /**
- * Resolve a saída oficial da lista.
+ * Resolve a saída oficial da lista para gravações normais.
  *
- * Listas antigas podem ter ficado com `saidaPadrao = PM` mesmo quando o nome
- * operacional foi criado como "Saída SD - DD/MM/AAAA". Como o nome da lista é
- * gerado a partir do ciclo escolhido na criação e não é editável na UI atual,
- * ele é usado para reparar esse legado quando existe conflito.
+ * IMPORTANTE: `saidaPadrao` é a fonte de verdade. O nome da lista é apenas
+ * fallback para documentos antigos que realmente não possuem saída configurada.
+ * Assim uma lista histórica não é convertida para SD só porque o nome legado
+ * contém "Saída SD".
  */
 export function resolveCanonicalListaSaida(
   listaData: Record<string, any> | null | undefined,
   fallback?: unknown
 ): string {
-  const nameCycle = cycleKey(listaData?.nome);
-  if (nameCycle) return canonicalSaidaForCycle(nameCycle);
-
   const configuredCycle = cycleKey(listaData?.saidaPadrao);
   if (configuredCycle) return canonicalSaidaForCycle(configuredCycle);
 
   const fallbackCycle = cycleKey(fallback);
   if (fallbackCycle) return canonicalSaidaForCycle(fallbackCycle);
+
+  const nameCycle = cycleFromListaName(listaData?.nome);
+  if (nameCycle) return canonicalSaidaForCycle(nameCycle);
 
   const rawConfigured = String(listaData?.saidaPadrao || '').trim();
   if (rawConfigured) return rawConfigured;
