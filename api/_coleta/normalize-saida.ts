@@ -6,17 +6,9 @@ import {
   listDocsRest,
   patchDocRest,
 } from '../_lib/firestore-rest';
+import { cycleKey, resolveCanonicalListaSaida } from '../_lib/lista-saida';
 import { sendError, sendSuccess } from '../_lib/response';
 import { logApi } from '../_lib/logger';
-
-function cycleKey(value: unknown): string {
-  const raw = String(value || '').trim().toUpperCase();
-  if (!raw) return '';
-  if (/\bAM\b/.test(raw)) return 'AM';
-  if (/\bPM\b/.test(raw)) return 'PM';
-  if (/\bSD\b/.test(raw)) return 'SD';
-  return raw;
-}
 
 async function normalizeWithAdmin(listaId: string) {
   const { db } = adminDb;
@@ -28,19 +20,28 @@ async function normalizeWithAdmin(listaId: string) {
   }
 
   const listaData = listaSnap.data() || {};
-  const targetSaida = String(listaData.saidaPadrao || '').trim();
-  if (!targetSaida) {
-    return { listaId, saida: '', corrected: 0, total: Number(listaData.totalItens || 0), skipped: true };
-  }
-
+  const targetSaida = resolveCanonicalListaSaida(listaData);
   const targetKey = cycleKey(targetSaida);
   const knownTotal = Number(listaData.totalItens || 0);
   const syncedValue = String(listaData.saidaItensSincronizadaValor || '').trim();
   const syncedTotal = Number(listaData.saidaItensSincronizadaTotal ?? -1);
+  const metadataNeedsRepair = cycleKey(listaData.saidaPadrao) !== targetKey;
 
-  // Evita reler milhares de documentos toda vez que a lista é aberta.
-  if (cycleKey(syncedValue) === targetKey && syncedTotal === knownTotal && knownTotal >= 0) {
-    return { listaId, saida: targetSaida, corrected: 0, total: knownTotal, skipped: true };
+  // Se tudo já está sincronizado e o metadado também está correto, não relê milhares de itens.
+  if (
+    !metadataNeedsRepair &&
+    cycleKey(syncedValue) === targetKey &&
+    syncedTotal === knownTotal &&
+    knownTotal >= 0
+  ) {
+    return {
+      listaId,
+      saida: targetSaida,
+      corrected: 0,
+      total: knownTotal,
+      skipped: true,
+      metadataRepaired: false,
+    };
   }
 
   const itemsSnap = await listaRef.collection('itens').get();
@@ -69,6 +70,7 @@ async function normalizeWithAdmin(listaId: string) {
   const total = itemsSnap.size;
   await listaRef.set(
     {
+      saidaPadrao: targetSaida,
       totalItens: total,
       saidasCount: total > 0 ? { [targetSaida]: total } : {},
       saidaItensSincronizadaValor: targetSaida,
@@ -85,6 +87,7 @@ async function normalizeWithAdmin(listaId: string) {
     corrected: mismatched.length,
     total,
     skipped: false,
+    metadataRepaired: metadataNeedsRepair,
   };
 }
 
@@ -94,18 +97,27 @@ async function normalizeWithRest(listaId: string) {
     throw new Error('LISTA_NOT_FOUND');
   }
 
-  const targetSaida = String(listaData.saidaPadrao || '').trim();
-  if (!targetSaida) {
-    return { listaId, saida: '', corrected: 0, total: Number(listaData.totalItens || 0), skipped: true };
-  }
-
+  const targetSaida = resolveCanonicalListaSaida(listaData);
   const targetKey = cycleKey(targetSaida);
   const knownTotal = Number(listaData.totalItens || 0);
   const syncedValue = String(listaData.saidaItensSincronizadaValor || '').trim();
   const syncedTotal = Number(listaData.saidaItensSincronizadaTotal ?? -1);
+  const metadataNeedsRepair = cycleKey(listaData.saidaPadrao) !== targetKey;
 
-  if (cycleKey(syncedValue) === targetKey && syncedTotal === knownTotal && knownTotal >= 0) {
-    return { listaId, saida: targetSaida, corrected: 0, total: knownTotal, skipped: true };
+  if (
+    !metadataNeedsRepair &&
+    cycleKey(syncedValue) === targetKey &&
+    syncedTotal === knownTotal &&
+    knownTotal >= 0
+  ) {
+    return {
+      listaId,
+      saida: targetSaida,
+      corrected: 0,
+      total: knownTotal,
+      skipped: true,
+      metadataRepaired: false,
+    };
   }
 
   const allItems: Array<{ id: string; [key: string]: any }> = [];
@@ -138,6 +150,7 @@ async function normalizeWithRest(listaId: string) {
   await patchDocRest(
     `coleta_listas/${listaId}`,
     {
+      saidaPadrao: targetSaida,
       totalItens: total,
       saidasCount: total > 0 ? { [targetSaida]: total } : {},
       saidaItensSincronizadaValor: targetSaida,
@@ -146,6 +159,7 @@ async function normalizeWithRest(listaId: string) {
       updatedAt: new Date().toISOString(),
     },
     [
+      'saidaPadrao',
       'totalItens',
       'saidasCount',
       'saidaItensSincronizadaValor',
@@ -161,6 +175,7 @@ async function normalizeWithRest(listaId: string) {
     corrected: mismatched.length,
     total,
     skipped: false,
+    metadataRepaired: metadataNeedsRepair,
   };
 }
 
@@ -187,6 +202,7 @@ export default async function handler(req: any, res: any) {
       corrected: result.corrected,
       total: result.total,
       saida: result.saida,
+      metadataRepaired: result.metadataRepaired,
       durationMs: Date.now() - startTime,
     });
 
