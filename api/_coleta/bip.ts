@@ -6,18 +6,18 @@ import { getServerSupabase } from '../_lib/supabase';
 import { requireAuth, AuthError } from '../_lib/auth';
 import { BipRequestSchema } from '../_lib/validation';
 import { normalizeCodigo, cleanDigits, getDeterministicItemId } from '../_lib/id';
+import { resolveCanonicalListaSaida } from '../_lib/lista-saida';
 import { sendSuccess, sendError } from '../_lib/response';
 import { logApi } from '../_lib/logger';
 
 async function resolveListaSaidaRest(listaId: string, fallback?: string): Promise<string> {
   try {
     const listaData = await getDocRest(`coleta_listas/${listaId}`);
-    const saidaPadrao = String(listaData?.saidaPadrao || '').trim();
-    if (saidaPadrao) return saidaPadrao;
+    if (listaData) return resolveCanonicalListaSaida(listaData, fallback);
   } catch (error) {
-    console.warn('[Bip] Não foi possível ler a saída padrão da lista via REST:', error);
+    console.warn('[Bip] Não foi possível ler a saída oficial da lista via REST:', error);
   }
-  return String(fallback || '').trim() || 'Ciclo 2 - Saída PM';
+  return resolveCanonicalListaSaida(null, fallback);
 }
 
 export default async function handler(req: any, res: any) {
@@ -28,12 +28,10 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    // 1. Validar autenticação
     let user;
     try {
       user = await requireAuth(req);
     } catch (authErr: any) {
-      // Se não autenticado, fallback seguro para identificação pelo body para não bloquear operação
       const bodyUser = req.body?.responsavel || 'Operador';
       user = {
         uid: 'anon',
@@ -44,7 +42,6 @@ export default async function handler(req: any, res: any) {
       };
     }
 
-    // 2. Validar payload com Zod
     const parseResult = BipRequestSchema.safeParse(req.body);
     if (!parseResult.success) {
       return sendError(
@@ -58,7 +55,6 @@ export default async function handler(req: any, res: any) {
 
     const { listaId, codigo, saida, motivo, rota, responsavel, grupoId } = parseResult.data;
 
-    // 3. Normalizar código e gerar ID determinístico
     const cleanCode = normalizeCodigo(codigo);
     if (!cleanCode) {
       return sendError(res, 400, 'EMPTY_CODE', 'Código não pode ser vazio');
@@ -70,8 +66,6 @@ export default async function handler(req: any, res: any) {
 
     let result: { item: any; isNew: boolean };
 
-    // A saída da lista é a fonte de verdade. O valor enviado pelo frontend é apenas fallback
-    // para compatibilidade com listas antigas sem saidaPadrao.
     if (!isFirebaseAdminConfigured()) {
       const canonicalSaida = await resolveListaSaidaRest(listaId, saida);
       result = await processBipRest({
@@ -89,28 +83,22 @@ export default async function handler(req: any, res: any) {
         const listaRef = db.collection('coleta_listas').doc(listaId);
         const itemRef = listaRef.collection('itens').doc(docId);
 
-        // 4. Executar transação atômica
         result = await db.runTransaction(async (transaction) => {
           const [listaSnap, itemSnap] = await Promise.all([
             transaction.get(listaRef),
             transaction.get(itemRef),
           ]);
 
-          if (!listaSnap.exists) {
-            throw new Error('LISTA_NOT_FOUND');
-          }
+          if (!listaSnap.exists) throw new Error('LISTA_NOT_FOUND');
 
           const listaData = listaSnap.data() || {};
           const nowMs = Date.now();
           const nowBR = new Date().toLocaleString('pt-BR');
-
-          // IMPORTANTE: a saída configurada na lista sempre prevalece sobre o frontend.
-          const targetSaida = listaData.saidaPadrao || saida || 'Ciclo 2 - Saída PM';
+          const targetSaida = resolveCanonicalListaSaida(listaData, saida);
           const targetMotivo = motivo || listaData.motivoPadrao || 'Pendente';
           const targetRota = rota || listaData.rota || 'Sem Rota';
 
           if (itemSnap.exists) {
-            // Item já existia: atualizar dados sem duplicar
             const prevItem = itemSnap.data() || {};
             const prevSaida = prevItem.saida;
             const prevMotivo = prevItem.motivo;
@@ -132,8 +120,8 @@ export default async function handler(req: any, res: any) {
 
             transaction.set(itemRef, updatedItem, { merge: true });
 
-            // Atualizar métricas na lista se saída/motivo/operador mudaram
             const listaUpdates: Record<string, any> = {
+              saidaPadrao: targetSaida,
               updatedAt: FieldValue.serverTimestamp(),
             };
 
@@ -150,55 +138,45 @@ export default async function handler(req: any, res: any) {
               listaUpdates[`bipsPorOperador.${operante}`] = FieldValue.increment(1);
             }
 
-            if (Object.keys(listaUpdates).length > 1) {
-              transaction.set(listaRef, listaUpdates, { merge: true });
-            }
+            transaction.set(listaRef, listaUpdates, { merge: true });
 
-            return {
-              item: { ...updatedItem, id: docId },
-              isNew: false,
-            };
-          } else {
-            // Novo item na lista: inserção atômica
-            const newItem = {
-              id: docId,
-              codigo: cleanCode,
-              codigoClean: digitsOnly,
-              rota: targetRota,
-              saida: targetSaida,
-              motivo: targetMotivo,
-              scannedAt: nowBR,
-              responsavel: operante,
-              grupoId: grupoId || undefined,
-              validado: false,
-              timestamp: nowMs,
-              createdAt: FieldValue.serverTimestamp(),
-              updatedAt: FieldValue.serverTimestamp(),
-            };
+            return { item: { ...updatedItem, id: docId }, isNew: false };
+          }
 
-            transaction.set(itemRef, newItem);
+          const newItem = {
+            id: docId,
+            codigo: cleanCode,
+            codigoClean: digitsOnly,
+            rota: targetRota,
+            saida: targetSaida,
+            motivo: targetMotivo,
+            scannedAt: nowBR,
+            responsavel: operante,
+            grupoId: grupoId || undefined,
+            validado: false,
+            timestamp: nowMs,
+            createdAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+          };
 
-            // Incrementar contadores atômicos
-            const listaUpdates: Record<string, any> = {
+          transaction.set(itemRef, newItem);
+          transaction.set(
+            listaRef,
+            {
+              saidaPadrao: targetSaida,
               totalItens: FieldValue.increment(1),
               [`bipsPorOperador.${operante}`]: FieldValue.increment(1),
               [`saidasCount.${targetSaida}`]: FieldValue.increment(1),
               [`motivosCount.${targetMotivo}`]: FieldValue.increment(1),
               updatedAt: FieldValue.serverTimestamp(),
-            };
+            },
+            { merge: true }
+          );
 
-            transaction.set(listaRef, listaUpdates, { merge: true });
-
-            return {
-              item: newItem,
-              isNew: true,
-            };
-          }
+          return { item: newItem, isNew: true };
         });
       } catch (adminErr: any) {
-        if (adminErr.message === 'LISTA_NOT_FOUND') {
-          throw adminErr;
-        }
+        if (adminErr.message === 'LISTA_NOT_FOUND') throw adminErr;
         console.warn('[Bip] Falha no Admin SDK, tentando via Firestore REST:', adminErr.message);
         const canonicalSaida = await resolveListaSaidaRest(listaId, saida);
         result = await processBipRest({
@@ -221,7 +199,6 @@ export default async function handler(req: any, res: any) {
       durationMs: Date.now() - startTime,
     });
 
-    // Sincronização automática para Supabase se configurado
     const supabase = getServerSupabase();
     if (supabase) {
       try {
