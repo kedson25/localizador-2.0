@@ -87,7 +87,8 @@ export default async function handler(req: any, res: any) {
           codigo: cleanCode,
           codigoClean: cleanDigits(cleanCode),
           rota: item.rota || listaData.rota || 'Sem Rota',
-          saida: item.saida || listaData.saidaPadrao || 'Ciclo 2 - Saída PM',
+          // A saída configurada na lista é a fonte de verdade para todos os itens.
+          saida: listaData.saidaPadrao || item.saida || 'Ciclo 2 - Saída PM',
           motivo: item.motivo || listaData.motivoPadrao || 'Pendente',
           scannedAt: item.scannedAt || nowBR,
           responsavel: item.responsavel || 'Operador',

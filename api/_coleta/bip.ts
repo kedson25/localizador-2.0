@@ -1,13 +1,24 @@
 import type { IncomingMessage, ServerResponse } from 'http';
 import { FieldValue } from 'firebase-admin/firestore';
 import { adminDb, isFirebaseAdminConfigured } from '../_lib/firebase-admin';
-import { processBipRest } from '../_lib/firestore-rest';
+import { getDocRest, processBipRest } from '../_lib/firestore-rest';
 import { getServerSupabase } from '../_lib/supabase';
 import { requireAuth, AuthError } from '../_lib/auth';
 import { BipRequestSchema } from '../_lib/validation';
 import { normalizeCodigo, cleanDigits, getDeterministicItemId } from '../_lib/id';
 import { sendSuccess, sendError } from '../_lib/response';
 import { logApi } from '../_lib/logger';
+
+async function resolveListaSaidaRest(listaId: string, fallback?: string): Promise<string> {
+  try {
+    const listaData = await getDocRest(`coleta_listas/${listaId}`);
+    const saidaPadrao = String(listaData?.saidaPadrao || '').trim();
+    if (saidaPadrao) return saidaPadrao;
+  } catch (error) {
+    console.warn('[Bip] Não foi possível ler a saída padrão da lista via REST:', error);
+  }
+  return String(fallback || '').trim() || 'Ciclo 2 - Saída PM';
+}
 
 export default async function handler(req: any, res: any) {
   const startTime = Date.now();
@@ -59,12 +70,14 @@ export default async function handler(req: any, res: any) {
 
     let result: { item: any; isNew: boolean };
 
-    // Se as credenciais de service account não estiverem presentes no ambiente, usar Firestore REST diretamente
+    // A saída da lista é a fonte de verdade. O valor enviado pelo frontend é apenas fallback
+    // para compatibilidade com listas antigas sem saidaPadrao.
     if (!isFirebaseAdminConfigured()) {
+      const canonicalSaida = await resolveListaSaidaRest(listaId, saida);
       result = await processBipRest({
         listaId,
         codigo: cleanCode,
-        saida,
+        saida: canonicalSaida,
         motivo,
         rota,
         responsavel: operante,
@@ -91,7 +104,8 @@ export default async function handler(req: any, res: any) {
           const nowMs = Date.now();
           const nowBR = new Date().toLocaleString('pt-BR');
 
-          const targetSaida = saida || listaData.saidaPadrao || 'Ciclo 2 - Saída PM';
+          // IMPORTANTE: a saída configurada na lista sempre prevalece sobre o frontend.
+          const targetSaida = listaData.saidaPadrao || saida || 'Ciclo 2 - Saída PM';
           const targetMotivo = motivo || listaData.motivoPadrao || 'Pendente';
           const targetRota = rota || listaData.rota || 'Sem Rota';
 
@@ -186,10 +200,11 @@ export default async function handler(req: any, res: any) {
           throw adminErr;
         }
         console.warn('[Bip] Falha no Admin SDK, tentando via Firestore REST:', adminErr.message);
+        const canonicalSaida = await resolveListaSaidaRest(listaId, saida);
         result = await processBipRest({
           listaId,
           codigo: cleanCode,
-          saida,
+          saida: canonicalSaida,
           motivo,
           rota,
           responsavel: operante,
