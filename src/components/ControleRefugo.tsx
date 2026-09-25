@@ -268,12 +268,15 @@ export function ControleRefugo({ currentUser }: { currentUser?: User | null }) {
 
     let valorRealIndex = -1;
     let valorUsdIndex = -1;
+    let rotaOtimizadaIndex = -1;
 
     if (headerRow) {
       headerRow.forEach((col, idx) => {
-        const c = String(col).trim().toUpperCase();
+        const c = String(col).trim().toUpperCase()
+          .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
         if (c.includes('VALOR REAL')) valorRealIndex = idx;
         if (c.includes('VALOR USD')) valorUsdIndex = idx;
+        if (c === 'ROTA OTIMIZADA' || c === 'ROTA_OTIMIZADA') rotaOtimizadaIndex = idx;
       });
     } else {
       valorRealIndex = 5;
@@ -297,7 +300,7 @@ export function ControleRefugo({ currentUser }: { currentUser?: User | null }) {
 
       return [{
         id,
-        rota: String(values[1] || 'Sem Rota').trim(),
+        rota: String(values[rotaOtimizadaIndex] || values[1] || 'Sem Rota').trim(),
         isHighPriority,
         rawFields: Object.fromEntries(values.map((value, index) => [String(index), value]))
       }];
