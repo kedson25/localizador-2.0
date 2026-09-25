@@ -8,14 +8,68 @@ import {
   listenToRefugoHistoricoMetricas as listenToLegacyRefugoHistoricoMetricas,
   listenToRefugoScans as listenToTransientRefugoScans,
   listenToRefugoScansIncremental as listenToCoreRefugoScansIncremental,
+  searchItemsAcrossAllListas as searchItemsAcrossAllListasCore,
+  getAllItemsForExport as getAllItemsForExportCore,
 } from './firebase-core';
 import type { RefugoScan, RefugoScanChange } from './firebase-core';
-import type { ColetaLista, RefugoHistoricoMetrica } from '../types';
+import type { ColetaItem, ColetaLista, RefugoHistoricoMetrica } from '../types';
 import {
   listenToRefugoMetricItems,
   persistRefugoMetricScan,
   RefugoMetricItem,
 } from './refugoMetrics';
+
+let todayListasCache: ColetaLista[] = [];
+
+function getTodayDateKeys(now = new Date()) {
+  const day = String(now.getDate()).padStart(2, '0');
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const year = String(now.getFullYear());
+
+  return {
+    br: `${day}/${month}/${year}`,
+    iso: `${year}-${month}-${day}`,
+  };
+}
+
+function isListaFromToday(lista: ColetaLista, now = new Date()): boolean {
+  const { br, iso } = getTodayDateKeys(now);
+  const rawData = String(lista.data || '').trim();
+
+  if (rawData === br || rawData === iso || rawData.startsWith(`${br} `) || rawData.startsWith(`${iso}T`)) {
+    return true;
+  }
+
+  const createdAt: any = lista.createdAt;
+  let createdDate: Date | null = null;
+
+  try {
+    if (createdAt?.toDate && typeof createdAt.toDate === 'function') {
+      createdDate = createdAt.toDate();
+    } else if (createdAt?.seconds) {
+      createdDate = new Date(Number(createdAt.seconds) * 1000);
+    } else if (createdAt) {
+      const parsed = new Date(createdAt);
+      if (!Number.isNaN(parsed.getTime())) createdDate = parsed;
+    }
+  } catch (_) {
+    createdDate = null;
+  }
+
+  if (!createdDate || Number.isNaN(createdDate.getTime())) return false;
+
+  return (
+    createdDate.getFullYear() === now.getFullYear() &&
+    createdDate.getMonth() === now.getMonth() &&
+    createdDate.getDate() === now.getDate()
+  );
+}
+
+function normalizeLookupCode(value: string): { upper: string; digits: string } {
+  const upper = String(value || '').trim().toUpperCase();
+  const digits = upper.replace(/\D/g, '');
+  return { upper, digits };
+}
 
 function deriveListaAccuracy(lista: ColetaLista): number {
   const explicit = Number(lista.porcentagemAcerto);
@@ -39,13 +93,93 @@ export function listenToListas(
   callback: (listas: ColetaLista[]) => void
 ): () => void {
   return listenToCoreListas(listas => {
-    callback(
-      listas.map(lista => ({
+    const listasDoDia = listas
+      .filter(lista => isListaFromToday(lista))
+      .map(lista => ({
         ...lista,
         porcentagemAcerto: deriveListaAccuracy(lista),
-      }))
-    );
+      }));
+
+    todayListasCache = listasDoDia;
+    callback(listasDoDia);
   });
+}
+
+/**
+ * Consulta IDs apenas nas listas do dia atual.
+ * O núcleo antigo ainda pode localizar um registro histórico primeiro, então a
+ * resposta é filtrada e, quando necessário, fazemos uma conferência direta nas
+ * listas de hoje para garantir que um ID repetido em dias diferentes priorize hoje.
+ */
+export async function searchItemsAcrossAllListas(
+  terms: string[]
+): Promise<Map<string, { item: ColetaItem; listaId: string }>> {
+  const results = new Map<string, { item: ColetaItem; listaId: string }>();
+  if (!terms || terms.length === 0) return results;
+
+  const allowedListaIds = new Set(todayListasCache.map(lista => lista.id));
+  if (allowedListaIds.size === 0) return results;
+
+  try {
+    const coreResults = await searchItemsAcrossAllListasCore(terms);
+    coreResults.forEach((value, key) => {
+      if (allowedListaIds.has(value.listaId)) {
+        results.set(key, value);
+      }
+    });
+  } catch (error) {
+    console.warn('Busca global indisponível; conferindo diretamente as listas de hoje:', error);
+  }
+
+  const normalizedTerms = terms
+    .map(normalizeLookupCode)
+    .filter(term => term.upper || term.digits);
+
+  const missingTerms = normalizedTerms.filter(term => {
+    return !results.has(term.upper) && (!term.digits || !results.has(term.digits));
+  });
+
+  if (missingTerms.length === 0) return results;
+
+  const wanted = new Set<string>();
+  missingTerms.forEach(term => {
+    if (term.upper) wanted.add(term.upper);
+    if (term.digits) wanted.add(term.digits);
+  });
+
+  const listaIds = Array.from(allowedListaIds);
+  const listasResults = await Promise.allSettled(
+    listaIds.map(async listaId => ({
+      listaId,
+      itens: await getAllItemsForExportCore(listaId),
+    }))
+  );
+
+  listasResults.forEach(listaResult => {
+    if (listaResult.status !== 'fulfilled') return;
+
+    const { listaId, itens } = listaResult.value;
+    for (const rawItem of itens || []) {
+      const codigo = String(rawItem.codigo || '').trim();
+      if (!codigo) continue;
+
+      const normalized = normalizeLookupCode(codigo);
+      if (!wanted.has(normalized.upper) && (!normalized.digits || !wanted.has(normalized.digits))) {
+        continue;
+      }
+
+      const item: ColetaItem = {
+        ...rawItem,
+        codigo,
+        codigoClean: rawItem.codigoClean || normalized.digits,
+      };
+
+      if (normalized.upper) results.set(normalized.upper, { item, listaId });
+      if (normalized.digits) results.set(normalized.digits, { item, listaId });
+    }
+  });
+
+  return results;
 }
 
 function eventKeyFromScan(scan: RefugoScan): string {
