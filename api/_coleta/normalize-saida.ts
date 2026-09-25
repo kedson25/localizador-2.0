@@ -6,41 +6,40 @@ import {
   listDocsRest,
   patchDocRest,
 } from '../_lib/firestore-rest';
+import { cycleKey, resolveCanonicalListaSaida } from '../_lib/lista-saida';
 import { sendError, sendSuccess } from '../_lib/response';
 import { logApi } from '../_lib/logger';
 
-function cycleKey(value: unknown): string {
-  const raw = String(value || '').trim().toUpperCase();
-  if (!raw) return '';
-  if (/\bAM\b/.test(raw)) return 'AM';
-  if (/\bPM\b/.test(raw)) return 'PM';
-  if (/\bSD\b/.test(raw)) return 'SD';
-  return raw;
-}
-
-async function normalizeWithAdmin(listaId: string) {
+async function normalizeWithAdmin(listaId: string, force = false) {
   const { db } = adminDb;
   const listaRef = db.collection('coleta_listas').doc(listaId);
   const listaSnap = await listaRef.get();
 
-  if (!listaSnap.exists) {
-    throw new Error('LISTA_NOT_FOUND');
-  }
+  if (!listaSnap.exists) throw new Error('LISTA_NOT_FOUND');
 
   const listaData = listaSnap.data() || {};
-  const targetSaida = String(listaData.saidaPadrao || '').trim();
-  if (!targetSaida) {
-    return { listaId, saida: '', corrected: 0, total: Number(listaData.totalItens || 0), skipped: true };
-  }
-
+  const targetSaida = resolveCanonicalListaSaida(listaData);
   const targetKey = cycleKey(targetSaida);
   const knownTotal = Number(listaData.totalItens || 0);
   const syncedValue = String(listaData.saidaItensSincronizadaValor || '').trim();
   const syncedTotal = Number(listaData.saidaItensSincronizadaTotal ?? -1);
+  const metadataNeedsRepair = cycleKey(listaData.saidaPadrao) !== targetKey;
 
-  // Evita reler milhares de documentos toda vez que a lista é aberta.
-  if (cycleKey(syncedValue) === targetKey && syncedTotal === knownTotal && knownTotal >= 0) {
-    return { listaId, saida: targetSaida, corrected: 0, total: knownTotal, skipped: true };
+  if (
+    !force &&
+    !metadataNeedsRepair &&
+    cycleKey(syncedValue) === targetKey &&
+    syncedTotal === knownTotal &&
+    knownTotal >= 0
+  ) {
+    return {
+      listaId,
+      saida: targetSaida,
+      corrected: 0,
+      total: knownTotal,
+      skipped: true,
+      metadataRepaired: false,
+    };
   }
 
   const itemsSnap = await listaRef.collection('itens').get();
@@ -51,15 +50,11 @@ async function normalizeWithAdmin(listaId: string) {
 
   const CHUNK_SIZE = 400;
   for (let i = 0; i < mismatched.length; i += CHUNK_SIZE) {
-    const chunk = mismatched.slice(i, i + CHUNK_SIZE);
     const batch = db.batch();
-    chunk.forEach((docSnap) => {
+    mismatched.slice(i, i + CHUNK_SIZE).forEach((docSnap) => {
       batch.set(
         docSnap.ref,
-        {
-          saida: targetSaida,
-          updatedAt: FieldValue.serverTimestamp(),
-        },
+        { saida: targetSaida, updatedAt: FieldValue.serverTimestamp() },
         { merge: true }
       );
     });
@@ -69,6 +64,7 @@ async function normalizeWithAdmin(listaId: string) {
   const total = itemsSnap.size;
   await listaRef.set(
     {
+      saidaPadrao: targetSaida,
       totalItens: total,
       saidasCount: total > 0 ? { [targetSaida]: total } : {},
       saidaItensSincronizadaValor: targetSaida,
@@ -85,27 +81,36 @@ async function normalizeWithAdmin(listaId: string) {
     corrected: mismatched.length,
     total,
     skipped: false,
+    metadataRepaired: metadataNeedsRepair,
   };
 }
 
-async function normalizeWithRest(listaId: string) {
+async function normalizeWithRest(listaId: string, force = false) {
   const listaData = await getDocRest(`coleta_listas/${listaId}`);
-  if (!listaData) {
-    throw new Error('LISTA_NOT_FOUND');
-  }
+  if (!listaData) throw new Error('LISTA_NOT_FOUND');
 
-  const targetSaida = String(listaData.saidaPadrao || '').trim();
-  if (!targetSaida) {
-    return { listaId, saida: '', corrected: 0, total: Number(listaData.totalItens || 0), skipped: true };
-  }
-
+  const targetSaida = resolveCanonicalListaSaida(listaData);
   const targetKey = cycleKey(targetSaida);
   const knownTotal = Number(listaData.totalItens || 0);
   const syncedValue = String(listaData.saidaItensSincronizadaValor || '').trim();
   const syncedTotal = Number(listaData.saidaItensSincronizadaTotal ?? -1);
+  const metadataNeedsRepair = cycleKey(listaData.saidaPadrao) !== targetKey;
 
-  if (cycleKey(syncedValue) === targetKey && syncedTotal === knownTotal && knownTotal >= 0) {
-    return { listaId, saida: targetSaida, corrected: 0, total: knownTotal, skipped: true };
+  if (
+    !force &&
+    !metadataNeedsRepair &&
+    cycleKey(syncedValue) === targetKey &&
+    syncedTotal === knownTotal &&
+    knownTotal >= 0
+  ) {
+    return {
+      listaId,
+      saida: targetSaida,
+      corrected: 0,
+      total: knownTotal,
+      skipped: true,
+      metadataRepaired: false,
+    };
   }
 
   const allItems: Array<{ id: string; [key: string]: any }> = [];
@@ -120,24 +125,20 @@ async function normalizeWithRest(listaId: string) {
   const writes = mismatched.map((item) => ({
     type: 'update' as const,
     docPath: `coleta_listas/${listaId}/itens/${item.id}`,
-    data: {
-      saida: targetSaida,
-      updatedAt: new Date().toISOString(),
-    },
+    data: { saida: targetSaida, updatedAt: new Date().toISOString() },
     updateMask: ['saida', 'updatedAt'],
   }));
 
   if (writes.length > 0) {
     const ok = await batchCommitWritesRest(writes);
-    if (!ok) {
-      throw new Error('Falha ao normalizar saída dos itens via REST');
-    }
+    if (!ok) throw new Error('Falha ao normalizar saída dos itens via REST');
   }
 
   const total = allItems.length;
   await patchDocRest(
     `coleta_listas/${listaId}`,
     {
+      saidaPadrao: targetSaida,
       totalItens: total,
       saidasCount: total > 0 ? { [targetSaida]: total } : {},
       saidaItensSincronizadaValor: targetSaida,
@@ -146,6 +147,7 @@ async function normalizeWithRest(listaId: string) {
       updatedAt: new Date().toISOString(),
     },
     [
+      'saidaPadrao',
       'totalItens',
       'saidasCount',
       'saidaItensSincronizadaValor',
@@ -161,6 +163,7 @@ async function normalizeWithRest(listaId: string) {
     corrected: mismatched.length,
     total,
     skipped: false,
+    metadataRepaired: metadataNeedsRepair,
   };
 }
 
@@ -172,14 +175,15 @@ export default async function handler(req: any, res: any) {
   }
 
   const listaId = String(req.body?.listaId || '').trim();
+  const force = req.body?.force === true;
   if (!listaId) {
     return sendError(res, 400, 'INVALID_LISTA_ID', 'listaId é obrigatório');
   }
 
   try {
     const result = isFirebaseAdminConfigured()
-      ? await normalizeWithAdmin(listaId)
-      : await normalizeWithRest(listaId);
+      ? await normalizeWithAdmin(listaId, force)
+      : await normalizeWithRest(listaId, force);
 
     logApi('info', 'Saída da lista normalizada', {
       endpoint: '/api/coleta/normalize-saida',
@@ -187,6 +191,8 @@ export default async function handler(req: any, res: any) {
       corrected: result.corrected,
       total: result.total,
       saida: result.saida,
+      metadataRepaired: result.metadataRepaired,
+      force,
       durationMs: Date.now() - startTime,
     });
 
