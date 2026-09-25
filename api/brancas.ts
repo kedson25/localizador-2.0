@@ -4,6 +4,7 @@ import {
   ROTAS_SHEET_NAME,
   buildLiveBrancasReport,
 } from './_lib/brancas-live';
+import { requireBrancasAuth } from './_lib/brancas-auth';
 
 function sendJson(res: any, status: number, payload: any) {
   res.setHeader?.('Cache-Control', 'no-store, no-cache, must-revalidate');
@@ -32,6 +33,7 @@ async function getLiveReport(req: any) {
 }
 
 export default async function handler(req: any, res: any) {
+  if (!(await requireBrancasAuth(req, res))) return;
   const urlPath = String(req.url || '').split('?')[0].replace(/\/+$/, '');
   const action = String(req.query?.action || '').toLowerCase();
 

@@ -1,5 +1,12 @@
 import { VisaoGeralCategoria, OperationalPatternInsight } from './operationalTranslator';
 import { readJsonResponse } from './safeJsonResponse';
+import { auth as firebaseAuth } from './firebase-core';
+
+async function authorizedHeaders(headers: HeadersInit = {}): Promise<HeadersInit> {
+  const user = firebaseAuth.currentUser;
+  if (!user) throw new Error('FaÃ§a login para acessar a AnÃ¡lise de Brancas.');
+  return { ...headers, Authorization: `Bearer ${await user.getIdToken()}` };
+}
 
 export interface MudancaMotivoDetalhe {
   idPacote: string;
@@ -157,10 +164,10 @@ export async function registrarTentativaBrancas(
 ): Promise<BrancaSyncResponse> {
   const res = await fetch('/api/brancas/sync', {
     method: 'POST',
-    headers: {
+    headers: await authorizedHeaders({
       'Content-Type': 'application/json',
       Accept: 'application/json',
-    },
+    }),
     body: JSON.stringify({
       observacao,
       forceManual,
@@ -195,9 +202,9 @@ export async function getRelatorioBrancas(
 
   const res = await fetch(url, {
     method: 'GET',
-    headers: {
+    headers: await authorizedHeaders({
       Accept: 'application/json',
-    },
+    }),
     cache: 'no-store',
   });
 
@@ -220,9 +227,9 @@ export async function getHistoricoPacote(
     `/api/brancas/historico?id=${encodeURIComponent(idPacote)}`,
     {
       method: 'GET',
-      headers: {
+      headers: await authorizedHeaders({
         Accept: 'application/json',
-      },
+      }),
       cache: 'no-store',
     }
   );

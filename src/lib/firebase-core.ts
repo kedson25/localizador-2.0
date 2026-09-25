@@ -1,4 +1,5 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
+import { getAuth } from 'firebase/auth';
 import { initializeFirestore, getFirestore, collection, collectionGroup, doc, setDoc, getDoc, getDocs, updateDoc, deleteDoc, writeBatch, serverTimestamp, onSnapshot, query, where, orderBy, limit, startAfter, endBefore, increment, getCountFromServer, deleteField, QueryDocumentSnapshot, memoryLocalCache, enableNetwork, disableNetwork, setLogLevel } from 'firebase/firestore';
 
 // Silencia avisos internos de conectividade temporária do SDK do Firestore
@@ -18,6 +19,7 @@ const firebaseConfig = {
 };
 
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+export const auth = getAuth(app);
 
 // Suporte a detecção automática ou long polling configurável via variável de ambiente VITE_FIREBASE_AUTO_DETECT_POLLING.
 // Por padrão, experimentalForceLongPolling: true é mantido para garantir máxima compatibilidade com proxies/firewalls corporativos.

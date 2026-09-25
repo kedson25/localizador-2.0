@@ -29,6 +29,12 @@ export async function requireAuth(
 
   // Se o Firebase Admin não estiver configurado com credenciais de service account
   if (!isFirebaseAdminConfigured()) {
+    throw new AuthError(
+      'ADMIN_NOT_CONFIGURED',
+      'A verificação Firebase não está configurada no servidor.',
+      503
+    );
+
     try {
       if (token.startsWith('user_')) {
         const userId = token.replace('user_', '');

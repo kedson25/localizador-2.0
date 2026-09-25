@@ -1,5 +1,7 @@
 import { collection, doc, setDoc, getDocs, getDoc, updateDoc, deleteDoc, query, where } from 'firebase/firestore';
+import { signInWithCustomToken } from 'firebase/auth';
 import { db } from './firebase';
+import { auth as firebaseAuth } from './firebase-core';
 
 export interface User {
   id: string;
@@ -245,8 +247,14 @@ export async function loginUser(
       if (data.ok && data.data?.user) {
         const user = {
           ...data.data.user,
-          token: data.data.token,
         };
+        try {
+          const credential = await signInWithCustomToken(firebaseAuth, data.data.token);
+          user.token = await credential.user.getIdToken();
+        } catch (authError) {
+          console.error('Falha ao criar sessÃ£o Firebase:', authError);
+          return { success: false, message: 'NÃ£o foi possÃ­vel criar a sessÃ£o Firebase. Contate o administrador.' };
+        }
         setCurrentUser(user);
         return { success: true, user };
       }
