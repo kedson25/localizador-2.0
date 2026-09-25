@@ -20,6 +20,7 @@ import {
 } from './refugoMetrics';
 
 let todayListasCache: ColetaLista[] = [];
+let todayListasCacheReady = false;
 
 function getTodayDateKeys(now = new Date()) {
   const day = String(now.getDate()).padStart(2, '0');
@@ -97,18 +98,47 @@ function deriveListaAccuracy(lista: ColetaLista): number {
   return Number(((validados / total) * 100).toFixed(2));
 }
 
+function prepareTodayListas(listas: ColetaLista[]): ColetaLista[] {
+  return listas
+    .filter(lista => isListaFromToday(lista))
+    .map(lista => ({
+      ...lista,
+      porcentagemAcerto: deriveListaAccuracy(lista),
+    }));
+}
+
+async function ensureTodayListasCache(): Promise<void> {
+  if (todayListasCacheReady) return;
+
+  await new Promise<void>((resolve) => {
+    let finished = false;
+    let unsubscribe: (() => void) | null = null;
+
+    const finish = (listas?: ColetaLista[]) => {
+      if (finished) return;
+      finished = true;
+
+      if (listas) {
+        todayListasCache = prepareTodayListas(listas);
+        todayListasCacheReady = true;
+      }
+
+      if (unsubscribe) unsubscribe();
+      resolve();
+    };
+
+    unsubscribe = listenToCoreListas(listas => finish(listas));
+    window.setTimeout(() => finish(), 2500);
+  });
+}
+
 export function listenToListas(
   callback: (listas: ColetaLista[]) => void
 ): () => void {
   return listenToCoreListas(listas => {
-    const listasDoDia = listas
-      .filter(lista => isListaFromToday(lista))
-      .map(lista => ({
-        ...lista,
-        porcentagemAcerto: deriveListaAccuracy(lista),
-      }));
-
+    const listasDoDia = prepareTodayListas(listas);
     todayListasCache = listasDoDia;
+    todayListasCacheReady = true;
     callback(listasDoDia);
   });
 }
@@ -124,6 +154,8 @@ export async function searchItemsAcrossAllListas(
 ): Promise<Map<string, { item: ColetaItem; listaId: string }>> {
   const results = new Map<string, { item: ColetaItem; listaId: string }>();
   if (!terms || terms.length === 0) return results;
+
+  await ensureTodayListasCache();
 
   const allowedListaIds = new Set(todayListasCache.map(lista => lista.id));
   if (allowedListaIds.size === 0) return results;
