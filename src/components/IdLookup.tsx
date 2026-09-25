@@ -167,7 +167,9 @@ export const IdLookup: React.FC<IdLookupProps> = ({ rows, onNavigateToUpload }) 
     }
 
     return results;
-  }, [inputText, rows, listas]);
+  // Inclui o resultado assíncrono do Firestore: sem esta dependência, a tela
+  // continuava mostrando "ausente" mesmo depois de localizar o ID em uma lista.
+  }, [inputText, rows, listas, serverFoundMap]);
 
   // Extract unique Saída values from found search matches (or loaded rows if no search)
   const availableSaidas = useMemo(() => {
@@ -489,7 +491,7 @@ export const IdLookup: React.FC<IdLookupProps> = ({ rows, onNavigateToUpload }) 
             </div>
             <div>
               <h2 className="text-sm font-bold text-gray-900 uppercase tracking-widest">Consulta em Massa</h2>
-              <p className="text-xs text-gray-500 mt-0.5">Cole os IDs ou importe um arquivo CSV com os faltantes.</p>
+              <p className="text-xs text-gray-500 mt-0.5">Cole os IDs para consultar automaticamente as listas e grupos salvos.</p>
             </div>
           </div>
           
@@ -503,7 +505,7 @@ export const IdLookup: React.FC<IdLookupProps> = ({ rows, onNavigateToUpload }) 
             </button>
             <label className="cursor-pointer inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 hover:bg-gray-50 hover:border-gray-300 text-gray-700 rounded-lg text-xs font-bold transition-all shadow-sm">
               <Upload className="w-4 h-4 text-blue-600" />
-              <span>Carregar Faltantes (CSV)</span>
+              <span>Adicionar CSV (opcional)</span>
               <input type="file" accept=".csv,.txt,.tsv" onChange={handleFileUpload} className="hidden" />
             </label>
 
@@ -552,17 +554,17 @@ export const IdLookup: React.FC<IdLookupProps> = ({ rows, onNavigateToUpload }) 
           </div>
           
           {rows.length === 0 && (
-            <div className="mt-4 bg-amber-50 border border-amber-200 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-amber-900 text-xs">
+            <div className="mt-4 bg-blue-50 border border-blue-200 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-blue-900 text-xs">
               <div className="flex items-start sm:items-center gap-3">
-                <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0" />
-                <p className="leading-relaxed font-medium">Nenhum CSV base carregado. A consulta precisa da base principal para cruzar os dados.</p>
+                <Layers className="w-5 h-5 text-blue-600 flex-shrink-0" />
+                <p className="leading-relaxed font-medium">Consulta pronta: os IDs são buscados nas listas e grupos salvos. A base CSV é opcional, apenas para cruzar informações extras.</p>
               </div>
               <button
                 onClick={onNavigateToUpload}
-                className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-gray-950 font-bold rounded-lg text-xs transition-colors flex items-center gap-1.5 flex-shrink-0 shadow-sm"
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-xs transition-colors flex items-center gap-1.5 flex-shrink-0 shadow-sm"
               >
                 <Upload className="w-4 h-4" />
-                Carregar Base CSV
+                Adicionar CSV opcional
               </button>
             </div>
           )}
