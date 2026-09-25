@@ -263,12 +263,14 @@ export function ControleRefugo({ currentUser }: { currentUser?: User | null }) {
 
     const headerRow = result.data.find(values => {
       const id = String(values[0] || '').trim().toUpperCase();
-      return ['ID', 'CODIGO', 'CÓDIGO', 'PACOTE', 'TRACKING', 'ENVIO'].includes(id);
+      return ['ID', 'UNIT_ID', 'CODIGO', 'CÓDIGO', 'PACOTE', 'TRACKING', 'ENVIO'].includes(id);
     });
 
     let valorRealIndex = -1;
     let valorUsdIndex = -1;
     let rotaOtimizadaIndex = -1;
+    let rotaUnitIndex = 1;
+    let idIndex = 0;
 
     if (headerRow) {
       headerRow.forEach((col, idx) => {
@@ -277,6 +279,8 @@ export function ControleRefugo({ currentUser }: { currentUser?: User | null }) {
         if (c.includes('VALOR REAL')) valorRealIndex = idx;
         if (c.includes('VALOR USD')) valorUsdIndex = idx;
         if (c === 'ROTA OTIMIZADA' || c === 'ROTA_OTIMIZADA') rotaOtimizadaIndex = idx;
+        if (['ID', 'UNIT_ID', 'CODIGO', 'PACOTE', 'TRACKING', 'ENVIO'].includes(c)) idIndex = idx;
+        if (['UNIT', 'ROUTE_NAME', 'ROTA_ORIGINAL', 'ROTA', 'ROUTE'].includes(c)) rotaUnitIndex = idx;
       });
     } else {
       valorRealIndex = 5;
@@ -284,8 +288,8 @@ export function ControleRefugo({ currentUser }: { currentUser?: User | null }) {
     }
 
     return result.data.flatMap(values => {
-      const id = String(values[0] || '').trim().toUpperCase();
-      if (!id || ['ID', 'CODIGO', 'CÓDIGO', 'PACOTE', 'TRACKING', 'ENVIO'].includes(id)) return [];
+      const id = String(values[idIndex] || '').trim().toUpperCase();
+      if (!id || ['ID', 'UNIT_ID', 'CODIGO', 'CÓDIGO', 'PACOTE', 'TRACKING', 'ENVIO'].includes(id)) return [];
 
       let isHighPriority = false;
       [valorRealIndex, valorUsdIndex].forEach(idx => {
@@ -300,7 +304,7 @@ export function ControleRefugo({ currentUser }: { currentUser?: User | null }) {
 
       return [{
         id,
-        rota: String(values[rotaOtimizadaIndex] || values[1] || 'Sem Rota').trim(),
+        rota: String(values[rotaOtimizadaIndex] || values[rotaUnitIndex] || 'Sem Rota').trim(),
         isHighPriority,
         rawFields: Object.fromEntries(values.map((value, index) => [String(index), value]))
       }];

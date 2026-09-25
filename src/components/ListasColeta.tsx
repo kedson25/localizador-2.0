@@ -544,17 +544,22 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
           skipEmptyLines: true,
           complete: (results) => {
             const csvRows = results.data as any[][];
-            const header = csvRows.find((row: any) => Array.isArray(row) && String(row[0] || '').trim().toUpperCase() === 'ID');
+            const header = csvRows.find((row: any) => Array.isArray(row) && ['ID', 'UNIT_ID'].includes(String(row[0] || '').trim().toUpperCase()));
             const rotaOtimizadaIndex = header
               ? header.findIndex((column: any) => String(column || '').trim().toUpperCase()
                 .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
                 .replace(/\s+/g, '_') === 'ROTA_OTIMIZADA')
               : -1;
+            const rotaUnitIndex = header
+              ? header.findIndex((column: any) => ['UNIT', 'ROUTE_NAME', 'ROTA_ORIGINAL', 'ROTA', 'ROUTE'].includes(
+                String(column || '').trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '_')
+              ))
+              : 1;
             const parsedRows: RefugoRow[] = csvRows.map((row: any) => {
               const values = Array.isArray(row) ? row : Object.values(row);
               const idRaw = String(values[0] || '').trim().toUpperCase();
-              if (!idRaw || idRaw === 'ID' || idRaw === 'CODIGO' || idRaw === 'CÓDIGO' || idRaw === 'PACOTE' || idRaw === 'TRACKING' || idRaw === 'ENVIO') return null;
-              const rotaRaw = String(values[rotaOtimizadaIndex] || values[1] || 'Sem Rota').trim();
+              if (!idRaw || ['ID', 'UNIT_ID', 'CODIGO', 'CÓDIGO', 'PACOTE', 'TRACKING', 'ENVIO'].includes(idRaw)) return null;
+              const rotaRaw = String(values[rotaOtimizadaIndex] || values[rotaUnitIndex >= 0 ? rotaUnitIndex : 1] || 'Sem Rota').trim();
               const rawFieldsObj: Record<string, string> = {};
               values.forEach((p: any, idx: number) => { rawFieldsObj[idx.toString()] = String(p || ''); });
               return {
