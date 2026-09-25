@@ -18,6 +18,8 @@ export const IdLookup: React.FC<IdLookupProps> = ({ rows, onNavigateToUpload }) 
   const [listas, setListas] = useState<ColetaLista[]>([]);
   const [showGruposModal, setShowGruposModal] = useState(false);
   const [serverFoundMap, setServerFoundMap] = useState<Map<string, { item: ColetaItem; listaId: string }>>(new Map());
+  const [isSearchingLists, setIsSearchingLists] = useState(false);
+  const [listSearchError, setListSearchError] = useState('');
 
   // Paginação da Consulta de IDs para suportar 9.000+ IDs sem travar
   const [lookupPage, setLookupPage] = useState<number>(1);
@@ -33,6 +35,8 @@ export const IdLookup: React.FC<IdLookupProps> = ({ rows, onNavigateToUpload }) 
   useEffect(() => {
     if (!inputText || !inputText.trim()) {
       setServerFoundMap(new Map());
+      setIsSearchingLists(false);
+      setListSearchError('');
       return;
     }
     const rawTerms = inputText
@@ -42,12 +46,28 @@ export const IdLookup: React.FC<IdLookupProps> = ({ rows, onNavigateToUpload }) 
 
     if (rawTerms.length === 0) return;
 
+    let cancelled = false;
+    setIsSearchingLists(true);
+    setListSearchError('');
     const timer = setTimeout(async () => {
-      const results = await searchItemsAcrossAllListas(rawTerms);
-      setServerFoundMap(results);
+      try {
+        const results = await searchItemsAcrossAllListas(rawTerms);
+        if (cancelled) return;
+        setServerFoundMap(results);
+      } catch (error) {
+        if (cancelled) return;
+        console.error('Falha ao buscar IDs nas listas e grupos:', error);
+        setServerFoundMap(new Map());
+        setListSearchError('A busca nas listas está temporariamente indisponível. A cota do Firebase precisa ser restabelecida.');
+      } finally {
+        if (!cancelled) setIsSearchingLists(false);
+      }
     }, 250);
 
-    return () => clearTimeout(timer);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [inputText]);
 
   const matches: LookupMatch[] = useMemo(() => {
@@ -533,7 +553,9 @@ export const IdLookup: React.FC<IdLookupProps> = ({ rows, onNavigateToUpload }) 
                 {inputText.trim() !== "" ? (
                   <span className="bg-blue-50 text-blue-800 border border-blue-200 px-2.5 py-1 rounded-md text-[11px] font-mono font-bold flex items-center gap-1.5 shadow-sm">
                     <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span>
-                    {matches.length} {matches.length === 1 ? "ID detectado" : "IDs detectados"}
+                    {isSearchingLists
+                      ? 'Buscando nas listas e grupos...'
+                      : `${matches.length} ${matches.length === 1 ? "ID detectado" : "IDs detectados"}`}
                   </span>
                 ) : (
                   <span className="text-xs font-mono text-gray-400 font-medium">Nenhum ID detectado</span>
@@ -566,6 +588,13 @@ export const IdLookup: React.FC<IdLookupProps> = ({ rows, onNavigateToUpload }) 
                 <Upload className="w-4 h-4" />
                 Adicionar CSV opcional
               </button>
+            </div>
+          )}
+
+          {listSearchError && (
+            <div className="mt-3 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-xs font-medium text-red-800">
+              <AlertCircle className="h-5 w-5 shrink-0 text-red-600" />
+              <p>{listSearchError}</p>
             </div>
           )}
         </div>

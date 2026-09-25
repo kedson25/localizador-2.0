@@ -1,6 +1,6 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { initializeFirestore, getFirestore, collection, collectionGroup, doc, setDoc, getDoc, getDocs, updateDoc, deleteDoc, writeBatch, serverTimestamp, onSnapshot, query, where, orderBy, limit, startAfter, endBefore, increment, getCountFromServer, deleteField, QueryDocumentSnapshot, memoryLocalCache, enableNetwork, disableNetwork, setLogLevel } from 'firebase/firestore';
+import { initializeFirestore, getFirestore, collection, doc, setDoc, getDoc, getDocs, updateDoc, deleteDoc, writeBatch, serverTimestamp, onSnapshot, query, where, orderBy, limit, startAfter, endBefore, increment, getCountFromServer, deleteField, QueryDocumentSnapshot, memoryLocalCache, enableNetwork, disableNetwork, setLogLevel } from 'firebase/firestore';
 
 // Silencia avisos internos de conectividade temporária do SDK do Firestore
 try {
@@ -1188,8 +1188,9 @@ export async function searchItemsInLista(
 }
 
 /**
- * Pesquisa múltiplos IDs diretamente no servidor em todas as subcoleções de listas.
- * Utiliza collectionGroup('itens') para busca ultra-rápida sem transferir dados locais.
+ * Pesquisa múltiplos IDs diretamente no servidor em todas as listas.
+ * A consulta por lista não depende de índice global COLLECTION_GROUP e também
+ * cobre documentos antigos que ainda mantêm o array `itens` no documento pai.
  */
 export async function searchItemsAcrossAllListas(
   terms: string[]
@@ -1200,48 +1201,75 @@ export async function searchItemsAcrossAllListas(
   const uniqueTerms = Array.from(new Set(terms.map(t => t.trim().toUpperCase()).filter(Boolean)));
   if (uniqueTerms.length === 0) return results;
 
+  const cleanTerms = Array.from(new Set(uniqueTerms.map(cleanDigits).filter(Boolean)));
+  const wantedTerms = new Set([...uniqueTerms, ...cleanTerms]);
+
+  const addIfMatch = (rawItem: ColetaItem, listaId: string) => {
+    const codigo = String(rawItem.codigo || '').trim();
+    const codigoUpper = codigo.toUpperCase();
+    const codigoClean = cleanDigits(String(rawItem.codigoClean || codigo));
+    if (!codigo || (!wantedTerms.has(codigoUpper) && !wantedTerms.has(codigoClean))) return;
+
+    const item: ColetaItem = { ...rawItem, codigo, codigoClean };
+    results.set(codigoUpper, { item, listaId });
+    if (codigoClean) results.set(codigoClean, { item, listaId });
+  };
+
+  // Se a pessoa acabou de abrir uma lista/grupo, os itens já estão em memória e
+  // podem ser encontrados até quando o Firestore estiver temporariamente sem cota.
+  listaItensCache.forEach((items, listaId) => {
+    items.forEach(item => addIfMatch(item, listaId));
+  });
+
+  const allTermsFoundInCache = uniqueTerms.every(term => {
+    const cleanTerm = cleanDigits(term);
+    return results.has(term) || Boolean(cleanTerm && results.has(cleanTerm));
+  });
+  if (allTermsFoundInCache) return results;
+
   try {
-    const chunkSize = 30; // Limite do operador 'in' do Firestore
-    for (let i = 0; i < uniqueTerms.length; i += chunkSize) {
-      const chunk = uniqueTerms.slice(i, i + chunkSize);
-      const cleanChunk = chunk.map(cleanDigits).filter(Boolean);
+    const listasSnapshot = await getDocs(collection(db, COLETA_LISTAS_COLLECTION));
+    const chunkSize = 30;
+    let successfulQueries = 0;
+    let failedQueries = 0;
 
-      // 1. Busca por codigo
-      const qCodigo = query(
-        collectionGroup(db, 'itens'),
-        where('codigo', 'in', chunk)
-      );
-      const snapCodigo = await getDocs(qCodigo);
-      snapCodigo.docs.forEach(d => {
-        const item = { ...d.data(), id: d.id } as ColetaItem;
-        const listaId = d.ref.parent.parent?.id || '';
-        results.set(item.codigo.toUpperCase(), { item, listaId });
-        if (item.codigoClean) {
-          results.set(item.codigoClean, { item, listaId });
+    await Promise.all(listasSnapshot.docs.map(async listaDoc => {
+      const listaId = listaDoc.id;
+      const listaData = listaDoc.data();
+
+      if (Array.isArray(listaData.itens)) {
+        listaData.itens.forEach((item: ColetaItem) => addIfMatch(item, listaId));
+      }
+
+      const itensRef = collection(db, COLETA_LISTAS_COLLECTION, listaId, 'itens');
+      for (let index = 0; index < uniqueTerms.length; index += chunkSize) {
+        const codigoChunk = uniqueTerms.slice(index, index + chunkSize);
+        const cleanChunk = Array.from(new Set(codigoChunk.map(cleanDigits).filter(Boolean)));
+        const searches = [getDocs(query(itensRef, where('codigo', 'in', codigoChunk)))];
+        if (cleanChunk.length > 0) {
+          searches.push(getDocs(query(itensRef, where('codigoClean', 'in', cleanChunk))));
         }
-      });
 
-      // 2. Busca por codigoClean
-      if (cleanChunk.length > 0) {
-        const qClean = query(
-          collectionGroup(db, 'itens'),
-          where('codigoClean', 'in', cleanChunk)
-        );
-        const snapClean = await getDocs(qClean);
-        snapClean.docs.forEach(d => {
-          const item = { ...d.data(), id: d.id } as ColetaItem;
-          const listaId = d.ref.parent.parent?.id || '';
-          if (!results.has(item.codigo.toUpperCase())) {
-            results.set(item.codigo.toUpperCase(), { item, listaId });
+        const snapshots = await Promise.allSettled(searches);
+        snapshots.forEach(search => {
+          if (search.status !== 'fulfilled') {
+            failedQueries += 1;
+            return;
           }
-          if (item.codigoClean && !results.has(item.codigoClean)) {
-            results.set(item.codigoClean, { item, listaId });
-          }
+          successfulQueries += 1;
+          search.value.docs.forEach(itemDoc => {
+            addIfMatch({ ...itemDoc.data(), id: itemDoc.id } as ColetaItem, listaId);
+          });
         });
       }
+    }));
+
+    if (failedQueries > 0 && successfulQueries === 0 && results.size === 0) {
+      throw new Error('O Firestore não respondeu à busca das listas. Verifique a cota do projeto.');
     }
   } catch (error) {
     console.error('Erro ao pesquisar itens em todas as listas no servidor:', error);
+    if (results.size === 0) throw error;
   }
 
   return results;
@@ -1266,14 +1294,24 @@ export async function getAllItemsForExport(listaId: string): Promise<ColetaItem[
  * Busca itens de um grupo específico no servidor.
  */
 export async function getItemsOfGrupo(listaId: string, grupoId: string): Promise<ColetaItem[]> {
+  const cachedItems = listaItensCache.get(listaId) || [];
+  const cachedGroup = cachedItems.filter(item => item.grupoId === grupoId);
+  if (cachedGroup.length > 0) return cachedGroup;
+
   try {
     const colRef = collection(db, COLETA_LISTAS_COLLECTION, listaId, 'itens');
     const q = query(colRef, where('grupoId', '==', grupoId));
     const snap = await getDocs(q);
-    return snap.docs.map(d => ({ ...d.data(), id: d.id } as ColetaItem));
+    const groupItems = snap.docs.map(d => ({ ...d.data(), id: d.id } as ColetaItem));
+    if (groupItems.length > 0) {
+      const merged = new Map(cachedItems.map(item => [item.id, item]));
+      groupItems.forEach(item => merged.set(item.id, item));
+      listaItensCache.set(listaId, Array.from(merged.values()));
+    }
+    return groupItems;
   } catch (error) {
     console.error('Erro ao buscar itens do grupo no servidor:', error);
-    return [];
+    return cachedGroup;
   }
 }
 
