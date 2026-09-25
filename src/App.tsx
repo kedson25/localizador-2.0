@@ -7,16 +7,17 @@ import { DashboardShell } from './components/DashboardShell';
 import { IdLookup } from './components/IdLookup';
 import { CorrelacaoIds } from './components/CorrelacaoIds';
 import { IdRemover } from './components/IdRemover';
-import { WhatsappReport } from './components/WhatsappReport';
+import { WhatsappReportEnhanced } from './components/WhatsappReportEnhanced';
 import { CsvUploader } from './components/CsvUploader';
 import { StatsSummary } from './components/StatsSummary';
 import { ControleRefugoClean } from './components/ControleRefugoClean';
-import { ListasColeta } from './components/ListasColeta';
+import { ListasColetaEnhanced } from './components/ListasColetaEnhanced';
 import { ListasDashboard } from './components/ListasDashboard';
 import { BrancasPanelWithCsvFallback } from './components/BrancasPanelWithCsvFallback';
 import { SettingsPage } from './components/SettingsPage';
 import { Login } from './components/Login';
 import { AdminPanel } from './components/AdminPanel';
+import { OperationNavigation } from './components/OperationNavigation';
 import { User, getCurrentUser } from './lib/auth';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { saveToColetor, loadFromColetor, clearColetor } from './lib/firebase';
@@ -43,7 +44,7 @@ export default function App() {
                       location.pathname.startsWith('/remover') ? 'Remover' :
                       location.pathname.startsWith('/reporte') ? 'Reporte' :
                       location.pathname.startsWith('/configuracoes') ? 'Configurações' :
-                      location.pathname.startsWith('/admin') ? 'Admin' : 'Hub / Início';
+                      location.pathname.startsWith('/admin') ? 'Admin' : 'Módulos';
 
       try {
         const activePresences = JSON.parse(localStorage.getItem('app_active_presences') || '{}');
@@ -119,6 +120,7 @@ export default function App() {
 
   const dedicatedOperation = (content: React.ReactNode) => (
     <div className="min-h-screen bg-[#EBEBEB] text-[#333333]">
+      <OperationNavigation />
       <main className="mx-auto w-full max-w-7xl space-y-4 px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
         {content}
       </main>
@@ -154,7 +156,7 @@ export default function App() {
             }
           />
 
-          {/* Telas operacionais dedicadas: sem menu lateral. */}
+          {/* Telas operacionais dedicadas: navegação compacta própria. */}
           <Route
             path="/refugo"
             element={dedicatedOperation(<ControleRefugoClean currentUser={currentUser} />)}
@@ -162,7 +164,7 @@ export default function App() {
 
           {isAuthenticated && (
             <>
-              {/* O Hub continua sendo a página de Módulos. */}
+              {/* Módulos é a única página inicial do sistema. */}
               <Route
                 path="/"
                 element={
@@ -175,7 +177,6 @@ export default function App() {
                 }
               />
 
-              {/* Páginas normais permanecem dentro do mesmo dashboard/sidebar. */}
               <Route
                 path="/configuracoes"
                 element={insideDashboard(<SettingsPage currentUser={currentUser} />)}
@@ -215,7 +216,7 @@ export default function App() {
               {(currentUser?.isAdmin || currentUser?.allowedGroups?.includes('reporte')) && (
                 <Route
                   path="/reporte"
-                  element={insideDashboard(<WhatsappReport rows={rows} />)}
+                  element={insideDashboard(<WhatsappReportEnhanced rows={rows} />)}
                 />
               )}
 
@@ -227,7 +228,7 @@ export default function App() {
                   />
                   <Route
                     path="/listas/:id"
-                    element={dedicatedOperation(<ListasColeta currentUser={currentUser} />)}
+                    element={dedicatedOperation(<ListasColetaEnhanced currentUser={currentUser} />)}
                   />
                 </>
               )}
