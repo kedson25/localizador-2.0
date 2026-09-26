@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle,
+  AlertTriangle,
   BarChart3,
   Check,
   CheckCircle2,
@@ -30,6 +31,7 @@ import {
   listenToListas,
   listenToRefugoHistoricoMetricas,
   listenToRefugoScans,
+  getAllItemsForExport,
   saveLista,
 } from '../lib/firebase';
 import { ColetaLista, RefugoHistoricoMetrica } from '../types';
@@ -146,7 +148,8 @@ function listStats(lista: ColetaLista) {
 
 export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
   const navigate = useNavigate();
-  const [adminTab, setAdminTab] = useState<'metricas' | 'usuarios' | 'supabase'>('metricas');
+  const [adminTab, setAdminTab] = useState<'metricas' | 'erros' | 'usuarios' | 'supabase'>('metricas');
+  const [routingErrors, setRoutingErrors] = useState<any[]>([]);
   const [quickFilter, setQuickFilter] = useState<'todos' | 'hoje' | 'ontem' | '7dias' | '15dias' | 'mes_atual' | 'custom'>('todos');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -216,6 +219,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
       unsubHistorico();
     };
   }, [currentUser]);
+
+  useEffect(() => {
+    const load = () => {
+      try { setRoutingErrors(JSON.parse(localStorage.getItem('routing_errors_report_v1') || '[]')); }
+      catch { setRoutingErrors([]); }
+    };
+    load();
+    window.addEventListener('routing-errors-report-updated', load);
+    return () => window.removeEventListener('routing-errors-report-updated', load);
+  }, []);
 
   useEffect(() => {
     if (!selectedListaForReport) return;
@@ -333,9 +346,17 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
 
   const pendingUsers = users.filter(user => !user.isApproved);
 
-  const openReport = (lista: ColetaLista) => {
-    const stats = listStats(lista);
-    setSelectedListaForReport(lista);
+  const openReport = async (lista: ColetaLista) => {
+    let itens = lista.itens || [];
+    try {
+      const loaded = await getAllItemsForExport(lista.id);
+      if (loaded.length > 0) itens = loaded;
+    } catch (error) {
+      console.warn('Não foi possível carregar itens completos da lista:', error);
+    }
+    const reportLista = { ...lista, itens, totalItens: itens.length || lista.totalItens, totalValidados: itens.filter(item => item.validado).length || lista.totalValidados };
+    const stats = listStats(reportLista);
+    setSelectedListaForReport(reportLista);
     setReportTab(stats.pendentes > 0 ? 'nao_validados' : 'todos');
     setReportSearch('');
   };
@@ -462,12 +483,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
         {[
           ['metricas', BarChart3, 'Visão geral'],
           ['usuarios', Users, 'Usuários'],
+          ['erros', AlertTriangle, 'Erros de roteamento'],
           ['supabase', Database, 'Banco'],
         ].map(([id, Icon, label]) => (
           <button
             key={String(id)}
             type="button"
-            onClick={() => setAdminTab(id as 'metricas' | 'usuarios' | 'supabase')}
+            onClick={() => setAdminTab(id as 'metricas' | 'erros' | 'usuarios' | 'supabase')}
             className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${adminTab === id ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}
           >
             <Icon className="h-4 w-4" />
@@ -614,6 +636,29 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
             </div>
           </details>
         </div>
+      )}
+
+      {adminTab === 'erros' && (
+        <section className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+          <div className="border-b border-gray-100 px-4 py-3">
+            <h2 className="text-sm font-bold text-gray-900">Erros de roteamento</h2>
+            <p className="text-xs text-gray-400">{routingErrors.length} IDs errados encontrados em outra lista</p>
+          </div>
+          {routingErrors.length === 0 ? (
+            <div className="px-4 py-12 text-center text-sm text-gray-400">Nenhum erro salvo. Use “Salvar errados” na Busca de IDs.</div>
+          ) : (
+            <div className="divide-y divide-gray-100">
+              {routingErrors.map((error, index) => (
+                <div key={`${error.id}-${index}`} className="grid gap-2 px-4 py-3 text-xs md:grid-cols-[160px_1fr_1fr_auto] md:items-center">
+                  <span className="font-mono font-bold text-gray-900">{error.id}</span>
+                  <span><strong>Origem:</strong> {error.sourceListaNome || '-'}</span>
+                  <span><strong>Encontrado em:</strong> {(error.foundIn || error.lists || []).join(' • ')}</span>
+                  <span className="rounded bg-red-50 px-2 py-1 text-[10px] font-bold text-red-700">{error.sourceCiclo || 'PM'} → outra lista</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
       )}
 
       {adminTab === 'usuarios' && (

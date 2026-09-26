@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { AlertTriangle, Layers, ListPlus, Loader2, Trash2, X } from 'lucide-react';
+import { AlertTriangle, Layers, ListPlus, Loader2, Save, Trash2, X } from 'lucide-react';
 import type { ColetaLista, CsvRow } from '../types';
 import { cleanDigits } from '../utils/csvParser';
 import { getItemsOfGrupo, listenToListas } from '../lib/firebase';
@@ -16,13 +16,6 @@ interface IdLookupEnhancedProps {
 }
 
 type Cycle = 'AM' | 'PM' | 'SD';
-type RoutingErrorReport = {
-  id: string;
-  cycles: string[];
-  lists: string[];
-  detectedAt: string;
-};
-
 const ROUTING_ERRORS_STORAGE_KEY = 'routing_errors_report_v1';
 
 function parseTerms(value: string): string[] {
@@ -107,13 +100,10 @@ export const IdLookupEnhanced: React.FC<IdLookupEnhancedProps> = (props) => {
   const [listas, setListas] = useState<ColetaLista[]>([]);
   const [showTodayGroups, setShowTodayGroups] = useState(false);
   const [loadingGroupKey, setLoadingGroupKey] = useState('');
-  const [routingErrorsReport, setRoutingErrorsReport] = useState<RoutingErrorReport[]>(() => {
-    try {
-      return JSON.parse(localStorage.getItem(ROUTING_ERRORS_STORAGE_KEY) || '[]');
-    } catch {
-      return [];
-    }
-  });
+  const [showSaveErrors, setShowSaveErrors] = useState(false);
+  const [sourceListaId, setSourceListaId] = useState('');
+  const routingErrorsReport: Array<{ id: string; lists: string[] }> = [];
+  const clearRoutingErrorsReport = () => {};
 
   useEffect(() => {
     const unsubscribe = listenToListas(data => setListas(data));
@@ -216,12 +206,11 @@ export const IdLookupEnhanced: React.FC<IdLookupEnhancedProps> = (props) => {
     return rows;
   }, [terms, occurrences]);
 
-  const routingErrors = useMemo(() => terms.flatMap(term => {
+  const routingCandidates = useMemo(() => terms.flatMap(term => {
     const digits = cleanDigits(term);
     const found = occurrences.get(term.toUpperCase()) || (digits ? occurrences.get(digits) : undefined) || [];
     const unique = Array.from(new Map(found.map(item => [occurrenceKey(item), item])).values());
     const cycles = Array.from(new Set(unique.map(item => cycleShort(item.listaSaida)).filter(Boolean)));
-    if (!cycles.includes('SD')) return [];
     return [{
       id: term,
       cycles,
@@ -230,22 +219,28 @@ export const IdLookupEnhanced: React.FC<IdLookupEnhancedProps> = (props) => {
     }];
   }), [terms, occurrences]);
 
-  useEffect(() => {
-    if (routingErrors.length === 0) return;
-    setRoutingErrorsReport(current => {
-      const merged = new Map(current.map(item => [item.id.toUpperCase(), item]));
-      routingErrors.forEach(item => merged.set(item.id.toUpperCase(), item));
-      const next = Array.from(merged.values())
-        .sort((a, b) => b.detectedAt.localeCompare(a.detectedAt))
-        .slice(0, 500);
-      localStorage.setItem(ROUTING_ERRORS_STORAGE_KEY, JSON.stringify(next));
-      return next;
-    });
-  }, [routingErrors]);
-
-  const clearRoutingErrorsReport = () => {
-    localStorage.removeItem(ROUTING_ERRORS_STORAGE_KEY);
-    setRoutingErrorsReport([]);
+  const saveRoutingErrors = () => {
+    const source = listas.find(lista => lista.id === sourceListaId);
+    if (!source) return;
+    const errors = routingCandidates
+      .map(candidate => ({
+        ...candidate,
+        sourceListaId: source.id,
+        sourceListaNome: source.nome,
+        sourceCiclo: cycleShort(source.saidaPadrao || source.nome),
+        foundIn: candidate.lists,
+      }))
+      .filter(candidate => !candidate.foundIn.includes(source.nome));
+    if (errors.length === 0) {
+      window.alert('Nenhum ID desta busca foi encontrado em outra lista.');
+      return;
+    }
+    const previous = JSON.parse(localStorage.getItem(ROUTING_ERRORS_STORAGE_KEY) || '[]');
+    const next = [...errors, ...previous].slice(0, 500);
+    localStorage.setItem(ROUTING_ERRORS_STORAGE_KEY, JSON.stringify(next));
+    window.dispatchEvent(new Event('routing-errors-report-updated'));
+    setShowSaveErrors(false);
+    window.alert(`${errors.length} erro(s) de roteamento salvo(s) na aba Relatórios.`);
   };
 
   const importGroup = async (lista: ColetaLista, grupoId: string) => {
@@ -455,7 +450,7 @@ export const IdLookupEnhanced: React.FC<IdLookupEnhancedProps> = (props) => {
         </section>
       )}
 
-      {routingErrorsReport.length > 0 && (
+      {false && routingErrorsReport.length > 0 && (
         <section className="overflow-hidden rounded-2xl border border-amber-200 bg-white shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-amber-100 bg-amber-50 px-4 py-3">
             <div className="flex items-center gap-2">
@@ -489,6 +484,31 @@ export const IdLookupEnhanced: React.FC<IdLookupEnhancedProps> = (props) => {
             ))}
           </div>
         </section>
+      )}
+
+      {routingCandidates.length > 0 && (
+        <div className="flex justify-end">
+          <button type="button" onClick={() => setShowSaveErrors(true)} className="inline-flex items-center gap-2 rounded-lg bg-amber-600 px-3 py-2 text-xs font-bold text-white hover:bg-amber-700">
+            <Save className="h-3.5 w-3.5" /> Salvar errados
+          </button>
+        </div>
+      )}
+
+      {showSaveErrors && createPortal(
+        <div className="fixed inset-0 z-[10030] flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl">
+            <h3 className="text-sm font-black text-gray-900">Salvar erros de roteamento</h3>
+            <p className="mt-1 text-xs text-gray-500">Informe de qual lista estes IDs deveriam ser. O relatório registrará as outras listas em que foram encontrados.</p>
+            <select value={sourceListaId} onChange={event => setSourceListaId(event.target.value)} className="mt-4 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm">
+              <option value="">Selecione a lista de origem</option>
+              {listas.filter(lista => lista.tipo !== 'grupos').map(lista => <option key={lista.id} value={lista.id}>{lista.nome} — {cycleShort(lista.saidaPadrao)}</option>)}
+            </select>
+            <div className="mt-4 flex justify-end gap-2">
+              <button type="button" onClick={() => setShowSaveErrors(false)} className="rounded-lg px-3 py-2 text-xs font-bold text-gray-600">Cancelar</button>
+              <button type="button" disabled={!sourceListaId} onClick={saveRoutingErrors} className="rounded-lg bg-gray-900 px-3 py-2 text-xs font-bold text-white disabled:opacity-40">Salvar no relatório</button>
+            </div>
+          </div>
+        </div>, document.body
       )}
 
       {groupsModal}
