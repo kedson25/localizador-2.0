@@ -23,6 +23,7 @@ import {
 
 import { BrancasPacoteTimelineModal } from './BrancasPacoteTimelineModal';
 import { User } from '../lib/auth';
+import { getLastBrancasCsvReport } from '../lib/brancasCsvFallback';
 
 interface BrancasPanelProps {
   currentUser?: User | null;
@@ -244,10 +245,17 @@ export const BrancasPanel: React.FC<BrancasPanelProps> = ({
     setErrorMsg(null);
 
     try {
-      const data = await getRelatorioBrancas(
-        snapshotId,
-        autoCheck
-      );
+      const data = localMode
+        ? getLastBrancasCsvReport() || {
+            hasData: false, totalBrancas: 0, totalRotas: 0,
+            totalRoteirizados: 0, totalNaoRoteirizados: 0,
+            totalRecuperados: 0, totalContinuamFalhando: 0,
+            roteirizados: 0, naoRoteirizados: 0, recuperados: 0,
+            continuamFalhando: 0, taxaRoteirizacao: 0, motivos: {},
+            statusCounts: {}, itemsNaoRoteirizados: [], recentRuns: [],
+            statusBanner: 'Carregue os CSVs de Brancas e Rotas para iniciar a análise local.',
+          }
+        : await getRelatorioBrancas(snapshotId, autoCheck);
 
       setRelatorio(data);
 
@@ -1344,6 +1352,7 @@ export const BrancasPanel: React.FC<BrancasPanelProps> = ({
       {/* TIMELINE */}
       <BrancasPacoteTimelineModal
         idPacote={selectedPacoteId}
+        localMode={localMode}
         onClose={() =>
           setSelectedPacoteId(null)
         }

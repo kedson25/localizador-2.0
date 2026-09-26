@@ -61,4 +61,24 @@ describe('análise local de Brancas por CSV', () => {
       SD1: 1,
     });
   });
+
+  it('aceita arquivos simples de IDs, sem cabeçalho', () => {
+    const report = analisarBrancasPorCsv(
+      '1001\n1002\n1003', '1001\n1003',
+      { brancas: 'brancas.csv', rotas: 'rotas.csv' }
+    );
+
+    expect(report.totalBrancas).toBe(3);
+    expect(report.totalRoteirizados).toBe(2);
+    expect(report.totalNaoRoteirizados).toBe(1);
+  });
+
+  it('casa IDs alfanuméricos mesmo com diferença de maiúsculas', () => {
+    const report = analisarBrancasPorCsv(
+      'ID\nabc-100', 'ID,ROTA\nABC-100,R1',
+      { brancas: 'brancas.csv', rotas: 'rotas.csv' }
+    );
+
+    expect(report.totalRoteirizados).toBe(1);
+  });
 });

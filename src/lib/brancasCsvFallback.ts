@@ -65,7 +65,7 @@ function normalizePackageId(value: unknown): string {
     text = text.slice(0, -2);
   }
 
-  return text;
+  return text.toUpperCase();
 }
 
 function normalizeCycle(raw: string): string {
@@ -149,6 +149,17 @@ function parseCsv(text: string): CsvRecord[] {
   const rows = (parsed.data || [])
     .map((row) => (Array.isArray(row) ? row.map((cell) => String(cell ?? '').trim()) : []))
     .filter((row) => row.some((cell) => cell !== ''));
+
+  if (rows.length === 0) return [];
+
+  const firstColumnLooksLikeId = rows.every((row) => {
+    const value = normalizePackageId(row[0]);
+    return Boolean(value) && /^[A-Z0-9_-]{3,}$/.test(value);
+  });
+
+  if (firstColumnLooksLikeId) {
+    return rows.map((row) => ({ ID: row[0] || '', CICLO: row[1] || '', ROTA: row[2] || '' }));
+  }
 
   if (rows.length < 2) return [];
 

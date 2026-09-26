@@ -2,14 +2,17 @@ import React, { useEffect, useState } from 'react';
 import { X, Clock, CheckCircle2, AlertTriangle, Sparkles, RefreshCw, Layers, Calendar, ArrowDown, HelpCircle, Tag } from 'lucide-react';
 import { getHistoricoPacote, PacoteHistoricoResponse } from '../lib/brancasApi';
 import { translateRoutingPattern } from '../lib/operationalTranslator';
+import { getBrancasCsvHistory } from '../lib/brancasCsvFallback';
 
 interface BrancasPacoteTimelineModalProps {
   idPacote: string | null;
+  localMode?: boolean;
   onClose: () => void;
 }
 
 export const BrancasPacoteTimelineModal: React.FC<BrancasPacoteTimelineModalProps> = ({
   idPacote,
+  localMode = false,
   onClose,
 }) => {
   const [loading, setLoading] = useState(true);
@@ -23,7 +26,20 @@ export const BrancasPacoteTimelineModal: React.FC<BrancasPacoteTimelineModalProp
     setLoading(true);
     setError(null);
 
-    getHistoricoPacote(idPacote)
+    const historyRequest = localMode
+      ? Promise.resolve().then(() => {
+          const movimentacoes = getBrancasCsvHistory(idPacote);
+          const last = movimentacoes[movimentacoes.length - 1];
+          return {
+            idPacote, found: movimentacoes.length > 0,
+            ultimoResultado: last?.resultado || null,
+            ultimoCicloTentativa: last?.cicloTentativa || null,
+            movimentacoes,
+          } as PacoteHistoricoResponse;
+        })
+      : getHistoricoPacote(idPacote);
+
+    historyRequest
       .then(data => {
         if (mounted) {
           setHistorico(data);
@@ -40,7 +56,7 @@ export const BrancasPacoteTimelineModal: React.FC<BrancasPacoteTimelineModalProp
     return () => {
       mounted = false;
     };
-  }, [idPacote]);
+  }, [idPacote, localMode]);
 
   if (!idPacote) return null;
 
