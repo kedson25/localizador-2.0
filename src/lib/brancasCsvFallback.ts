@@ -33,6 +33,7 @@ type CsvSequenceState = {
   unresolved: ItemNaoRoteirizado[];
   lastAttemptKey: string;
   movements: Record<string, MovimentacaoPacote[]>;
+  routedByList?: Record<string, string[]>;
   lastReport?: BrancaRelatorioResponse;
 };
 
@@ -58,10 +59,12 @@ function normalizePackageId(value: unknown): string {
 function normalizeCycle(raw: string): string {
   const value = String(raw || '').trim().toUpperCase();
   if (!value) return '';
-  const am = value.match(/\bAM\s*[-_ ]?(\d+)?\b/i);
+  const am = value.match(/(?:^|[^A-Z0-9])AM(?:[-_ ]?(\d+))?(?=$|[^A-Z0-9])/i);
   if (am) return `AM${am[1] || '1'}`;
-  const pm = value.match(/\bPM\s*[-_ ]?(\d+)?\b/i);
+  const pm = value.match(/(?:^|[^A-Z0-9])PM(?:[-_ ]?(\d+))?(?=$|[^A-Z0-9])/i);
   if (pm) return `PM${pm[1] || '1'}`;
+  const sd = value.match(/(?:^|[^A-Z0-9])SD(?:[-_ ]?(\d+))?(?=$|[^A-Z0-9])/i);
+  if (sd) return `SD${sd[1] || '1'}`;
   return value.replace(/\s+/g, ' ');
 }
 
@@ -70,6 +73,7 @@ function cycleRank(raw: string): number {
   const suffix = Number(value.match(/(\d+)$/)?.[1] || 1);
   if (value.startsWith('AM')) return 100 + suffix;
   if (value.startsWith('PM')) return 200 + suffix;
+  if (value.startsWith('SD')) return 300 + suffix;
   return 50;
 }
 
@@ -313,6 +317,7 @@ export function analisarBrancasPorCsv(
       unresolved: [],
       lastAttemptKey: '',
       movements: {},
+      routedByList: {},
     };
     initial = true;
   }
@@ -320,8 +325,9 @@ export function analisarBrancasPorCsv(
   const routeValues = Array.from(rotasMap.values());
   const routeDates = routeValues.map((route) => parseDateKey(route.data)).filter(Boolean).sort();
   const routeCycles = routeValues.map((route) => normalizeCycle(route.ciclo)).filter(Boolean).sort((a, b) => cycleRank(a) - cycleRank(b));
+  const fileCycle = normalizeCycle(sourceNames?.rotas || '');
   const attemptDate = initial ? state.baseDate : routeDates.at(-1) || todayKey();
-  const attemptCycle = initial ? state.baseCycle : routeCycles.at(-1) || state.baseCycle;
+  const attemptCycle = routeCycles.at(-1) || fileCycle || state.baseCycle;
   const attemptKey = `${attemptDate}|${attemptCycle}`;
   const sameAttempt = state.lastAttemptKey === attemptKey;
 
@@ -415,6 +421,25 @@ export function analisarBrancasPorCsv(
   }
 
   const baseCount = state.baseRows.length;
+  // Comparação inteiramente local: todo ID da base que aparecer no arquivo de
+  // rotas é roteirizado. O resultado é separado pela lista/ciclo informado no CSV.
+  const routedByList = new Map<string, Set<string>>(
+    Object.entries(state.routedByList || {}).map(([lista, ids]) => [lista, new Set(ids)])
+  );
+  for (const base of state.baseRows) {
+    const rota = rotasMap.get(base.idPacote);
+    if (!rota) continue;
+    const lista = normalizeCycle(rota.ciclo) || attemptCycle || 'SEM CICLO';
+    const ids = routedByList.get(lista) || new Set<string>();
+    ids.add(base.idPacote);
+    routedByList.set(lista, ids);
+  }
+  state.routedByList = Object.fromEntries(
+    Array.from(routedByList, ([lista, ids]) => [lista, Array.from(ids)])
+  );
+  const roteirizadosPorLista = Object.fromEntries(
+    Object.entries(state.routedByList).map(([lista, ids]) => [lista, ids.length])
+  );
   const totalNaoRoteirizados = itemsNaoRoteirizados.length;
   const totalRoteirizados = Math.max(0, baseCount - totalNaoRoteirizados);
   const taxaRoteirizacao = baseCount > 0 ? Number(((totalRoteirizados / baseCount) * 100).toFixed(1)) : 0;
@@ -441,6 +466,7 @@ export function analisarBrancasPorCsv(
     novosNaoRoteirizadosCount,
     mudancasMotivoDetalhes: [],
     taxaRoteirizacao,
+    roteirizadosPorLista,
     extBrancasCount: baseCount,
     extRotasCount: rotasMap.size,
     lastComparisonTime: nowIso,

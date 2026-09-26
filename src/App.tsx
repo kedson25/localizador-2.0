@@ -156,12 +156,6 @@ export default function App() {
             }
           />
 
-          {/* Telas operacionais dedicadas: navegação compacta própria. */}
-          <Route
-            path="/refugo"
-            element={dedicatedOperation(<ControleRefugoClean currentUser={currentUser} />)}
-          />
-
           {isAuthenticated && (
             <>
               {/* Módulos é a única página inicial do sistema. */}
@@ -204,6 +198,11 @@ export default function App() {
               <Route
                 path="/correlacao"
                 element={insideDashboard(<CorrelacaoIds />)}
+              />
+
+              <Route
+                path="/refugo"
+                element={dedicatedOperation(<ControleRefugoClean currentUser={currentUser} />)}
               />
 
               {(currentUser?.isAdmin || currentUser?.allowedGroups?.includes('remover')) && (

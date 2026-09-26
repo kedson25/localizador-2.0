@@ -1,7 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft,
   BarChart3,
   Bell,
   Boxes,
@@ -90,15 +89,6 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
       } catch {}
       return next;
     });
-  };
-
-  const handleBack = () => {
-    const historyIndex = Number(window.history.state?.idx ?? 0);
-    if (historyIndex > 0) {
-      navigate(-1);
-      return;
-    }
-    navigate('/');
   };
 
   const navClass = (active: boolean) =>
@@ -221,13 +211,13 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
           <div className="flex shrink-0 items-center gap-1.5">
             <button
               type="button"
-              onClick={handleBack}
+              onClick={() => navigate('/')}
               className="flex h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 shadow-sm transition hover:bg-slate-50"
-              aria-label="Voltar"
-              title="Voltar"
+              aria-label="Ir para Módulos"
+              title="Módulos"
             >
-              <ArrowLeft className="h-4 w-4 text-[#1769ff]" />
-              <span className="hidden 2xl:inline">Voltar</span>
+              <Boxes className="h-4 w-4 text-[#1769ff]" />
+              <span className="hidden sm:inline">Módulos</span>
             </button>
           </div>
 

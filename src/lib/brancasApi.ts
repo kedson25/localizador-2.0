@@ -125,6 +125,8 @@ export interface BrancaRelatorioResponse {
   novosNaoRoteirizadosCount?: number;
   mudancasMotivoDetalhes?: MudancaMotivoDetalhe[];
   taxaRoteirizacao: number;
+  /** Totais encontrados no CSV de rotas, agrupados por lista/ciclo (AM, PM ou SD). */
+  roteirizadosPorLista?: Record<string, number>;
   extBrancasCount?: number;
   extRotasCount?: number;
   lastComparisonTime?: string;

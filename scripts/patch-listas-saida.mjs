@@ -2,7 +2,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const filePath = path.resolve('src/components/ListasColeta.tsx');
-let source = fs.readFileSync(filePath, 'utf8');
+const rawSource = fs.readFileSync(filePath, 'utf8');
+const eol = rawSource.includes('\r\n') ? '\r\n' : '\n';
+let source = rawSource.replace(/\r\n/g, '\n');
 const original = source;
 
 const replacements = [
@@ -12,11 +14,11 @@ const replacements = [
   ],
   [
     "  }, [activeListaId]);\n\n  // Timeout de segurança caso a conexão de rede demore ou caia",
-    "  }, [activeListaId, listaAtiva?.saidaPadrao, listaAtiva?.rota, listaAtiva?.motivoPadrao]);\n\n  // Timeout de segurança caso a conexão de rede demore ou caia",
+    "  }, [\n    listaAtiva?.id,\n    listaAtiva?.rota,\n    listaAtiva?.saidaPadrao,\n    listaAtiva?.motivoPadrao,\n  ]);\n\n  // Timeout de segurança caso a conexão de rede demore ou caia",
   ],
   [
     "      setListas(prev => [novaLista, ...prev.filter(l => l.id !== novaLista.id)]);\n\n      setShowModalNovaLista(false);",
-    "      setListas(prev => [novaLista, ...prev.filter(l => l.id !== novaLista.id)]);\n      setSelectedSaida(novaSaida);\n\n      setShowModalNovaLista(false);",
+    "      setListas(prev => [novaLista, ...prev.filter(l => l.id !== novaLista.id)]);\n      setSelectedSaida(novaLista.saidaPadrao);\n\n      setShowModalNovaLista(false);",
   ],
   [
     "const saidaItemFinal = selectedSaida || listaAtiva.saidaPadrao || 'Ciclo 2 - Saída PM';",
@@ -44,7 +46,7 @@ for (const [before, after] of replacements) {
 }
 
 if (source !== original) {
-  fs.writeFileSync(filePath, source, 'utf8');
+  fs.writeFileSync(filePath, source.replace(/\n/g, eol), 'utf8');
   console.log('[patch-listas-saida] ListasColeta.tsx corrigido para respeitar a saída da lista.');
 } else {
   console.log('[patch-listas-saida] Correção já aplicada.');

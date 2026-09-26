@@ -26,6 +26,8 @@ import { User } from '../lib/auth';
 
 interface BrancasPanelProps {
   currentUser?: User | null;
+  localMode?: boolean;
+  onRequestUpdate?: () => void;
 }
 
 type DictionaryEntry = {
@@ -202,7 +204,10 @@ function formatPercent(value: number): string {
   })}%`;
 }
 
-export const BrancasPanel: React.FC<BrancasPanelProps> = () => {
+export const BrancasPanel: React.FC<BrancasPanelProps> = ({
+  localMode = false,
+  onRequestUpdate,
+}) => {
   const [loadingRelatorio, setLoadingRelatorio] = useState(true);
 
   const [relatorio, setRelatorio] =
@@ -269,6 +274,8 @@ export const BrancasPanel: React.FC<BrancasPanelProps> = () => {
   useEffect(() => {
     carregarRelatorio(undefined, true);
 
+    if (localMode) return;
+
     const interval = window.setInterval(() => {
       carregarRelatorio(undefined, true);
     }, 60_000);
@@ -276,9 +283,14 @@ export const BrancasPanel: React.FC<BrancasPanelProps> = () => {
     return () => {
       window.clearInterval(interval);
     };
-  }, []);
+  }, [localMode]);
 
   async function handleManualUpdate() {
+    if (localMode) {
+      onRequestUpdate?.();
+      return;
+    }
+
     setIsUpdating(true);
     setErrorMsg(null);
 
@@ -719,7 +731,7 @@ export const BrancasPanel: React.FC<BrancasPanelProps> = () => {
           <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs">
             <div className="flex items-center gap-2 font-semibold text-slate-800">
               <span className="w-2 h-2 rounded-full bg-emerald-500" />
-              Automático
+              {localMode ? 'Processamento local' : 'Automático'}
             </div>
 
             <div className="text-slate-500">
@@ -765,7 +777,9 @@ export const BrancasPanel: React.FC<BrancasPanelProps> = () => {
 
             {isUpdating
               ? 'Verificando...'
-              : 'Atualizar'}
+              : localMode
+                ? 'Carregar rotas'
+                : 'Atualizar'}
           </button>
         </div>
 

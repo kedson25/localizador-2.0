@@ -12,7 +12,6 @@ import {
   FileSearch,
   Folder,
   GitCompareArrows,
-  Home,
   ListTodo,
   MessageSquare,
   PackageOpen,
@@ -304,11 +303,6 @@ export const ToolsHub: React.FC<ToolsHubProps> = ({
 
         <nav className="flex-1 px-4 py-7">
           <div className="space-y-2">
-            <button type="button" onClick={() => navigate('/')} className="flex w-full items-center gap-4 rounded-xl px-4 py-3 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900">
-              <Home className="h-5 w-5" />
-              Início
-            </button>
-
             <button type="button" className="relative flex w-full items-center gap-4 rounded-xl bg-[#fff5bd] px-4 py-3 text-sm font-extrabold text-slate-900">
               <span className="absolute -left-4 h-9 w-1 rounded-r bg-[#FFE600]" />
               <Boxes className="h-5 w-5" />
@@ -378,12 +372,6 @@ export const ToolsHub: React.FC<ToolsHubProps> = ({
         </header>
 
         <main className="mx-auto max-w-[1180px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
-          <div className="mb-5 flex items-center gap-2 text-xs font-medium text-slate-400">
-            <span className="text-[#1769ff]">Início</span>
-            <ChevronRight className="h-3.5 w-3.5" />
-            <span className="font-bold text-slate-700">Módulos</span>
-          </div>
-
           <div className="mb-7 flex flex-col justify-between gap-4 xl:flex-row xl:items-end">
             <div>
               <h1 className="text-3xl font-black tracking-[-0.04em] text-slate-950 sm:text-4xl">Módulos</h1>

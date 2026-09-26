@@ -320,7 +320,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
   const [isLoadingListas, setIsLoadingListas] = useState(true);
 
   // Configurações do scanner na tela de coleta
-  const [selectedSaida, setSelectedSaida] = useState('Ciclo 2 - Saída PM');
+  const [selectedSaida, setSelectedSaida] = useState('');
   const [selectedMotivo, setSelectedMotivo] = useState('');
   const [selectedRotaItem, setSelectedRotaItem] = useState('');
 
@@ -611,7 +611,12 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
       setSelectedSaida(listaAtiva.saidaPadrao || 'Ciclo 2 - Saída PM');
       setSelectedMotivo(listaAtiva.motivoPadrao || '');
     }
-  }, [activeListaId]);
+  }, [
+    listaAtiva?.id,
+    listaAtiva?.rota,
+    listaAtiva?.saidaPadrao,
+    listaAtiva?.motivoPadrao,
+  ]);
 
   // Timeout de segurança caso a conexão de rede demore ou caia
   useEffect(() => {
@@ -1193,6 +1198,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
 
       // Atualização otimista no estado local para que a lista seja encontrada instantaneamente
       setListas(prev => [novaLista, ...prev.filter(l => l.id !== novaLista.id)]);
+      setSelectedSaida(novaLista.saidaPadrao);
 
       setShowModalNovaLista(false);
       
@@ -1230,7 +1236,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
     const rotaItemFinal = matchedRota || 'Sem Rota';
 
     // Usar obrigatoriamente a saída do ciclo configurada
-    const saidaItemFinal = selectedSaida || listaAtiva.saidaPadrao || 'Ciclo 2 - Saída PM';
+    const saidaItemFinal = listaAtiva.saidaPadrao || selectedSaida || 'Ciclo 2 - Saída PM';
 
     // Se estiver no Modo Individual, opera na lista zerada da sessão individual
     if (modoIndividual) {
@@ -2008,7 +2014,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
     setImportProgress(0);
     setImportStatusText('Iniciando processamento do lote...');
 
-    const saidaCicloFinal = selectedSaida || listaAtiva.saidaPadrao || 'Ciclo 2 - Saída PM';
+    const saidaCicloFinal = listaAtiva.saidaPadrao || selectedSaida || 'Ciclo 2 - Saída PM';
     const motivoFinal = loteMotivo || selectedMotivo || 'Desconteinerizado';
 
     if (modoIndividual) {
@@ -4721,7 +4727,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
             ) : (
               <form onSubmit={handleAdicionarLote} className="space-y-4">
                 <p className="text-xs text-gray-500">
-                  Cole múltiplos IDs (linha ou vírgula). Vinculados ao ciclo <strong className="text-blue-700">{selectedSaida}</strong>.
+                  Cole múltiplos IDs (linha ou vírgula). Vinculados ao ciclo <strong className="text-blue-700">{listaAtiva?.saidaPadrao || selectedSaida || 'Ciclo 2 - Saída PM'}</strong>.
                 </p>
                 <textarea
                   value={loteText}
