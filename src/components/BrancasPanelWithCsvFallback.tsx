@@ -195,7 +195,7 @@ export const BrancasPanelWithCsvFallback: React.FC<BrancasPanelWithCsvFallbackPr
         </div>
       )}
 
-      {csvReport && Object.keys(csvReport.roteirizadosPorLista || {}).length > 0 && (
+      {false && csvReport && Object.keys(csvReport.roteirizadosPorLista || {}).length > 0 && (
         <section className="rounded-xl border border-emerald-200 bg-emerald-50/70 px-4 py-3">
           <div className="text-xs font-black uppercase tracking-wide text-emerald-900">
             Pacotes roteirizados por lista

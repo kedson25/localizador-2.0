@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Layers, ListPlus, Loader2, X } from 'lucide-react';
+import { AlertTriangle, Layers, ListPlus, Loader2, Trash2, X } from 'lucide-react';
 import type { ColetaLista, CsvRow } from '../types';
 import { cleanDigits } from '../utils/csvParser';
 import { getItemsOfGrupo, listenToListas } from '../lib/firebase';
@@ -16,6 +16,14 @@ interface IdLookupEnhancedProps {
 }
 
 type Cycle = 'AM' | 'PM' | 'SD';
+type RoutingErrorReport = {
+  id: string;
+  cycles: string[];
+  lists: string[];
+  detectedAt: string;
+};
+
+const ROUTING_ERRORS_STORAGE_KEY = 'routing_errors_report_v1';
 
 function parseTerms(value: string): string[] {
   return Array.from(new Set(
@@ -99,6 +107,13 @@ export const IdLookupEnhanced: React.FC<IdLookupEnhancedProps> = (props) => {
   const [listas, setListas] = useState<ColetaLista[]>([]);
   const [showTodayGroups, setShowTodayGroups] = useState(false);
   const [loadingGroupKey, setLoadingGroupKey] = useState('');
+  const [routingErrorsReport, setRoutingErrorsReport] = useState<RoutingErrorReport[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem(ROUTING_ERRORS_STORAGE_KEY) || '[]');
+    } catch {
+      return [];
+    }
+  });
 
   useEffect(() => {
     const unsubscribe = listenToListas(data => setListas(data));
@@ -200,6 +215,38 @@ export const IdLookupEnhanced: React.FC<IdLookupEnhancedProps> = (props) => {
 
     return rows;
   }, [terms, occurrences]);
+
+  const routingErrors = useMemo(() => terms.flatMap(term => {
+    const digits = cleanDigits(term);
+    const found = occurrences.get(term.toUpperCase()) || (digits ? occurrences.get(digits) : undefined) || [];
+    const unique = Array.from(new Map(found.map(item => [occurrenceKey(item), item])).values());
+    const cycles = Array.from(new Set(unique.map(item => cycleShort(item.listaSaida)).filter(Boolean)));
+    if (!cycles.includes('SD')) return [];
+    return [{
+      id: term,
+      cycles,
+      lists: Array.from(new Set(unique.map(item => item.listaNome))).sort(),
+      detectedAt: new Date().toISOString(),
+    }];
+  }), [terms, occurrences]);
+
+  useEffect(() => {
+    if (routingErrors.length === 0) return;
+    setRoutingErrorsReport(current => {
+      const merged = new Map(current.map(item => [item.id.toUpperCase(), item]));
+      routingErrors.forEach(item => merged.set(item.id.toUpperCase(), item));
+      const next = Array.from(merged.values())
+        .sort((a, b) => b.detectedAt.localeCompare(a.detectedAt))
+        .slice(0, 500);
+      localStorage.setItem(ROUTING_ERRORS_STORAGE_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, [routingErrors]);
+
+  const clearRoutingErrorsReport = () => {
+    localStorage.removeItem(ROUTING_ERRORS_STORAGE_KEY);
+    setRoutingErrorsReport([]);
+  };
 
   const importGroup = async (lista: ColetaLista, grupoId: string) => {
     const key = `${lista.id}:${grupoId}`;
@@ -405,6 +452,42 @@ export const IdLookupEnhanced: React.FC<IdLookupEnhancedProps> = (props) => {
               })}
             </div>
           )}
+        </section>
+      )}
+
+      {routingErrorsReport.length > 0 && (
+        <section className="overflow-hidden rounded-2xl border border-amber-200 bg-white shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-amber-100 bg-amber-50 px-4 py-3">
+            <div className="flex items-center gap-2">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-100 text-amber-700">
+                <AlertTriangle className="h-4 w-4" />
+              </div>
+              <div>
+                <h3 className="text-xs font-black uppercase tracking-wide text-amber-950">Erros de roteamento</h3>
+                <p className="text-[10px] font-medium text-amber-800">
+                  IDs consultados como PM e localizados em listas de saída SD. Relatório salvo neste navegador.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={clearRoutingErrorsReport}
+              className="inline-flex items-center gap-1 rounded-lg border border-amber-200 bg-white px-2.5 py-1.5 text-[10px] font-bold text-amber-800 hover:bg-amber-100"
+            >
+              <Trash2 className="h-3 w-3" /> Limpar relatório
+            </button>
+          </div>
+          <div className="max-h-64 overflow-y-auto divide-y divide-amber-100">
+            {routingErrorsReport.map(item => (
+              <div key={item.id.toUpperCase()} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 text-xs">
+                <span className="font-mono font-black text-slate-800">{item.id}</span>
+                <span className="text-slate-500">{item.lists.join(' • ')}</span>
+                <span className="rounded-md border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] font-black text-red-700">
+                  PM → SD
+                </span>
+              </div>
+            ))}
+          </div>
         </section>
       )}
 
