@@ -473,13 +473,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
   }
 
   const metricCards = [
-    { label: 'Pacotes nas listas', value: metrics.volume.toLocaleString('pt-BR'), description: 'Total de IDs carregados' },
-    { label: 'Pacotes validados', value: `${metrics.taxaValidacao}%`, description: 'Percentual já conferido' },
-    { label: 'Listas finalizadas', value: `${metrics.finalizadas} de ${metrics.totalListas}`, description: 'Concluídas no período' },
-    { label: 'Taxa de acerto', value: `${metrics.mediaAcerto}%`, description: 'Média das listas fechadas' },
-    { label: 'Etiquetas brancas', value: metrics.brancas.toLocaleString('pt-BR'), description: 'Brancas bipadas sem duplicar' },
-    { label: 'Rotas localizadas', value: metrics.encontradas.toLocaleString('pt-BR'), description: 'Pacotes com rota encontrada' },
-    { label: 'Taxa de entrega', value: `${baixas.length ? Math.round((baixas.filter(item => String(item.status || '').toUpperCase().includes('ENTREG')).length / baixas.length) * 100) : 0}%`, description: baixas.length ? `${baixas.length} pacotes no CSV de Baixas` : 'Importe um CSV em Baixas' },
+    { label: 'Pacotes nas listas', value: metrics.volume.toLocaleString('pt-BR'), description: 'Total de IDs carregados', color: 'border-blue-200 bg-blue-50 text-blue-700' },
+    { label: 'Pacotes validados', value: `${metrics.taxaValidacao}%`, description: 'Percentual já conferido', color: 'border-emerald-200 bg-emerald-50 text-emerald-700' },
+    { label: 'Listas finalizadas', value: `${metrics.finalizadas} de ${metrics.totalListas}`, description: 'Concluídas no período', color: 'border-violet-200 bg-violet-50 text-violet-700' },
+    { label: 'Taxa de acerto', value: `${metrics.mediaAcerto}%`, description: 'Média das listas fechadas', color: 'border-amber-200 bg-amber-50 text-amber-700' },
+    { label: 'Etiquetas brancas', value: metrics.brancas.toLocaleString('pt-BR'), description: 'Brancas bipadas sem duplicar', color: 'border-rose-200 bg-rose-50 text-rose-700' },
+    { label: 'Rotas localizadas', value: metrics.encontradas.toLocaleString('pt-BR'), description: 'Pacotes com rota encontrada', color: 'border-cyan-200 bg-cyan-50 text-cyan-700' },
+    { label: 'Taxa de entrega', value: `${baixas.length ? Math.round((baixas.filter(item => String(item.status || '').toUpperCase().includes('ENTREG')).length / baixas.length) * 100) : 0}%`, description: baixas.length ? `${baixas.length} pacotes no CSV de Baixas` : 'Importe um CSV em Baixas', color: 'border-teal-200 bg-teal-50 text-teal-700' },
   ];
   const routingErrorSummary = (() => {
     const uniqueIds = new Set(routingErrors.map(item => String(item.id || '').toUpperCase()).filter(Boolean));
@@ -575,10 +575,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
 
           <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {metricCards.map(card => (
-              <div key={card.label} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">{card.label}</p>
-                <p className="mt-2 text-2xl font-bold tabular-nums text-gray-900">{card.value}</p>
-                <p className="mt-1 text-xs leading-relaxed text-gray-500">{card.description}</p>
+              <div key={card.label} className={`rounded-xl border p-4 shadow-sm ${card.color}`}>
+                <p className="text-[11px] font-bold uppercase tracking-wide opacity-80">{card.label}</p>
+                <p className="mt-2 text-2xl font-black tabular-nums">{card.value}</p>
+                <p className="mt-1 text-xs leading-relaxed opacity-75">{card.description}</p>
               </div>
             ))}
           </section>
