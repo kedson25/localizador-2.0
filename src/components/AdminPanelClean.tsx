@@ -5,7 +5,6 @@ import {
   BarChart3,
   Check,
   CheckCircle2,
-  ChevronRight,
   Copy,
   Database,
   Download,
@@ -473,13 +472,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
   }
 
   const metricCards = [
-    { label: 'Pacotes nas listas', value: metrics.volume.toLocaleString('pt-BR'), description: 'Total de IDs carregados', color: 'bg-blue-500' },
-    { label: 'Pacotes validados', value: `${metrics.taxaValidacao}%`, description: 'Percentual já conferido', color: 'bg-emerald-500' },
-    { label: 'Listas finalizadas', value: `${metrics.finalizadas} de ${metrics.totalListas}`, description: 'Concluídas no período', color: 'bg-violet-500' },
-    { label: 'Taxa de acerto', value: `${metrics.mediaAcerto}%`, description: 'Média das listas fechadas', color: 'bg-amber-500' },
-    { label: 'Etiquetas brancas', value: metrics.brancas.toLocaleString('pt-BR'), description: 'Brancas bipadas sem duplicar', color: 'bg-rose-500' },
-    { label: 'Rotas localizadas', value: metrics.encontradas.toLocaleString('pt-BR'), description: 'Pacotes com rota encontrada', color: 'bg-cyan-500' },
-    { label: 'Taxa de entrega', value: `${baixas.length ? Math.round((baixas.filter(item => String(item.status || '').toUpperCase().includes('ENTREG')).length / baixas.length) * 100) : 0}%`, description: baixas.length ? `${baixas.length} pacotes no CSV de Baixas` : 'Importe um CSV em Baixas', color: 'bg-teal-500' },
+    { label: 'Pacotes nas listas', value: metrics.volume.toLocaleString('pt-BR'), color: 'bg-blue-500' },
+    { label: 'Pacotes validados', value: `${metrics.taxaValidacao}%`, color: 'bg-emerald-500' },
+    { label: 'Listas finalizadas', value: `${metrics.finalizadas} de ${metrics.totalListas}`, color: 'bg-violet-500' },
+    { label: 'Taxa de acerto', value: `${metrics.mediaAcerto}%`, color: 'bg-amber-500' },
+    { label: 'Etiquetas brancas', value: metrics.brancas.toLocaleString('pt-BR'), color: 'bg-rose-500' },
+    { label: 'Rotas localizadas', value: metrics.encontradas.toLocaleString('pt-BR'), color: 'bg-cyan-500' },
+    { label: 'Taxa de entrega', value: `${baixas.length ? Math.round((baixas.filter(item => String(item.status || '').toUpperCase().includes('ENTREG')).length / baixas.length) * 100) : 0}%`, color: 'bg-teal-500' },
   ];
   const routingErrorSummary = (() => {
     const uniqueIds = new Set(routingErrors.map(item => String(item.id || '').toUpperCase()).filter(Boolean));
@@ -579,7 +578,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
                 <span className={`absolute inset-x-0 top-0 h-1 ${card.color}`} />
                 <p className="text-[11px] font-bold uppercase tracking-wide text-gray-500">{card.label}</p>
                 <p className="mt-2 text-2xl font-black tabular-nums text-gray-900">{card.value}</p>
-                <p className="mt-1 text-xs leading-relaxed text-gray-500">{card.description}</p>
               </div>
             ))}
           </section>
@@ -626,15 +624,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
                       </div>
 
                       <div className="flex items-center gap-2 lg:justify-end">
-                        <button
-                          type="button"
-                          onClick={() => openReport(lista)}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-100"
-                        >
-                          Abrir
-                          {stats.pendentes > 0 && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-800">{stats.pendentes}</span>}
-                          <ChevronRight className="h-3.5 w-3.5" />
-                        </button>
                         <button
                           type="button"
                           onClick={() => openMetrics(lista)}
