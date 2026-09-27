@@ -150,6 +150,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
   const navigate = useNavigate();
   const [adminTab, setAdminTab] = useState<'metricas' | 'erros' | 'usuarios' | 'supabase'>('metricas');
   const [routingErrors, setRoutingErrors] = useState<any[]>([]);
+  const [baixas, setBaixas] = useState<any[]>([]);
   const [routingErrorFilter, setRoutingErrorFilter] = useState<'pendentes' | 'encontrados'>('pendentes');
   const [quickFilter, setQuickFilter] = useState<'todos' | 'hoje' | 'ontem' | '7dias' | '15dias' | 'mes_atual' | 'custom'>('todos');
   const [startDate, setStartDate] = useState('');
@@ -229,6 +230,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
     load();
     window.addEventListener('routing-errors-report-updated', load);
     return () => window.removeEventListener('routing-errors-report-updated', load);
+  }, []);
+
+  useEffect(() => {
+    const load = () => { try { setBaixas(JSON.parse(localStorage.getItem('baixas_fluxo_report_v1') || '[]')); } catch { setBaixas([]); } };
+    load(); window.addEventListener('baixas-report-updated', load);
+    return () => window.removeEventListener('baixas-report-updated', load);
   }, []);
 
   useEffect(() => {
@@ -472,6 +479,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
     { label: 'Média de acerto', value: `${metrics.mediaAcerto}%` },
     { label: 'Rotas brancas', value: metrics.brancas.toLocaleString('pt-BR') },
     { label: 'Rotas encontradas', value: metrics.encontradas.toLocaleString('pt-BR') },
+    { label: 'Taxa de entrega', value: `${baixas.length ? Math.round((baixas.filter(item => String(item.status || '').toUpperCase().includes('ENTREG')).length / baixas.length) * 100) : 0}%` },
   ];
   const routingErrorSummary = useMemo(() => {
     const uniqueIds = new Set(routingErrors.map(item => String(item.id || '').toUpperCase()).filter(Boolean));

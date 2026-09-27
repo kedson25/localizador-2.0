@@ -14,6 +14,7 @@ import { ControleRefugoClean } from './components/ControleRefugoClean';
 import { ListasColetaEnhanced } from './components/ListasColetaEnhanced';
 import { ListasDashboard } from './components/ListasDashboard';
 import { BrancasPanelWithCsvFallback } from './components/BrancasPanelWithCsvFallback';
+import { BaixasPanel } from './components/BaixasPanel';
 import { SettingsPage } from './components/SettingsPage';
 import { Login } from './components/Login';
 import { AdminPanel } from './components/AdminPanel';
@@ -198,6 +199,11 @@ export default function App() {
               <Route
                 path="/correlacao"
                 element={insideDashboard(<CorrelacaoIds />)}
+              />
+
+              <Route
+                path="/baixas"
+                element={insideDashboard(<BaixasPanel />)}
               />
 
               <Route

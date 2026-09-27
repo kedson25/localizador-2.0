@@ -203,6 +203,17 @@ export const ToolsHub: React.FC<ToolsHubProps> = ({
       badgeClass: 'border-blue-200 bg-blue-50 text-blue-700',
     },
     {
+      id: 'baixas',
+      path: '/baixas',
+      name: 'Baixas',
+      description: 'Importe entregues e em rota para acompanhar o fluxo.',
+      tag: 'Fluxo',
+      icon: PackageOpen,
+      iconClass: 'text-emerald-600',
+      iconBoxClass: 'bg-emerald-50',
+      badgeClass: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+    },
+    {
       id: 'remover',
       path: '/remover',
       name: 'Remover IDs',
@@ -227,7 +238,7 @@ export const ToolsHub: React.FC<ToolsHubProps> = ({
   ];
 
   const backlogTools = allBacklogTools.filter(
-    tool => currentUser?.isAdmin || currentUser?.allowedGroups?.includes(tool.id)
+    tool => tool.id === 'baixas' || currentUser?.isAdmin || currentUser?.allowedGroups?.includes(tool.id)
   );
 
   const canUpload = currentUser?.isAdmin || currentUser?.allowedGroups?.includes('upload');
