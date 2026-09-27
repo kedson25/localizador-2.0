@@ -481,12 +481,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
     { label: 'Rotas encontradas', value: metrics.encontradas.toLocaleString('pt-BR') },
     { label: 'Taxa de entrega', value: `${baixas.length ? Math.round((baixas.filter(item => String(item.status || '').toUpperCase().includes('ENTREG')).length / baixas.length) * 100) : 0}%` },
   ];
-  const routingErrorSummary = useMemo(() => {
+  const routingErrorSummary = (() => {
     const uniqueIds = new Set(routingErrors.map(item => String(item.id || '').toUpperCase()).filter(Boolean));
     const lists = new Set(routingErrors.flatMap(item => item.foundIn || item.lists || []).filter(Boolean));
     const found = routingErrors.filter(item => item.resolvedAt).length;
     return { ids: uniqueIds.size, lists: lists.size, found, pending: Math.max(0, routingErrors.length - found) };
-  }, [routingErrors]);
+  })();
 
   const markRoutingErrorFound = (index: number) => {
     const next = routingErrors.map((item, itemIndex) => itemIndex === index ? { ...item, resolvedAt: new Date().toISOString() } : item);
