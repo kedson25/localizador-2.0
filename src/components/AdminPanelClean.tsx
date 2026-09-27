@@ -473,13 +473,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
   }
 
   const metricCards = [
-    { label: 'Volume coletado', value: metrics.volume.toLocaleString('pt-BR') },
-    { label: 'Validação', value: `${metrics.taxaValidacao}%` },
-    { label: 'Listas concluídas', value: `${metrics.finalizadas}/${metrics.totalListas}` },
-    { label: 'Média de acerto', value: `${metrics.mediaAcerto}%` },
-    { label: 'Rotas brancas', value: metrics.brancas.toLocaleString('pt-BR') },
-    { label: 'Rotas encontradas', value: metrics.encontradas.toLocaleString('pt-BR') },
-    { label: 'Taxa de entrega', value: `${baixas.length ? Math.round((baixas.filter(item => String(item.status || '').toUpperCase().includes('ENTREG')).length / baixas.length) * 100) : 0}%` },
+    { label: 'Pacotes nas listas', value: metrics.volume.toLocaleString('pt-BR'), description: 'Total de IDs carregados' },
+    { label: 'Pacotes validados', value: `${metrics.taxaValidacao}%`, description: 'Percentual já conferido' },
+    { label: 'Listas finalizadas', value: `${metrics.finalizadas} de ${metrics.totalListas}`, description: 'Concluídas no período' },
+    { label: 'Taxa de acerto', value: `${metrics.mediaAcerto}%`, description: 'Média das listas fechadas' },
+    { label: 'Etiquetas brancas', value: metrics.brancas.toLocaleString('pt-BR'), description: 'Brancas bipadas sem duplicar' },
+    { label: 'Rotas localizadas', value: metrics.encontradas.toLocaleString('pt-BR'), description: 'Pacotes com rota encontrada' },
+    { label: 'Taxa de entrega', value: `${baixas.length ? Math.round((baixas.filter(item => String(item.status || '').toUpperCase().includes('ENTREG')).length / baixas.length) * 100) : 0}%`, description: baixas.length ? `${baixas.length} pacotes no CSV de Baixas` : 'Importe um CSV em Baixas' },
   ];
   const routingErrorSummary = (() => {
     const uniqueIds = new Set(routingErrors.map(item => String(item.id || '').toUpperCase()).filter(Boolean));
@@ -487,6 +487,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
     const found = routingErrors.filter(item => item.resolvedAt).length;
     return { ids: uniqueIds.size, lists: lists.size, found, pending: Math.max(0, routingErrors.length - found) };
   })();
+  const visibleRoutingErrors = routingErrors
+    .map((error, index) => ({ error, index }))
+    .filter(({ error }) => routingErrorFilter === 'encontrados' ? Boolean(error.resolvedAt) : !error.resolvedAt);
+  const oldestPendingDays = routingErrors.reduce((oldest, error) => {
+    if (error.resolvedAt || !error.detectedAt) return oldest;
+    const days = Math.max(0, Math.floor((Date.now() - new Date(error.detectedAt).getTime()) / 86_400_000));
+    return Math.max(oldest, Number.isFinite(days) ? days : 0);
+  }, 0);
 
   const markRoutingErrorFound = (index: number) => {
     const next = routingErrors.map((item, itemIndex) => itemIndex === index ? { ...item, resolvedAt: new Date().toISOString() } : item);
@@ -503,8 +511,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
       <nav className="flex flex-wrap items-center gap-1 rounded-xl border border-gray-200 bg-white p-1 shadow-sm">
         {[
           ['metricas', BarChart3, 'Visão geral'],
-          ['usuarios', Users, 'Usuários'],
           ['erros', AlertTriangle, 'Erros de roteamento'],
+          ['usuarios', Users, 'Usuários'],
           ['supabase', Database, 'Banco'],
         ].map(([id, Icon, label]) => (
           <button
@@ -565,11 +573,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
             </div>
           </section>
 
-          <section className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
+          <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {metricCards.map(card => (
               <div key={card.label} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">{card.label}</p>
                 <p className="mt-2 text-2xl font-bold tabular-nums text-gray-900">{card.value}</p>
+                <p className="mt-1 text-xs leading-relaxed text-gray-500">{card.description}</p>
               </div>
             ))}
           </section>
@@ -661,32 +670,47 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
 
       {adminTab === 'erros' && (
         <div className="space-y-4">
-          <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
-            <CompactStat label="IDs errados" value={routingErrorSummary.ids} />
-            <CompactStat label="Listas envolvidas" value={routingErrorSummary.lists} />
-            <CompactStat label="Pendentes" value={routingErrorSummary.pending} danger />
-            <CompactStat label="Encontrados" value={routingErrorSummary.found} />
+          <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <ReportSummaryCard label="IDs com erro" value={routingErrorSummary.ids} description="Pacotes únicos registrados" tone="blue" />
+            <ReportSummaryCard label="Listas envolvidas" value={routingErrorSummary.lists} description="Onde os pacotes apareceram" tone="violet" />
+            <ReportSummaryCard label="Ainda procurando" value={routingErrorSummary.pending} description="Erros que precisam de ação" tone="red" />
+            <ReportSummaryCard label="Já encontrados" value={routingErrorSummary.found} description="Marcados como resolvidos" tone="green" />
+          </section>
+          <section className={`rounded-xl border p-4 ${routingErrorSummary.pending > 0 ? 'border-amber-200 bg-amber-50' : 'border-emerald-200 bg-emerald-50'}`}>
+            <div className="flex items-start gap-3">
+              <AlertCircle className={`mt-0.5 h-5 w-5 shrink-0 ${routingErrorSummary.pending > 0 ? 'text-amber-600' : 'text-emerald-600'}`} />
+              <div>
+                <h3 className="text-sm font-bold text-gray-900">Resumo para o reporte</h3>
+                <p className="mt-1 text-sm leading-relaxed text-gray-700">
+                  {routingErrorSummary.pending > 0
+                    ? `Existem ${routingErrorSummary.pending} erro(s) pendente(s) em ${routingErrorSummary.lists} lista(s). O mais antigo está aberto há ${oldestPendingDays} dia(s).`
+                    : 'Todos os erros registrados já foram encontrados. Não há pendências neste momento.'}
+                </p>
+              </div>
+            </div>
           </section>
           <section className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-          <div className="border-b border-gray-100 px-4 py-3">
-            <h2 className="text-sm font-bold text-gray-900">Erros de roteamento</h2>
-            <p className="text-xs text-gray-400">{routingErrors.length} ocorrências salvas; analise por período usando a data do registro.</p>
-            <div className="mt-3 flex gap-2">
-              {(['pendentes', 'encontrados'] as const).map(filter => <button key={filter} onClick={() => setRoutingErrorFilter(filter)} className={`rounded px-2 py-1 text-[10px] font-bold ${routingErrorFilter === filter ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600'}`}>{filter === 'pendentes' ? `Pendentes ${routingErrorSummary.pending}` : `Encontrados ${routingErrorSummary.found}`}</button>)}
+          <div className="border-b border-gray-100 px-5 py-4">
+            <h2 className="text-base font-bold text-gray-900">Pacotes com erro de roteamento</h2>
+            <p className="mt-1 text-xs text-gray-500">Confira a lista de origem, onde o pacote foi localizado e marque quando resolver.</p>
+            <div className="mt-4 flex gap-2">
+              {(['pendentes', 'encontrados'] as const).map(filter => <button key={filter} onClick={() => setRoutingErrorFilter(filter)} className={`rounded-lg px-3 py-2 text-xs font-bold ${routingErrorFilter === filter ? 'bg-gray-900 text-white shadow-sm' : 'border border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`}>{filter === 'pendentes' ? `Procurar (${routingErrorSummary.pending})` : `Encontrados (${routingErrorSummary.found})`}</button>)}
             </div>
           </div>
           {routingErrors.length === 0 ? (
             <div className="px-4 py-12 text-center text-sm text-gray-400">Nenhum erro salvo. Use “Salvar errados” na Busca de IDs.</div>
           ) : (
             <div className="divide-y divide-gray-100">
-              {routingErrors.map((error, index) => ({ error, index })).filter(({ error }) => routingErrorFilter === 'encontrados' ? Boolean(error.resolvedAt) : !error.resolvedAt).map(({ error, index }) => (
-                <div key={`${error.id}-${index}`} className="grid gap-2 px-4 py-3 text-xs md:grid-cols-[160px_1fr_1fr_auto] md:items-center">
-                  <span className="font-mono font-bold text-gray-900">{error.id}</span>
-                  <span><strong>Origem:</strong> {error.sourceListaNome || '-'}</span>
-                  <span><strong>Encontrado em:</strong> {(error.foundIn || error.lists || []).join(' • ')}</span>
-                  <button onClick={() => !error.resolvedAt && markRoutingErrorFound(index)} className={`rounded px-2 py-1 text-[10px] font-bold ${error.resolvedAt ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>{error.resolvedAt ? 'Encontrado' : 'Marcar encontrado'}</button>
+              {visibleRoutingErrors.map(({ error, index }) => (
+                <div key={`${error.id}-${index}`} className="grid gap-3 px-5 py-4 text-xs hover:bg-gray-50 md:grid-cols-[150px_1fr_1fr_130px_auto] md:items-center">
+                  <div><p className="text-[10px] font-bold uppercase text-gray-400">ID do pacote</p><p className="mt-1 font-mono font-bold text-gray-900">{error.id}</p></div>
+                  <div><p className="text-[10px] font-bold uppercase text-gray-400">Deveria estar em</p><p className="mt-1 font-semibold text-gray-700">{error.sourceListaNome || '-'}</p></div>
+                  <div><p className="text-[10px] font-bold uppercase text-gray-400">Foi encontrado em</p><p className="mt-1 font-semibold text-red-700">{(error.foundIn || error.lists || []).join(' • ') || '-'}</p></div>
+                  <div><p className="text-[10px] font-bold uppercase text-gray-400">Registrado</p><p className="mt-1 text-gray-600">{error.detectedAt ? new Date(error.detectedAt).toLocaleDateString('pt-BR') : '-'}</p></div>
+                  <button onClick={() => !error.resolvedAt && markRoutingErrorFound(index)} disabled={Boolean(error.resolvedAt)} className={`rounded-lg px-3 py-2 text-xs font-bold ${error.resolvedAt ? 'bg-emerald-50 text-emerald-700' : 'bg-emerald-600 text-white hover:bg-emerald-700'}`}>{error.resolvedAt ? '✓ Encontrado' : 'Marcar encontrado'}</button>
                 </div>
               ))}
+              {visibleRoutingErrors.length === 0 && <div className="px-5 py-12 text-center text-sm text-gray-400">Nenhum pacote nesta situação.</div>}
             </div>
           )}
         </section>
@@ -939,6 +963,28 @@ const CompactStat: React.FC<{ label: string; value: React.ReactNode; danger?: bo
     <p className={`mt-0.5 truncate text-sm font-bold tabular-nums ${danger ? 'text-red-600' : 'text-gray-800'}`}>{value}</p>
   </div>
 );
+
+const ReportSummaryCard: React.FC<{
+  label: string;
+  value: React.ReactNode;
+  description: string;
+  tone: 'blue' | 'violet' | 'red' | 'green';
+}> = ({ label, value, description, tone }) => {
+  const tones = {
+    blue: 'border-blue-200 bg-blue-50 text-blue-700',
+    violet: 'border-violet-200 bg-violet-50 text-violet-700',
+    red: 'border-red-200 bg-red-50 text-red-700',
+    green: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+  };
+
+  return (
+    <div className={`rounded-xl border p-4 shadow-sm ${tones[tone]}`}>
+      <p className="text-[11px] font-bold uppercase tracking-wide opacity-80">{label}</p>
+      <p className="mt-2 text-3xl font-black tabular-nums">{value}</p>
+      <p className="mt-1 text-xs opacity-75">{description}</p>
+    </div>
+  );
+};
 
 const Field: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
   <label className="block space-y-1.5">
