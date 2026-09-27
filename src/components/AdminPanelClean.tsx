@@ -150,6 +150,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
   const navigate = useNavigate();
   const [adminTab, setAdminTab] = useState<'metricas' | 'erros' | 'usuarios' | 'supabase'>('metricas');
   const [routingErrors, setRoutingErrors] = useState<any[]>([]);
+  const [routingErrorFilter, setRoutingErrorFilter] = useState<'pendentes' | 'encontrados'>('pendentes');
   const [quickFilter, setQuickFilter] = useState<'todos' | 'hoje' | 'ontem' | '7dias' | '15dias' | 'mes_atual' | 'custom'>('todos');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -472,6 +473,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
     { label: 'Rotas brancas', value: metrics.brancas.toLocaleString('pt-BR') },
     { label: 'Rotas encontradas', value: metrics.encontradas.toLocaleString('pt-BR') },
   ];
+  const routingErrorSummary = useMemo(() => {
+    const uniqueIds = new Set(routingErrors.map(item => String(item.id || '').toUpperCase()).filter(Boolean));
+    const lists = new Set(routingErrors.flatMap(item => item.foundIn || item.lists || []).filter(Boolean));
+    const found = routingErrors.filter(item => item.resolvedAt).length;
+    return { ids: uniqueIds.size, lists: lists.size, found, pending: Math.max(0, routingErrors.length - found) };
+  }, [routingErrors]);
+
+  const markRoutingErrorFound = (index: number) => {
+    const next = routingErrors.map((item, itemIndex) => itemIndex === index ? { ...item, resolvedAt: new Date().toISOString() } : item);
+    localStorage.setItem('routing_errors_report_v1', JSON.stringify(next));
+    setRoutingErrors(next);
+  };
 
   return (
     <div className="space-y-4 pb-10">
@@ -639,26 +652,37 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
       )}
 
       {adminTab === 'erros' && (
-        <section className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+        <div className="space-y-4">
+          <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            <CompactStat label="IDs errados" value={routingErrorSummary.ids} />
+            <CompactStat label="Listas envolvidas" value={routingErrorSummary.lists} />
+            <CompactStat label="Pendentes" value={routingErrorSummary.pending} danger />
+            <CompactStat label="Encontrados" value={routingErrorSummary.found} />
+          </section>
+          <section className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
           <div className="border-b border-gray-100 px-4 py-3">
             <h2 className="text-sm font-bold text-gray-900">Erros de roteamento</h2>
-            <p className="text-xs text-gray-400">{routingErrors.length} IDs errados encontrados em outra lista</p>
+            <p className="text-xs text-gray-400">{routingErrors.length} ocorrências salvas; analise por período usando a data do registro.</p>
+            <div className="mt-3 flex gap-2">
+              {(['pendentes', 'encontrados'] as const).map(filter => <button key={filter} onClick={() => setRoutingErrorFilter(filter)} className={`rounded px-2 py-1 text-[10px] font-bold ${routingErrorFilter === filter ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600'}`}>{filter === 'pendentes' ? `Pendentes ${routingErrorSummary.pending}` : `Encontrados ${routingErrorSummary.found}`}</button>)}
+            </div>
           </div>
           {routingErrors.length === 0 ? (
             <div className="px-4 py-12 text-center text-sm text-gray-400">Nenhum erro salvo. Use “Salvar errados” na Busca de IDs.</div>
           ) : (
             <div className="divide-y divide-gray-100">
-              {routingErrors.map((error, index) => (
+              {routingErrors.map((error, index) => ({ error, index })).filter(({ error }) => routingErrorFilter === 'encontrados' ? Boolean(error.resolvedAt) : !error.resolvedAt).map(({ error, index }) => (
                 <div key={`${error.id}-${index}`} className="grid gap-2 px-4 py-3 text-xs md:grid-cols-[160px_1fr_1fr_auto] md:items-center">
                   <span className="font-mono font-bold text-gray-900">{error.id}</span>
                   <span><strong>Origem:</strong> {error.sourceListaNome || '-'}</span>
                   <span><strong>Encontrado em:</strong> {(error.foundIn || error.lists || []).join(' • ')}</span>
-                  <span className="rounded bg-red-50 px-2 py-1 text-[10px] font-bold text-red-700">{error.sourceCiclo || 'PM'} → outra lista</span>
+                  <button onClick={() => !error.resolvedAt && markRoutingErrorFound(index)} className={`rounded px-2 py-1 text-[10px] font-bold ${error.resolvedAt ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>{error.resolvedAt ? 'Encontrado' : 'Marcar encontrado'}</button>
                 </div>
               ))}
             </div>
           )}
         </section>
+        </div>
       )}
 
       {adminTab === 'usuarios' && (
