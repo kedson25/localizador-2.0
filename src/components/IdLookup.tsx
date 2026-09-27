@@ -9,6 +9,12 @@ interface IdLookupProps {
   onNavigateToUpload: () => void;
 }
 
+function cycleOnly(value?: string): string {
+  const text = String(value || '').trim().toUpperCase();
+  const match = text.match(/(?:^|[^A-Z])(AM|PM|SD)(?=$|[^A-Z])/);
+  return match?.[1] || text || '—';
+}
+
 export const IdLookup: React.FC<IdLookupProps> = ({ rows, onNavigateToUpload }) => {
   const [inputText, setInputText] = useState<string>('');
   const [saidaFilter, setSaidaFilter] = useState<string>('');
@@ -200,7 +206,7 @@ export const IdLookup: React.FC<IdLookupProps> = ({ rows, onNavigateToUpload }) 
 
     foundRows.forEach((r) => {
       if (r.saida && r.saida.trim()) {
-        set.add(r.saida.trim());
+        set.add(cycleOnly(r.saida));
       }
     });
     return Array.from(set).sort();
@@ -417,31 +423,12 @@ export const IdLookup: React.FC<IdLookupProps> = ({ rows, onNavigateToUpload }) 
     );
   };
 
-  // Group breakdown for matched IDs in numeric order (1, 2, 3...)
-  const foundGroupCounts = useMemo(() => {
-    const map = new Map<string, number>();
-    filteredMatches.forEach((m) => {
-      if (m.found && m.row) {
-        const g = m.row.group || 'SEM GRUPO';
-        map.set(g, (map.get(g) || 0) + 1);
-      }
-    });
-
-    return Array.from(map.entries())
-      .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => {
-        if (a.name === 'ERROS') return 1;
-        if (b.name === 'ERROS') return -1;
-        return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
-      });
-  }, [filteredMatches]);
-
   const handleCopyResultsText = () => {
     if (filteredMatches.length === 0) return;
     const header = ['ID', 'GRUPO', 'SAÍDA', 'MOTIVO'].join('\t');
     const rows = filteredMatches.map((m) => {
       if (m.found && m.row) {
-        return [m.searchTerm, m.row.group, m.row.saida || '', m.row.motivo || ''].join('\t');
+        return [m.searchTerm, m.row.group, cycleOnly(m.row.saida), m.row.motivo || ''].join('\t');
       }
       return [m.searchTerm, 'NÃO ENCONTRADO', '', ''].join('\t');
     });
@@ -453,7 +440,7 @@ export const IdLookup: React.FC<IdLookupProps> = ({ rows, onNavigateToUpload }) 
 
   const handleCopySingleRowDetail = (match: LookupMatch, idx: number) => {
     const groupText = match.found && match.row ? match.row.group : 'NÃO ENCONTRADO';
-    const saidaText = match.found && match.row ? (match.row.saida || '') : '';
+    const saidaText = match.found && match.row ? cycleOnly(match.row.saida) : '';
     const motivoText = match.found && match.row ? (match.row.motivo || '') : '';
     const header = ['ID', 'GRUPO', 'SAÍDA', 'MOTIVO'].join('\t');
     const row = [match.searchTerm, groupText, saidaText, motivoText].join('\t');
@@ -575,22 +562,6 @@ export const IdLookup: React.FC<IdLookupProps> = ({ rows, onNavigateToUpload }) 
             </div>
           </div>
           
-          {rows.length === 0 && (
-            <div className="mt-4 bg-blue-50 border border-blue-200 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-blue-900 text-xs">
-              <div className="flex items-start sm:items-center gap-3">
-                <Layers className="w-5 h-5 text-blue-600 flex-shrink-0" />
-                <p className="leading-relaxed font-medium">Consulta pronta: os IDs são buscados nas listas e grupos salvos. A base CSV é opcional, apenas para cruzar informações extras.</p>
-              </div>
-              <button
-                onClick={onNavigateToUpload}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-xs transition-colors flex items-center gap-1.5 flex-shrink-0 shadow-sm"
-              >
-                <Upload className="w-4 h-4" />
-                Adicionar CSV opcional
-              </button>
-            </div>
-          )}
-
           {listSearchError && (
             <div className="mt-3 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-xs font-medium text-red-800">
               <AlertCircle className="h-5 w-5 shrink-0 text-red-600" />
@@ -669,32 +640,6 @@ export const IdLookup: React.FC<IdLookupProps> = ({ rows, onNavigateToUpload }) 
         </div>
       )}
 
-      {/* Group breakdown for searched IDs */}
-      {foundGroupCounts.length > 0 && (
-        <div className="bg-white border border-gray-200 rounded-lg p-2.5 shadow-sm">
-          <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest block mb-1.5">
-            Quantidade de IDs Encontrados por Grupo (Ordem 1, 2, 3...):
-          </span>
-          <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto pr-1">
-            {foundGroupCounts.map((g) => (
-              <div
-                key={g.name}
-                className={`px-2 py-0.5 rounded text-xs flex items-center gap-1 font-mono border ${
-                  g.name === 'ERROS'
-                    ? 'bg-red-50 border-red-300 text-red-900 font-bold'
-                    : 'bg-amber-50/70 border-amber-200'
-                }`}
-              >
-                <span className={g.name === 'ERROS' ? 'text-red-700 font-bold' : 'text-amber-900 font-bold'}>{g.name}:</span>
-                <span className="text-gray-900 font-black bg-white px-1.5 py-0.2 rounded border border-gray-200">
-                  {g.count} {g.count === 1 ? 'ID' : 'IDs'}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
       {/* Fine Compact List Table ("Lista Fina") */}
       {inputText.trim() !== '' && matches.length === 0 ? (
         <div className="text-center py-8 bg-white border border-gray-200 rounded text-xs text-gray-500 font-mono">
@@ -727,8 +672,8 @@ export const IdLookup: React.FC<IdLookupProps> = ({ rows, onNavigateToUpload }) 
                   return (
                     <React.Fragment key={`${match.searchTerm}-${globalIdx}`}>
                       <tr
-                        className={`hover:bg-amber-50/50 transition-colors ${
-                          !match.found ? 'bg-red-50/30' : globalIdx % 2 === 1 ? 'bg-gray-50/40' : 'bg-white'
+                        className={`transition-colors hover:bg-blue-50/40 ${
+                          !match.found ? 'bg-red-50/30' : 'bg-white'
                         }`}
                       >
                         <td className="py-2 px-3 text-gray-400 text-[10px]">{globalIdx + 1}</td>
@@ -737,8 +682,8 @@ export const IdLookup: React.FC<IdLookupProps> = ({ rows, onNavigateToUpload }) 
                           <div className="flex flex-col">
                             <span className="font-mono text-xs font-bold text-gray-900">{match.searchTerm}</span>
                             {match.found && match.row?.rawFields?.['Lista de Coleta'] && (
-                              <span className="text-[10px] text-[#3483FA] font-medium font-sans truncate max-w-[170px]" title={`Lista: ${match.row.rawFields['Lista de Coleta']}`}>
-                                📋 {match.row.rawFields['Lista de Coleta']}
+                              <span className="mt-0.5 max-w-[260px] truncate font-sans text-[10px] font-semibold text-blue-600" title={`Lista: ${match.row.rawFields['Lista de Coleta']}`}>
+                                Lista: {match.row.rawFields['Lista de Coleta']}
                               </span>
                             )}
                           </div>
@@ -768,7 +713,7 @@ export const IdLookup: React.FC<IdLookupProps> = ({ rows, onNavigateToUpload }) 
                         <td className="py-2 px-3 whitespace-nowrap">
                           {match.found && match.row?.saida ? (
                             <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-blue-50 text-blue-800 border border-blue-200">
-                              {match.row.saida}
+                              {cycleOnly(match.row.saida)}
                             </span>
                           ) : (
                             <span className="text-gray-400 font-mono">—</span>
@@ -834,7 +779,7 @@ export const IdLookup: React.FC<IdLookupProps> = ({ rows, onNavigateToUpload }) 
                             <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-2 text-[11px]">
                               <div className="bg-white border border-gray-200 rounded p-1.5 shadow-2xs">
                                 <span className="block text-[9px] font-bold text-gray-400 uppercase">Saída</span>
-                                <span className="truncate block font-mono font-bold text-blue-700">{match.row.saida || '—'}</span>
+                                <span className="truncate block font-mono font-bold text-blue-700">{cycleOnly(match.row.saida)}</span>
                               </div>
                               <div className="bg-white border border-gray-200 rounded p-1.5 shadow-2xs">
                                 <span className="block text-[9px] font-bold text-gray-400 uppercase">Motivo</span>
