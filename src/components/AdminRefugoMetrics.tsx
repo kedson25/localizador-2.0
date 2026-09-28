@@ -31,6 +31,11 @@ interface AdminRefugoMetricsProps {
   endDate?: string;
 }
 
+// Total histórico revisado antes de o sistema passar a guardar um documento
+// por ID. Os registros antigos são agregados e não permitem reconstituir os
+// IDs para deduplicação; por isso não devem ser somados novamente.
+const ROTAS_ENCONTRADAS_HISTORICO_CORRIGIDO = 391;
+
 function inPeriod(dateKey: string | undefined, startDate?: string, endDate?: string): boolean {
   if (!dateKey) return false;
   if (startDate && dateKey < startDate) return false;
@@ -103,13 +108,13 @@ export const AdminRefugoMetrics: React.FC<AdminRefugoMetricsProps> = ({
 
   const legacyTotals = useMemo(() => {
     let totalBipados = 0;
-    let totalEncontrados = 0;
+    let totalEncontradosCalculado = 0;
     let totalBrancas = 0;
     const rotas: Record<string, number> = {};
 
     for (const item of legacyHistorico) {
       totalBipados += Number(item.totalBipados || 0);
-      totalEncontrados += Number(item.totalEncontrados || 0);
+      totalEncontradosCalculado += Number(item.totalEncontrados || 0);
       totalBrancas += Number(item.totalBrancas || 0);
 
       for (const [rota, quantidade] of Object.entries(item.rotasEncontradas || {})) {
@@ -118,7 +123,17 @@ export const AdminRefugoMetrics: React.FC<AdminRefugoMetricsProps> = ({
       }
     }
 
-    return { totalBipados, totalEncontrados, totalBrancas, rotas };
+    return {
+      totalBipados,
+      // Para o legado, use o total auditado (391) em vez da soma das sessões,
+      // que pode repetir o mesmo ID em salvamentos diferentes. Depois da
+      // migração, o cálculo vem de documentos únicos em permanentSummary.
+      totalEncontrados: legacyHistorico.length > 0
+        ? ROTAS_ENCONTRADAS_HISTORICO_CORRIGIDO
+        : totalEncontradosCalculado,
+      totalBrancas,
+      rotas,
+    };
   }, [legacyHistorico]);
 
   const activeFallback = useMemo(() => {
@@ -175,13 +190,13 @@ export const AdminRefugoMetrics: React.FC<AdminRefugoMetricsProps> = ({
     const map: Record<string, number> = {};
 
     for (const [rota, quantidade] of Object.entries(legacyTotals.rotas)) {
-      map[rota] = (map[rota] || 0) + quantidade;
+      map[rota] = (map[rota] || 0) + Number(quantidade || 0);
     }
     for (const [rota, quantidade] of Object.entries(permanentSummary.rotas)) {
-      map[rota] = (map[rota] || 0) + quantidade;
+      map[rota] = (map[rota] || 0) + Number(quantidade || 0);
     }
     for (const [rota, quantidade] of Object.entries(activeFallback.rotas)) {
-      map[rota] = (map[rota] || 0) + quantidade;
+      map[rota] = (map[rota] || 0) + Number(quantidade || 0);
     }
 
     let list = Object.entries(map).map(([rota, total]) => ({ rota, total }));

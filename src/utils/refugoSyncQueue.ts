@@ -161,10 +161,11 @@ export class RefugoSyncQueue {
       // Se uma falhar, o retry executa ambas novamente. Ambas são idempotentes:
       // - addRefugoScan usa setDoc no mesmo normalizedId;
       // - persistRefugoMetricScan ignora retry do mesmo eventKey.
-      await Promise.all([
-        addRefugoScan(item.scan),
-        persistRefugoMetricScan(item.scan),
-      ]);
+      await addRefugoScan(item.scan);
+      // O fluxo de Zonas é operacional e não entra nas métricas de Refugo.
+      if (item.scan.tipoRefugo !== 'zonas') {
+        await persistRefugoMetricScan(item.scan);
+      }
 
       this.activeWrites.delete(id);
       this.notifyQueueChange();

@@ -26,7 +26,7 @@ import {
   searchItemsAcrossAllListas as searchItemsAcrossAllListasCore,
   getAllItemsForExport as getAllItemsForExportCore,
 } from './firebase-core';
-import type { RefugoData, RefugoScan, RefugoScanChange } from './firebase-core';
+import type { RefugoData, RefugoScan, RefugoScanChange, RefugoType } from './firebase-core';
 import type { ColetaItem, ColetaLista, RefugoHistoricoMetrica } from '../types';
 import {
   listenToRefugoMetricItems,
@@ -43,6 +43,8 @@ import {
 const LOCAL_LISTAS_KEY = 'coleta:listas:v3';
 const LOCAL_REFUGO_KEY = 'refugo:base:v3';
 const LOCAL_REFUGO_SCANS_KEY = 'refugo:scans:v3';
+const localRefugoKey = (type: RefugoType) => `${LOCAL_REFUGO_KEY}:${type}`;
+const localRefugoScansKey = (type: RefugoType) => `${LOCAL_REFUGO_SCANS_KEY}:${type}`;
 const localListaItensKey = (listaId: string) => `coleta:lista:${listaId}:itens:v3`;
 
 let todayListasCache: ColetaLista[] = [];
@@ -356,29 +358,29 @@ export async function updateItemsBatchMotivo(
   return updateItemsBatchMotivoCore(listaId, itemIds, novoMotivo);
 }
 
-export async function saveRefugo(rawText: string, totalRows: number, fileName?: string): Promise<boolean> {
+export async function saveRefugo(rawText: string, totalRows: number, fileName?: string, type: RefugoType = 'brancas'): Promise<boolean> {
   const localData: RefugoData = {
     rawText,
     totalRows,
     fileName: fileName || 'refugo.csv',
     updatedAt: new Date().toISOString(),
   };
-  await setLocalValue(LOCAL_REFUGO_KEY, localData);
-  return saveRefugoCore(rawText, totalRows, fileName);
+  await setLocalValue(localRefugoKey(type), localData);
+  return saveRefugoCore(rawText, totalRows, fileName, type);
 }
 
-export async function clearRefugo(): Promise<boolean> {
-  const result = await clearRefugoCore();
-  if (result) await deleteLocalValue(LOCAL_REFUGO_KEY);
+export async function clearRefugo(type: RefugoType = 'brancas'): Promise<boolean> {
+  const result = await clearRefugoCore(type);
+  if (result) await deleteLocalValue(localRefugoKey(type));
   return result;
 }
 
-export function listenToRefugo(callback: (data: RefugoData | null) => void): () => void {
+export function listenToRefugo(callback: (data: RefugoData | null) => void, type: RefugoType = 'brancas'): () => void {
   let remoteSeen = false;
   let remoteIsEmpty = false;
   let cachedData: RefugoData | null = null;
 
-  void getLocalValue<RefugoData>(LOCAL_REFUGO_KEY).then(cached => {
+  void getLocalValue<RefugoData>(localRefugoKey(type)).then(cached => {
     cachedData = cached;
     if (cachedData && (!remoteSeen || remoteIsEmpty)) callback(cachedData);
   });
@@ -392,9 +394,9 @@ export function listenToRefugo(callback: (data: RefugoData | null) => void): () 
       return;
     }
 
-    if (data) void setLocalValue(LOCAL_REFUGO_KEY, data);
+    if (data) void setLocalValue(localRefugoKey(type), data);
     callback(data);
-  });
+  }, type);
 }
 
 /**
@@ -533,16 +535,16 @@ export async function addRefugoScan(scan: Omit<RefugoScan, 'firestoreId'>): Prom
   await addRefugoScanCore(normalized);
 }
 
-export async function deleteRefugoScan(normalizedId: string): Promise<void> {
+export async function deleteRefugoScan(normalizedId: string, type: RefugoType = 'brancas'): Promise<void> {
   await mutateLocalValue<RefugoScan[]>(LOCAL_REFUGO_SCANS_KEY, current =>
     (current || []).filter(item => item.normalizedId !== normalizedId)
   );
-  await deleteRefugoScanCore(normalizedId);
+  await deleteRefugoScanCore(normalizedId, type);
 }
 
-export async function clearRefugoScans(): Promise<boolean> {
-  const result = await clearRefugoScansCore();
-  if (result) await deleteLocalValue(LOCAL_REFUGO_SCANS_KEY);
+export async function clearRefugoScans(type: RefugoType = 'brancas'): Promise<boolean> {
+  const result = await clearRefugoScansCore(type);
+  if (result) await deleteLocalValue(localRefugoScansKey(type));
   return result;
 }
 
@@ -553,6 +555,7 @@ function schedulePermanentBackfill(scans: RefugoScan[]): void {
   const unique: RefugoScan[] = [];
 
   for (const rawScan of scans) {
+    if (rawScan.tipoRefugo === 'zonas') continue;
     const scan = normalizeRefugoRouteStatus(rawScan);
     if (!scan?.normalizedId) continue;
     const key = eventKeyFromScan(scan);
@@ -578,12 +581,13 @@ function schedulePermanentBackfill(scans: RefugoScan[]): void {
 
 export function listenToRefugoScansIncremental(
   callback: (changes: RefugoScanChange[], isInitial: boolean, initialScans?: RefugoScan[]) => void,
-  onError?: (error: any) => void
+  onError?: (error: any) => void,
+  type: RefugoType = 'brancas'
 ): () => void {
   let remoteInitialSeen = false;
   let cachedScans: RefugoScan[] = [];
 
-  void getLocalValue<RefugoScan[]>(LOCAL_REFUGO_SCANS_KEY).then(cached => {
+  void getLocalValue<RefugoScan[]>(localRefugoScansKey(type)).then(cached => {
     cachedScans = (cached || []).map(normalizeRefugoRouteStatus);
     if (!remoteInitialSeen && cachedScans.length > 0) {
       callback([], true, cachedScans);
@@ -596,7 +600,7 @@ export function listenToRefugoScansIncremental(
         remoteInitialSeen = true;
         const normalizedInitial = (initialScans || []).map(normalizeRefugoRouteStatus);
         const effectiveInitial = normalizedInitial.length > 0 ? normalizedInitial : cachedScans;
-        if (normalizedInitial.length > 0) void setLocalValue(LOCAL_REFUGO_SCANS_KEY, normalizedInitial);
+        if (normalizedInitial.length > 0) void setLocalValue(localRefugoScansKey(type), normalizedInitial);
         if (effectiveInitial.length > 0) schedulePermanentBackfill(effectiveInitial);
         callback([], true, effectiveInitial);
         return;
@@ -608,7 +612,7 @@ export function listenToRefugoScansIncremental(
       }));
 
       if (normalizedChanges.length > 0) {
-        void mutateLocalValue<RefugoScan[]>(LOCAL_REFUGO_SCANS_KEY, current => {
+        void mutateLocalValue<RefugoScan[]>(localRefugoScansKey(type), current => {
           const map = new Map((current || []).map(scan => [scan.normalizedId, scan]));
           normalizedChanges.forEach(change => {
             if (change.type === 'removed') map.delete(change.scan.normalizedId);
@@ -624,7 +628,8 @@ export function listenToRefugoScansIncremental(
 
       callback(normalizedChanges, false);
     },
-    onError
+    onError,
+    type
   );
 }
 

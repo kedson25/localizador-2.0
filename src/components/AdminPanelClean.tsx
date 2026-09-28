@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle,
-  AlertTriangle,
   BarChart3,
   Check,
   CheckCircle2,
+  ChevronRight,
   Copy,
   Database,
   Download,
@@ -30,7 +30,6 @@ import {
   listenToListas,
   listenToRefugoHistoricoMetricas,
   listenToRefugoScans,
-  getAllItemsForExport,
   saveLista,
 } from '../lib/firebase';
 import { ColetaLista, RefugoHistoricoMetrica } from '../types';
@@ -49,6 +48,10 @@ export interface RefugoScan {
 interface AdminPanelProps {
   currentUser?: User | null;
 }
+
+// Sessões antigas não guardavam os IDs individualmente. Este é o total
+// histórico auditado; as métricas permanentes posteriores seguem por ID único.
+const ROTAS_ENCONTRADAS_HISTORICO_CORRIGIDO = 391;
 
 const ACCESS_TABS = [
   { id: 'consulta', label: 'Buscar grupos' },
@@ -145,12 +148,21 @@ function listStats(lista: ColetaLista) {
   return { total, validados, pendentes };
 }
 
+function foundScanIds(scans: RefugoScan[]): Set<string> {
+  return new Set(
+    scans
+      .filter(scan => {
+        const route = String(scan.rota || '').trim().toUpperCase();
+        return scan.status === 'found' && route && !route.includes('SEM ROTA') && !route.includes('BRANCA');
+      })
+      .map(scan => String(scan.id || '').trim())
+      .filter(Boolean)
+  );
+}
+
 export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
   const navigate = useNavigate();
-  const [adminTab, setAdminTab] = useState<'metricas' | 'erros' | 'usuarios' | 'supabase'>('metricas');
-  const [routingErrors, setRoutingErrors] = useState<any[]>([]);
-  const [baixas, setBaixas] = useState<any[]>([]);
-  const [routingErrorFilter, setRoutingErrorFilter] = useState<'pendentes' | 'encontrados'>('pendentes');
+  const [adminTab, setAdminTab] = useState<'metricas' | 'usuarios' | 'supabase'>('metricas');
   const [quickFilter, setQuickFilter] = useState<'todos' | 'hoje' | 'ontem' | '7dias' | '15dias' | 'mes_atual' | 'custom'>('todos');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -220,22 +232,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
       unsubHistorico();
     };
   }, [currentUser]);
-
-  useEffect(() => {
-    const load = () => {
-      try { setRoutingErrors(JSON.parse(localStorage.getItem('routing_errors_report_v1') || '[]')); }
-      catch { setRoutingErrors([]); }
-    };
-    load();
-    window.addEventListener('routing-errors-report-updated', load);
-    return () => window.removeEventListener('routing-errors-report-updated', load);
-  }, []);
-
-  useEffect(() => {
-    const load = () => { try { setBaixas(JSON.parse(localStorage.getItem('baixas_fluxo_report_v1') || '[]')); } catch { setBaixas([]); } };
-    load(); window.addEventListener('baixas-report-updated', load);
-    return () => window.removeEventListener('baixas-report-updated', load);
-  }, []);
 
   useEffect(() => {
     if (!selectedListaForReport) return;
@@ -331,9 +327,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
     const validados = filteredListas.reduce((total, lista) => total + listStats(lista).validados, 0);
     const brancasListas = filteredListas.reduce((total, lista) => total + countRotasBrancas(lista), 0);
 
-    const historicoEncontrados = filteredRefugoHistorico.reduce((total, item) => total + Number(item.totalEncontrados || 0), 0);
+    const historicoPermanenteEncontrados = filteredRefugoHistorico
+      .filter(item => item.id.startsWith('permanent-day-'))
+      .reduce((total, item) => total + Number(item.totalEncontrados || 0), 0);
+    const possuiHistoricoLegado = filteredRefugoHistorico.some(item => !item.id.startsWith('permanent-day-'));
+    const historicoEncontrados = historicoPermanenteEncontrados + (possuiHistoricoLegado ? ROTAS_ENCONTRADAS_HISTORICO_CORRIGIDO : 0);
     const historicoBrancas = filteredRefugoHistorico.reduce((total, item) => total + Number(item.totalBrancas || 0), 0);
-    const ativosEncontrados = filteredActiveScans.filter(scan => scan.status === 'found').length;
+    const ativosEncontrados = foundScanIds(filteredActiveScans).size;
     const ativosBrancas = filteredActiveScans.filter(scan => scan.status !== 'found' || (scan.rota || '').toLowerCase().includes('branca')).length;
 
     const accuracies = finalizadas
@@ -353,17 +353,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
 
   const pendingUsers = users.filter(user => !user.isApproved);
 
-  const openReport = async (lista: ColetaLista) => {
-    let itens = lista.itens || [];
-    try {
-      const loaded = await getAllItemsForExport(lista.id);
-      if (loaded.length > 0) itens = loaded;
-    } catch (error) {
-      console.warn('Não foi possível carregar itens completos da lista:', error);
-    }
-    const reportLista = { ...lista, itens, totalItens: itens.length || lista.totalItens, totalValidados: itens.filter(item => item.validado).length || lista.totalValidados };
-    const stats = listStats(reportLista);
-    setSelectedListaForReport(reportLista);
+  const openReport = (lista: ColetaLista) => {
+    const stats = listStats(lista);
+    setSelectedListaForReport(lista);
     setReportTab(stats.pendentes > 0 ? 'nao_validados' : 'todos');
     setReportSearch('');
   };
@@ -472,34 +464,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
   }
 
   const metricCards = [
-    { label: 'Pacotes nas listas', value: metrics.volume.toLocaleString('pt-BR'), color: 'bg-blue-500' },
-    { label: 'Pacotes validados', value: `${metrics.taxaValidacao}%`, color: 'bg-emerald-500' },
-    { label: 'Listas finalizadas', value: `${metrics.finalizadas} de ${metrics.totalListas}`, color: 'bg-violet-500' },
-    { label: 'Taxa de acerto', value: `${metrics.mediaAcerto}%`, color: 'bg-amber-500' },
-    { label: 'Etiquetas brancas', value: metrics.brancas.toLocaleString('pt-BR'), color: 'bg-rose-500' },
-    { label: 'Rotas localizadas', value: metrics.encontradas.toLocaleString('pt-BR'), color: 'bg-cyan-500' },
-    { label: 'Taxa de entrega', value: `${baixas.length ? Math.round((baixas.filter(item => String(item.status || '').toUpperCase().includes('ENTREG')).length / baixas.length) * 100) : 0}%`, color: 'bg-teal-500' },
+    { label: 'Volume coletado', value: metrics.volume.toLocaleString('pt-BR') },
+    { label: 'Validação', value: `${metrics.taxaValidacao}%` },
+    { label: 'Listas concluídas', value: `${metrics.finalizadas}/${metrics.totalListas}` },
+    { label: 'Média de acerto', value: `${metrics.mediaAcerto}%` },
+    { label: 'Rotas brancas', value: metrics.brancas.toLocaleString('pt-BR') },
+    { label: 'Rotas encontradas', value: metrics.encontradas.toLocaleString('pt-BR') },
   ];
-  const routingErrorSummary = (() => {
-    const uniqueIds = new Set(routingErrors.map(item => String(item.id || '').toUpperCase()).filter(Boolean));
-    const lists = new Set(routingErrors.flatMap(item => item.foundIn || item.lists || []).filter(Boolean));
-    const found = routingErrors.filter(item => item.resolvedAt).length;
-    return { ids: uniqueIds.size, lists: lists.size, found, pending: Math.max(0, routingErrors.length - found) };
-  })();
-  const visibleRoutingErrors = routingErrors
-    .map((error, index) => ({ error, index }))
-    .filter(({ error }) => routingErrorFilter === 'encontrados' ? Boolean(error.resolvedAt) : !error.resolvedAt);
-  const oldestPendingDays = routingErrors.reduce((oldest, error) => {
-    if (error.resolvedAt || !error.detectedAt) return oldest;
-    const days = Math.max(0, Math.floor((Date.now() - new Date(error.detectedAt).getTime()) / 86_400_000));
-    return Math.max(oldest, Number.isFinite(days) ? days : 0);
-  }, 0);
-
-  const markRoutingErrorFound = (index: number) => {
-    const next = routingErrors.map((item, itemIndex) => itemIndex === index ? { ...item, resolvedAt: new Date().toISOString() } : item);
-    localStorage.setItem('routing_errors_report_v1', JSON.stringify(next));
-    setRoutingErrors(next);
-  };
 
   return (
     <div className="space-y-4 pb-10">
@@ -510,14 +481,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
       <nav className="flex flex-wrap items-center gap-1 rounded-xl border border-gray-200 bg-white p-1 shadow-sm">
         {[
           ['metricas', BarChart3, 'Visão geral'],
-          ['erros', AlertTriangle, 'Erros de roteamento'],
           ['usuarios', Users, 'Usuários'],
           ['supabase', Database, 'Banco'],
         ].map(([id, Icon, label]) => (
           <button
             key={String(id)}
             type="button"
-            onClick={() => setAdminTab(id as 'metricas' | 'erros' | 'usuarios' | 'supabase')}
+            onClick={() => setAdminTab(id as 'metricas' | 'usuarios' | 'supabase')}
             className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${adminTab === id ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}
           >
             <Icon className="h-4 w-4" />
@@ -572,12 +542,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
             </div>
           </section>
 
-          <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <section className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
             {metricCards.map(card => (
-              <div key={card.label} className="relative overflow-hidden rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-                <span className={`absolute inset-x-0 top-0 h-1 ${card.color}`} />
-                <p className="text-[11px] font-bold uppercase tracking-wide text-gray-500">{card.label}</p>
-                <p className="mt-2 text-2xl font-black tabular-nums text-gray-900">{card.value}</p>
+              <div key={card.label} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">{card.label}</p>
+                <p className="mt-2 text-2xl font-bold tabular-nums text-gray-900">{card.value}</p>
               </div>
             ))}
           </section>
@@ -626,6 +595,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
                       <div className="flex items-center gap-2 lg:justify-end">
                         <button
                           type="button"
+                          onClick={() => openReport(lista)}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-100"
+                        >
+                          Abrir
+                          {stats.pendentes > 0 && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-800">{stats.pendentes}</span>}
+                          <ChevronRight className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => openMetrics(lista)}
                           className="rounded-lg border border-gray-200 p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-900"
                           title="Editar fechamento"
@@ -655,55 +633,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
               />
             </div>
           </details>
-        </div>
-      )}
-
-      {adminTab === 'erros' && (
-        <div className="space-y-4">
-          <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <ReportSummaryCard label="IDs com erro" value={routingErrorSummary.ids} description="Pacotes únicos registrados" tone="blue" />
-            <ReportSummaryCard label="Listas envolvidas" value={routingErrorSummary.lists} description="Onde os pacotes apareceram" tone="violet" />
-            <ReportSummaryCard label="Ainda procurando" value={routingErrorSummary.pending} description="Erros que precisam de ação" tone="red" />
-            <ReportSummaryCard label="Já encontrados" value={routingErrorSummary.found} description="Marcados como resolvidos" tone="green" />
-          </section>
-          <section className={`rounded-xl border p-4 ${routingErrorSummary.pending > 0 ? 'border-amber-200 bg-amber-50' : 'border-emerald-200 bg-emerald-50'}`}>
-            <div className="flex items-start gap-3">
-              <AlertCircle className={`mt-0.5 h-5 w-5 shrink-0 ${routingErrorSummary.pending > 0 ? 'text-amber-600' : 'text-emerald-600'}`} />
-              <div>
-                <h3 className="text-sm font-bold text-gray-900">Resumo para o reporte</h3>
-                <p className="mt-1 text-sm leading-relaxed text-gray-700">
-                  {routingErrorSummary.pending > 0
-                    ? `Existem ${routingErrorSummary.pending} erro(s) pendente(s) em ${routingErrorSummary.lists} lista(s). O mais antigo está aberto há ${oldestPendingDays} dia(s).`
-                    : 'Todos os erros registrados já foram encontrados. Não há pendências neste momento.'}
-                </p>
-              </div>
-            </div>
-          </section>
-          <section className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-          <div className="border-b border-gray-100 px-5 py-4">
-            <h2 className="text-base font-bold text-gray-900">Pacotes com erro de roteamento</h2>
-            <p className="mt-1 text-xs text-gray-500">Confira a lista de origem, onde o pacote foi localizado e marque quando resolver.</p>
-            <div className="mt-4 flex gap-2">
-              {(['pendentes', 'encontrados'] as const).map(filter => <button key={filter} onClick={() => setRoutingErrorFilter(filter)} className={`rounded-lg px-3 py-2 text-xs font-bold ${routingErrorFilter === filter ? 'bg-gray-900 text-white shadow-sm' : 'border border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`}>{filter === 'pendentes' ? `Procurar (${routingErrorSummary.pending})` : `Encontrados (${routingErrorSummary.found})`}</button>)}
-            </div>
-          </div>
-          {routingErrors.length === 0 ? (
-            <div className="px-4 py-12 text-center text-sm text-gray-400">Nenhum erro salvo. Use “Salvar errados” na Busca de IDs.</div>
-          ) : (
-            <div className="divide-y divide-gray-100">
-              {visibleRoutingErrors.map(({ error, index }) => (
-                <div key={`${error.id}-${index}`} className="grid gap-3 px-5 py-4 text-xs hover:bg-gray-50 md:grid-cols-[150px_1fr_1fr_130px_auto] md:items-center">
-                  <div><p className="text-[10px] font-bold uppercase text-gray-400">ID do pacote</p><p className="mt-1 font-mono font-bold text-gray-900">{error.id}</p></div>
-                  <div><p className="text-[10px] font-bold uppercase text-gray-400">Deveria estar em</p><p className="mt-1 font-semibold text-gray-700">{error.sourceListaNome || '-'}</p></div>
-                  <div><p className="text-[10px] font-bold uppercase text-gray-400">Foi encontrado em</p><p className="mt-1 font-semibold text-red-700">{(error.foundIn || error.lists || []).join(' • ') || '-'}</p></div>
-                  <div><p className="text-[10px] font-bold uppercase text-gray-400">Registrado</p><p className="mt-1 text-gray-600">{error.detectedAt ? new Date(error.detectedAt).toLocaleDateString('pt-BR') : '-'}</p></div>
-                  <button onClick={() => !error.resolvedAt && markRoutingErrorFound(index)} disabled={Boolean(error.resolvedAt)} className={`rounded-lg px-3 py-2 text-xs font-bold ${error.resolvedAt ? 'bg-emerald-50 text-emerald-700' : 'bg-emerald-600 text-white hover:bg-emerald-700'}`}>{error.resolvedAt ? '✓ Encontrado' : 'Marcar encontrado'}</button>
-                </div>
-              ))}
-              {visibleRoutingErrors.length === 0 && <div className="px-5 py-12 text-center text-sm text-gray-400">Nenhum pacote nesta situação.</div>}
-            </div>
-          )}
-        </section>
         </div>
       )}
 
@@ -953,28 +882,6 @@ const CompactStat: React.FC<{ label: string; value: React.ReactNode; danger?: bo
     <p className={`mt-0.5 truncate text-sm font-bold tabular-nums ${danger ? 'text-red-600' : 'text-gray-800'}`}>{value}</p>
   </div>
 );
-
-const ReportSummaryCard: React.FC<{
-  label: string;
-  value: React.ReactNode;
-  description: string;
-  tone: 'blue' | 'violet' | 'red' | 'green';
-}> = ({ label, value, description, tone }) => {
-  const tones = {
-    blue: 'border-blue-200 bg-blue-50 text-blue-700',
-    violet: 'border-violet-200 bg-violet-50 text-violet-700',
-    red: 'border-red-200 bg-red-50 text-red-700',
-    green: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-  };
-
-  return (
-    <div className={`rounded-xl border p-4 shadow-sm ${tones[tone]}`}>
-      <p className="text-[11px] font-bold uppercase tracking-wide opacity-80">{label}</p>
-      <p className="mt-2 text-3xl font-black tabular-nums">{value}</p>
-      <p className="mt-1 text-xs opacity-75">{description}</p>
-    </div>
-  );
-};
 
 const Field: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
   <label className="block space-y-1.5">

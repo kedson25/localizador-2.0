@@ -33,7 +33,8 @@ import {
   getAllItemsForExport,
   salvarRefugoHistoricoMetrica,
   RefugoScan,
-  RefugoScanChange
+  RefugoScanChange,
+  RefugoType
 } from '../lib/firebase';
 import { cleanTrackingId, normalizeTrackingCode } from '../utils/csvParser';
 import { RefugoSyncQueue } from '../utils/refugoSyncQueue';
@@ -127,6 +128,7 @@ function formatFirestoreDate(
 }
 
 export function ControleRefugo({ currentUser }: { currentUser?: User | null }) {
+  const [tipoRefugo, setTipoRefugo] = useState<RefugoType | null>(null);
   const [rows, setRows] = useState<RefugoRow[]>([]);
   const [scannedItems, setScannedItems] = useState<RefugoScan[]>([]);
   const [bipInput, setBipInput] = useState('');
@@ -313,6 +315,7 @@ export function ControleRefugo({ currentUser }: { currentUser?: User | null }) {
 
   // Inscrição aos dados: CSV de Refugo e Scans incrementais
   useEffect(() => {
+    if (!tipoRefugo) return;
     const unsubRefugo = listenToRefugo(data => {
       if (resettingRefugoRef.current) {
         if (!data) {
@@ -335,7 +338,7 @@ export function ControleRefugo({ currentUser }: { currentUser?: User | null }) {
         showError(error);
       }
       setIsLoading(false);
-    });
+    }, tipoRefugo);
 
     // Processamento incremental com snapshot.docChanges() para alta performance com milhares de scans
     const unsubScans = listenToRefugoScansIncremental((changes: RefugoScanChange[], isInitial: boolean, initialScans?: RefugoScan[]) => {
@@ -399,7 +402,7 @@ export function ControleRefugo({ currentUser }: { currentUser?: User | null }) {
           return hasChanges ? updated : prev;
         });
       }
-    });
+    }, undefined, tipoRefugo);
 
     // Carregamento lazy/background das listas de coleta (NÃO bloqueia a inicialização do scanner)
     const unsubListas = listenToListas(data => {
@@ -411,7 +414,7 @@ export function ControleRefugo({ currentUser }: { currentUser?: User | null }) {
       unsubScans();
       unsubListas();
     };
-  }, [parseCSV, showError]);
+  }, [parseCSV, showError, tipoRefugo]);
 
   // Função para operações administrativas pesadas (upload CSV, limpar base, exportar)
   const runOperation = async (operation: () => Promise<void>) => {
@@ -481,6 +484,7 @@ export function ControleRefugo({ currentUser }: { currentUser?: User | null }) {
       timestamp: Date.now(),
       status: foundRow ? 'found' : 'not_found',
       foundBy: currentUser?.username || 'Operador',
+      tipoRefugo: tipoRefugo || 'brancas',
       firestoreId: key
     };
 
@@ -542,7 +546,7 @@ export function ControleRefugo({ currentUser }: { currentUser?: User | null }) {
 
     // Executa deleção no Firestore em background
     try {
-      await deleteRefugoScan(targetId);
+      await deleteRefugoScan(targetId, tipoRefugo || 'brancas');
     } catch (error) {
       // Em caso de falha de conexão, restaura o item e avisa o operador
       if (prevScan) {
@@ -560,13 +564,14 @@ export function ControleRefugo({ currentUser }: { currentUser?: User | null }) {
     await runOperation(async () => {
       const text = await file.text();
       const parsed = parseCSV(text);
-      await saveRefugo(text, parsed.length);
+      await saveRefugo(text, parsed.length, file.name, tipoRefugo || 'brancas');
       setLastScanResult(null);
       setPage(0);
     });
   };
 
   const salvarMetricasSessaoAtual = async (origem: 'sessao_concluida' | 'limpeza_refugo' | 'auto_sync' | 'manual') => {
+    if (tipoRefugo === 'zonas') return null;
     if (scannedItems.length === 0) return null;
 
     const now = new Date();
@@ -580,9 +585,11 @@ export function ControleRefugo({ currentUser }: { currentUser?: User | null }) {
     for (let i = 0; i < scannedItems.length; i++) {
       const item = scannedItems[i];
       const isBrancaOuSemRota = item.status !== 'found' || !item.rota || item.rota.toUpperCase().includes('SEM ROTA') || item.rota.toLowerCase().includes('branca');
-      if (item.status === 'found') {
+      // "Encontrado" só entra na métrica quando há uma rota válida. Assim,
+      // respostas como "SEM ROTA" ou "Branca" não aumentam o total.
+      if (!isBrancaOuSemRota && item.status === 'found') {
         totalEncontrados++;
-        const rotaNome = (item.rota || 'SEM ROTA').trim();
+        const rotaNome = item.rota.trim();
         rotasEncontradas[rotaNome] = (rotasEncontradas[rotaNome] || 0) + 1;
       }
       if (isBrancaOuSemRota) {
@@ -633,8 +640,8 @@ export function ControleRefugo({ currentUser }: { currentUser?: User | null }) {
           await salvarMetricasSessaoAtual('limpeza_refugo');
         }
         await syncQueueRef.current.resetAndWait();
-        await clearRefugo();
-        await clearRefugoScans();
+        await clearRefugo(tipoRefugo || 'brancas');
+        await clearRefugoScans(tipoRefugo || 'brancas');
         resetRefugoLocalState();
         setSuccessNotification('Base limpa com sucesso. As métricas e rotas encontradas foram preservadas no Painel Admin!');
       } catch (error) {
@@ -661,7 +668,7 @@ export function ControleRefugo({ currentUser }: { currentUser?: User | null }) {
       }
       syncQueueRef.current.clear();
       scanByCodeRef.current.clear();
-      await clearRefugoScans();
+      await clearRefugoScans(tipoRefugo || 'brancas');
 
       setScannedItems([]);
       setExportTargetCodes([]);
@@ -755,7 +762,7 @@ export function ControleRefugo({ currentUser }: { currentUser?: User | null }) {
 
     const now = new Date();
     const todayBR = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
-    setExportListName(`Lista Branca - Refugo (${todayBR})`);
+    setExportListName(`Lista ${tipoRefugo === 'zonas' ? 'Zonas' : 'Branca'} - Refugo (${todayBR})`);
     setExportDestinationType('new');
     if (existingListas.length > 0) {
       setSelectedListId(existingListas[0].id);
@@ -809,7 +816,7 @@ export function ControleRefugo({ currentUser }: { currentUser?: User | null }) {
           .toString(36)
           .substring(2, 5)}`,
         codigo: code,
-        rota: 'Brancas',
+        rota: tipoRefugo === 'zonas' ? 'Zonas' : 'Brancas',
         saida: exportSaida,
         motivo: exportMotivo,
         scannedAt: new Date().toISOString(),
@@ -823,9 +830,9 @@ export function ControleRefugo({ currentUser }: { currentUser?: User | null }) {
       if (exportDestinationType === 'new') {
         const novaLista: ColetaLista = {
           id: `lista-${Date.now()}`,
-          nome: exportListName.trim() || `Lista Branca - Refugo (${todayBR})`,
+          nome: exportListName.trim() || `Lista ${tipoRefugo === 'zonas' ? 'Zonas' : 'Branca'} - Refugo (${todayBR})`,
           tipo: 'comum',
-          rota: 'Brancas',
+          rota: tipoRefugo === 'zonas' ? 'Zonas' : 'Brancas',
           data: todayBR,
           responsavel: operatorName,
           status: 'em_andamento',
@@ -853,13 +860,13 @@ export function ControleRefugo({ currentUser }: { currentUser?: User | null }) {
       const csvHeader = "ID,ROTA\n";
       const csvBody =
         validExportCodes
-          .map(code => `${code},Brancas`)
+          .map(code => `${code},${tipoRefugo === 'zonas' ? 'Zonas' : 'Brancas'}`)
           .join('\n');
       const blob = new Blob([csvHeader + csvBody], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.setAttribute("href", url);
-      link.setAttribute("download", `lista_branca_refugo_${todayBR.replace(/\//g, '-')}.csv`);
+      link.setAttribute("download", `lista_${tipoRefugo === 'zonas' ? 'zonas' : 'branca'}_refugo_${todayBR.replace(/\//g, '-')}.csv`);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -881,6 +888,25 @@ export function ControleRefugo({ currentUser }: { currentUser?: User | null }) {
   };
 
   // O scanner abre imediatamente após carregar o CSV e scans iniciais (NÃO depende de listasReady)
+  if (!tipoRefugo) {
+    return (
+      <div className="mx-auto mt-10 max-w-2xl rounded-2xl border border-gray-200 bg-white p-8 text-center shadow-sm">
+        <h2 className="text-xl font-black text-gray-900">Qual tipo de refugo você vai trabalhar?</h2>
+        <p className="mt-2 text-sm text-gray-500">Cada tipo mantém sua própria base CSV, leituras e listas.</p>
+        <div className="mt-6 grid gap-3 sm:grid-cols-2">
+          <button type="button" onClick={() => { setScansReady(false); setIsLoading(true); setTipoRefugo('brancas'); }} className="rounded-xl border-2 border-amber-200 bg-amber-50 p-5 text-left hover:border-amber-400">
+            <span className="block font-black text-amber-900">Etiquetas brancas</span>
+            <span className="mt-1 block text-xs text-amber-800">Entra nas métricas de Refugo.</span>
+          </button>
+          <button type="button" onClick={() => { setScansReady(false); setIsLoading(true); setTipoRefugo('zonas'); }} className="rounded-xl border-2 border-sky-200 bg-sky-50 p-5 text-left hover:border-sky-400">
+            <span className="block font-black text-sky-900">Zonas</span>
+            <span className="mt-1 block text-xs text-sky-800">Fluxo separado; não entra nas métricas.</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (isLoading || !scansReady) {
     return <PageSkeleton variant="detail" className="mx-auto max-w-7xl pb-12" />;
   }

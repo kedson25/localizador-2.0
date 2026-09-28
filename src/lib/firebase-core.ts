@@ -86,9 +86,15 @@ export interface RefugoData {
   fileName?: string;
 }
 
-export async function saveRefugo(rawText: string, totalRows: number, fileName?: string): Promise<boolean> {
+export type RefugoType = 'brancas' | 'zonas';
+
+function refugoDocumentId(type: RefugoType): string {
+  return type === 'zonas' ? 'current_refugo_csv_zonas' : MAIN_REFUGO_DOC_ID;
+}
+
+export async function saveRefugo(rawText: string, totalRows: number, fileName?: string, type: RefugoType = 'brancas'): Promise<boolean> {
   try {
-    const refugoRef = doc(db, REFUGO_COLLECTION, MAIN_REFUGO_DOC_ID);
+    const refugoRef = doc(db, REFUGO_COLLECTION, refugoDocumentId(type));
     await setDoc(refugoRef, {
       rawText,
       totalRows,
@@ -115,9 +121,9 @@ export async function loadRefugo(): Promise<RefugoData | null> {
   return null;
 }
 
-export async function clearRefugo(): Promise<boolean> {
+export async function clearRefugo(type: RefugoType = 'brancas'): Promise<boolean> {
   try {
-    const refugoRef = doc(db, REFUGO_COLLECTION, MAIN_REFUGO_DOC_ID);
+    const refugoRef = doc(db, REFUGO_COLLECTION, refugoDocumentId(type));
     await deleteDoc(refugoRef);
 
     try {
@@ -138,8 +144,8 @@ export async function clearRefugo(): Promise<boolean> {
   }
 }
 
-export function listenToRefugo(callback: (data: RefugoData | null) => void): () => void {
-  const refugoRef = doc(db, REFUGO_COLLECTION, MAIN_REFUGO_DOC_ID);
+export function listenToRefugo(callback: (data: RefugoData | null) => void, type: RefugoType = 'brancas'): () => void {
+  const refugoRef = doc(db, REFUGO_COLLECTION, refugoDocumentId(type));
   
   const unsubscribe = onSnapshot(refugoRef, (snap) => {
     if (snap.exists()) {
@@ -288,11 +294,16 @@ export interface RefugoScan {
   timestamp: number;
   status: 'found' | 'not_found';
   foundBy?: string;
+  tipoRefugo?: RefugoType;
+}
+
+function refugoScansCollection(type: RefugoType): string {
+  return type === 'zonas' ? 'refugo_scans_items_zonas' : 'refugo_scans_items';
 }
 
 export async function addRefugoScan(scan: Omit<RefugoScan, 'firestoreId'>): Promise<void> {
   if (!scan || !scan.normalizedId) throw new Error('Scan inválido ou sem ID normalizado.');
-  const docRef = doc(db, 'refugo_scans_items', scan.normalizedId);
+  const docRef = doc(db, refugoScansCollection(scan.tipoRefugo || 'brancas'), scan.normalizedId);
   try {
     await setDoc(docRef, scan);
   } catch (error) {
@@ -301,9 +312,9 @@ export async function addRefugoScan(scan: Omit<RefugoScan, 'firestoreId'>): Prom
   }
 }
 
-export async function deleteRefugoScan(normalizedId: string): Promise<void> {
+export async function deleteRefugoScan(normalizedId: string, type: RefugoType = 'brancas'): Promise<void> {
   if (!normalizedId) throw new Error('ID normalizado não fornecido para exclusão.');
-  const docRef = doc(db, 'refugo_scans_items', normalizedId);
+  const docRef = doc(db, refugoScansCollection(type), normalizedId);
   try {
     await deleteDoc(docRef);
   } catch (error) {
@@ -312,7 +323,7 @@ export async function deleteRefugoScan(normalizedId: string): Promise<void> {
   }
 }
 
-export async function clearRefugoScans(): Promise<boolean> {
+export async function clearRefugoScans(type: RefugoType = 'brancas'): Promise<boolean> {
   try {
     // 1. Apaga o documento monolítico legado se existir
     try {
@@ -321,7 +332,7 @@ export async function clearRefugoScans(): Promise<boolean> {
     } catch (_) {}
 
     // 2. Apaga todos os documentos da coleção refugo_scans_items em lotes
-    const colRef = collection(db, 'refugo_scans_items');
+    const colRef = collection(db, refugoScansCollection(type));
     
     while (true) {
       const q = query(colRef, limit(400));
@@ -363,9 +374,10 @@ export interface RefugoScanChange {
  */
 export function listenToRefugoScansIncremental(
   callback: (changes: RefugoScanChange[], isInitial: boolean, initialScans?: RefugoScan[]) => void,
-  onError?: (error: any) => void
+  onError?: (error: any) => void,
+  type: RefugoType = 'brancas'
 ): () => void {
-  const colRef = collection(db, 'refugo_scans_items');
+  const colRef = collection(db, refugoScansCollection(type));
   const q = query(colRef, orderBy('timestamp', 'desc'));
   let isInitial = true;
 
@@ -395,8 +407,8 @@ export function listenToRefugoScansIncremental(
   });
 }
 
-export function listenToRefugoScans(callback: (scans: RefugoScan[]) => void): () => void {
-  const colRef = collection(db, 'refugo_scans_items');
+export function listenToRefugoScans(callback: (scans: RefugoScan[]) => void, type: RefugoType = 'brancas'): () => void {
+  const colRef = collection(db, refugoScansCollection(type));
   const q = query(colRef, orderBy('timestamp', 'desc'));
   
   const unsubscribe = onSnapshot(q, (snap) => {
@@ -1442,4 +1454,3 @@ export async function syncListaToGoogleSheets(listaId: string): Promise<{ succes
     return { success: false, synced: 0 };
   }
 }
-
