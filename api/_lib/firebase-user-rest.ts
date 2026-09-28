@@ -1,14 +1,3 @@
-import {
-  FIREBASE_API_KEY,
-  FIREBASE_PROJECT_ID,
-  FIRESTORE_DATABASE_ID,
-  fromFirestoreFields,
-  getDocRest,
-  runQueryRest,
-  toFirestoreFields,
-  toFirestoreValue,
-} from './firestore-rest';
-
 export const DEFAULT_ALLOWED_GROUPS = [
   'consulta',
   'remover',
@@ -33,11 +22,71 @@ export interface UserProfileRest {
   [key: string]: any;
 }
 
+const FIREBASE_PROJECT_ID = 'ecooy-5b791';
+const FIRESTORE_DATABASE_ID = '(default)';
+const FIREBASE_API_KEY = 'AIzaSyCfpBmn3cdKP9vaGrDzKCB7oRPMSMx02tA';
+
 const documentsBase = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/${FIRESTORE_DATABASE_ID}/documents`;
 const runQueryUrl = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/${FIRESTORE_DATABASE_ID}/documents:runQuery?key=${FIREBASE_API_KEY}`;
 
 function normalizeEmail(value: unknown): string {
   return String(value || '').trim().toLowerCase();
+}
+
+function toFirestoreValue(value: any): any {
+  if (value === null || value === undefined) return { nullValue: null };
+  if (typeof value === 'string') return { stringValue: value };
+  if (typeof value === 'boolean') return { booleanValue: value };
+  if (typeof value === 'number') {
+    return Number.isInteger(value)
+      ? { integerValue: String(value) }
+      : { doubleValue: value };
+  }
+  if (Array.isArray(value)) {
+    return { arrayValue: { values: value.map(toFirestoreValue) } };
+  }
+  const fields: Record<string, any> = {};
+  Object.entries(value || {}).forEach(([key, item]) => {
+    if (item !== undefined) fields[key] = toFirestoreValue(item);
+  });
+  return { mapValue: { fields } };
+}
+
+function fromFirestoreValue(value: any): any {
+  if (!value) return null;
+  if (value.stringValue !== undefined) return value.stringValue;
+  if (value.booleanValue !== undefined) return value.booleanValue;
+  if (value.integerValue !== undefined) return Number(value.integerValue);
+  if (value.doubleValue !== undefined) return value.doubleValue;
+  if (value.timestampValue !== undefined) return value.timestampValue;
+  if (value.nullValue !== undefined) return null;
+  if (value.arrayValue) {
+    return (value.arrayValue.values || []).map(fromFirestoreValue);
+  }
+  if (value.mapValue) {
+    const result: Record<string, any> = {};
+    Object.entries(value.mapValue.fields || {}).forEach(([key, item]) => {
+      result[key] = fromFirestoreValue(item);
+    });
+    return result;
+  }
+  return null;
+}
+
+function fromFirestoreFields(fields: Record<string, any>): Record<string, any> {
+  const result: Record<string, any> = {};
+  Object.entries(fields || {}).forEach(([key, value]) => {
+    result[key] = fromFirestoreValue(value);
+  });
+  return result;
+}
+
+function toFirestoreFields(data: Record<string, any>): Record<string, any> {
+  const result: Record<string, any> = {};
+  Object.entries(data || {}).forEach(([key, value]) => {
+    if (value !== undefined) result[key] = toFirestoreValue(value);
+  });
+  return result;
 }
 
 function normalizeProfile(data: any, id: string): UserProfileRest {
@@ -87,34 +136,39 @@ export async function lookupFirebaseIdentity(idToken: string): Promise<FirebaseI
   };
 }
 
-async function getProfileByUid(
+async function getDocumentWithToken(
   idToken: string,
-  uid: string
+  path: string
 ): Promise<UserProfileRest | null> {
   const response = await fetch(
-    `${documentsBase}/users/${encodeURIComponent(uid)}?key=${encodeURIComponent(FIREBASE_API_KEY)}`,
+    `${documentsBase}/${path.replace(/^\/+/, '')}?key=${encodeURIComponent(FIREBASE_API_KEY)}`,
     { headers: { Authorization: `Bearer ${idToken}` } }
   );
 
-  if (response.ok) return parseDocument(await response.json());
-
-  // Compatibilidade com regras legadas ainda públicas: a identidade já foi
-  // validada antes, então este fallback continua limitado ao UID autenticado.
-  const legacyOpen = await getDocRest(`users/${uid}`).catch(() => null);
-  return legacyOpen ? normalizeProfile(legacyOpen, uid) : null;
+  if (!response.ok) return null;
+  return parseDocument(await response.json());
 }
 
-async function queryProfilesByFieldAuthenticated(
-  idToken: string,
+async function getDocumentOpen(path: string): Promise<UserProfileRest | null> {
+  const response = await fetch(
+    `${documentsBase}/${path.replace(/^\/+/, '')}?key=${encodeURIComponent(FIREBASE_API_KEY)}`
+  );
+
+  if (!response.ok) return null;
+  return parseDocument(await response.json());
+}
+
+async function queryByField(
   fieldPath: 'email' | 'emailLower',
-  email: string
+  email: string,
+  idToken?: string
 ): Promise<UserProfileRest[]> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (idToken) headers.Authorization = `Bearer ${idToken}`;
+
   const response = await fetch(runQueryUrl, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${idToken}`,
-    },
+    headers,
     body: JSON.stringify({
       structuredQuery: {
         from: [{ collectionId: 'users' }],
@@ -131,37 +185,11 @@ async function queryProfilesByFieldAuthenticated(
   });
 
   if (!response.ok) return [];
+
   const rows = await response.json().catch(() => []);
   return (Array.isArray(rows) ? rows : [])
     .map((row: any) => parseDocument(row.document))
     .filter((profile: UserProfileRest | null): profile is UserProfileRest => Boolean(profile));
-}
-
-async function queryProfilesByField(
-  idToken: string,
-  fieldPath: 'email' | 'emailLower',
-  email: string
-): Promise<UserProfileRest[]> {
-  const authenticated = await queryProfilesByFieldAuthenticated(
-    idToken,
-    fieldPath,
-    email
-  ).catch(() => []);
-
-  if (authenticated.length > 0) return authenticated;
-
-  // Caso as regras publicadas ainda sejam as antigas, usa o REST legado apenas
-  // depois de validar o ID token e filtra novamente pelo e-mail autenticado.
-  const legacy = await runQueryRest('users', {
-    whereField: fieldPath,
-    whereOp: 'EQUAL',
-    whereValue: email,
-    limit: 20,
-  }).catch(() => []);
-
-  return legacy
-    .map((profile: any) => normalizeProfile(profile, String(profile.id || '')))
-    .filter((profile) => normalizeEmail(profile.email) === email);
 }
 
 export async function getOwnProfilesWithToken(
@@ -170,21 +198,33 @@ export async function getOwnProfilesWithToken(
 ): Promise<UserProfileRest[]> {
   const byId = new Map<string, UserProfileRest>();
 
-  const canonical = await getProfileByUid(idToken, identity.uid).catch(() => null);
+  const canonical =
+    (await getDocumentWithToken(idToken, `users/${identity.uid}`).catch(() => null)) ||
+    (await getDocumentOpen(`users/${identity.uid}`).catch(() => null));
+
   if (canonical && normalizeEmail(canonical.email) === identity.email) {
     byId.set(canonical.id, canonical);
   }
 
-  const [lowerMatches, exactMatches] = await Promise.all([
-    queryProfilesByField(idToken, 'emailLower', identity.email),
-    queryProfilesByField(idToken, 'email', identity.email),
+  const authenticatedResults = await Promise.all([
+    queryByField('emailLower', identity.email, idToken),
+    queryByField('email', identity.email, idToken),
   ]);
 
-  [...lowerMatches, ...exactMatches].forEach((profile) => {
-    if (normalizeEmail(profile.email) === identity.email) {
-      byId.set(profile.id, profile);
-    }
+  authenticatedResults.flat().forEach((profile) => {
+    if (normalizeEmail(profile.email) === identity.email) byId.set(profile.id, profile);
   });
+
+  if (byId.size === 0) {
+    const legacyOpenResults = await Promise.all([
+      queryByField('emailLower', identity.email),
+      queryByField('email', identity.email),
+    ]);
+
+    legacyOpenResults.flat().forEach((profile) => {
+      if (normalizeEmail(profile.email) === identity.email) byId.set(profile.id, profile);
+    });
+  }
 
   return Array.from(byId.values());
 }
