@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   BarChart3,
+  ClipboardList,
   Bell,
   Boxes,
   ChevronDown,
@@ -38,6 +39,7 @@ const QUICK_LINKS: QuickLink[] = [
   { label: 'Remover IDs', path: '/remover', keywords: 'remover ids baixa filtro' },
   { label: 'Reporte WhatsApp', path: '/reporte', keywords: 'reporte whatsapp relatorio' },
   { label: 'Análise de Brancas', path: '/brancas', keywords: 'brancas auditoria rota' },
+  { label: 'Avarias', path: '/avarias', keywords: 'avarias danos reporte diario csv ranking metricas' },
   { label: 'Configurações', path: '/configuracoes', keywords: 'configuracoes preferencias' },
   { label: 'Relatórios', path: '/admin', keywords: 'relatorios admin metricas', adminOnly: true },
 ];
@@ -65,6 +67,7 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
   const isAdminArea = location.pathname.startsWith('/admin');
   const isSettings = location.pathname.startsWith('/configuracoes');
   const isModulesArea = location.pathname === '/';
+  const isAvarias = location.pathname.startsWith('/avarias');
 
   const results = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -164,6 +167,17 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
                 {!sidebarCollapsed && <span>Relatórios</span>}
               </button>
             )}
+
+            <button
+              type="button"
+              onClick={() => navigate('/avarias')}
+              className={navClass(isAvarias)}
+              title={sidebarCollapsed ? 'Avarias' : undefined}
+            >
+              {isAvarias && <span className="absolute -left-3 h-9 w-1 rounded-r bg-[#FFE600]" />}
+              <ClipboardList className="h-5 w-5 shrink-0" />
+              {!sidebarCollapsed && <span>Avarias</span>}
+            </button>
 
             <button
               type="button"

@@ -19,6 +19,7 @@ import { SettingsPage } from './components/SettingsPage';
 import { Login } from './components/Login';
 import { AdminPanel } from './components/AdminPanel';
 import { OperationNavigation } from './components/OperationNavigation';
+import { AvariasDashboard } from './components/AvariasDashboard';
 import { User, getCurrentUser } from './lib/auth';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { saveToColetor, loadFromColetor, clearColetor } from './lib/firebase';
@@ -257,6 +258,7 @@ export default function App() {
                 path="/brancas"
                 element={insideDashboard(<BrancasPanelWithCsvFallback currentUser={currentUser} />)}
               />
+              <Route path="/avarias" element={insideDashboard(<AvariasDashboard />)} />
             </>
           )}
 
