@@ -20,7 +20,9 @@ const BRL_PER_USD = 5.4;
 export function AvariasDashboard() {
   const [store,setStore]=useState<StoredData>({cases:[],updatedAt:''}); const [ready,setReady]=useState(false); const [period,setPeriod]=useState<'today'|'7d'|'month'|'all'>('today'); const [currency,setCurrency]=useState<'BRL'|'USD'>('BRL'); const [showPrompt,setShowPrompt]=useState(false); const upload=useRef<HTMLInputElement>(null);
   useEffect(()=>{getLocalValue<StoredData>(KEY).then(data=>{if(data)setStore(data);setShowPrompt(localStorage.getItem('avarias_last_import_date')!==new Date().toISOString().slice(0,10));setReady(true);}); const timer=window.setInterval(()=>setShowPrompt(localStorage.getItem('avarias_last_import_date')!==new Date().toISOString().slice(0,10)),60000);return()=>window.clearInterval(timer);},[]);
-  const today=new Date().toISOString().slice(0,10);
+  // O CSV operacional pode ser carregado após a meia-noite. A referência do
+  // painel é sempre a data mais recente existente na base, não o relógio UTC.
+  const today=useMemo(()=>store.cases.map(item=>item.createdAt.slice(0,10)).sort().at(-1) || new Date().toISOString().slice(0,10),[store.cases]);
   const daily=useMemo(()=>store.cases.filter(x=>x.createdAt.slice(0,10)===today),[store.cases,today]);
   const selected=useMemo(()=>{const now=Date.now();if(period==='today')return daily;if(period==='7d')return store.cases.filter(x=>now-new Date(x.createdAt).getTime()<7*864e5);if(period==='month')return store.cases.filter(x=>now-new Date(x.createdAt).getTime()<31*864e5);return store.cases;},[period,daily,store.cases]);
   const stats=useMemo(()=>{const t=selected.filter(x=>x.minutes>0).map(x=>x.minutes);return {total:selected.length,value:selected.reduce((a,x)=>a+x.value,0),destruction:selected.filter(x=>x.resolution.toLowerCase().includes('destrui')).length,closed:selected.filter(x=>/encerr|fechad|resolvido/i.test(x.resolution)).length,avg:t.length?t.reduce((a,b)=>a+b,0)/t.length:0};},[selected]);
