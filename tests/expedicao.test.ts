@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { enrichExpedicao, parseBaseDespacho, parseExpedicaoRows } from '../src/lib/expedicao';
+import { enrichExpedicao, getChanges, parseBaseDespacho, parseExpedicaoRows } from '../src/lib/expedicao';
 
 describe('Expedição', () => {
   it('completa rota, doca e placa usando a base despacho', () => {
@@ -17,5 +17,11 @@ describe('Expedição', () => {
   it('marca itens exclusivos da auditoria como faltantes', () => {
     const auditoria = parseExpedicaoRows('ID do pacote,Problema\n48123234134,Pacote avariado', 'auditoria');
     expect(enrichExpedicao({ base: [], aduana: [], auditoria })[0].classificacao).toBe('Faltante');
+  });
+
+  it('registra apenas novidades ou mudanças entre cargas', () => {
+    const oldRows = parseExpedicaoRows('Shipment ID,Estado\n1,A mais\n2,Faltante', 'aduana');
+    const newRows = parseExpedicaoRows('Shipment ID,Estado\n1,A mais\n2,A mais\n3,Faltante', 'aduana');
+    expect(getChanges(oldRows, newRows, 'aduana').map(item => `${item.tipo}:${item.pacote}`)).toEqual(['alterado:2', 'novo:3']);
   });
 });

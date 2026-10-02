@@ -25,8 +25,39 @@ export interface ExpedicaoStore {
   aduana: ExpedicaoRow[];
   auditoria: ExpedicaoRow[];
   localizados?: Record<string, boolean>;
+  historico?: ExpedicaoHistorico[];
+  encerramentos?: ExpedicaoEncerramento[];
   updatedAt?: string;
   filenames?: Partial<Record<'base' | FonteExpedicao, string>>;
+}
+
+export interface ExpedicaoHistorico {
+  pacote: string;
+  origem: FonteExpedicao;
+  tipo: 'novo' | 'alterado';
+  estado: string;
+  estadoAnterior?: string;
+  registradoEm: string;
+}
+
+export interface ExpedicaoEncerramento {
+  id: string;
+  encerradoEm: string;
+  amais: number;
+  faltantes: number;
+  localizados: number;
+  porDoca: Array<{ doca: string; amais: number; faltantes: number }>;
+}
+
+export function getChanges(previous: ExpedicaoRow[], next: ExpedicaoRow[], origem: FonteExpedicao): ExpedicaoHistorico[] {
+  const old = new Map(previous.map(row => [row.pacote, row]));
+  const now = new Date().toISOString();
+  return next.flatMap(row => {
+    const before = old.get(row.pacote);
+    if (!before) return [{ pacote: row.pacote, origem, tipo: 'novo' as const, estado: row.estado, registradoEm: now }];
+    if (key(before.estado) !== key(row.estado) || key(before.rotaInformada) !== key(row.rotaInformada)) return [{ pacote: row.pacote, origem, tipo: 'alterado' as const, estado: row.estado, estadoAnterior: before.estado, registradoEm: now }];
+    return [];
+  });
 }
 
 const clean = (value: unknown) => String(value ?? '').replace(/^\uFEFF/, '').trim();
