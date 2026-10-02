@@ -138,7 +138,10 @@ export async function clearRefugo(): Promise<boolean> {
   }
 }
 
-export function listenToRefugo(callback: (data: RefugoData | null) => void): () => void {
+export function listenToRefugo(
+  callback: (data: RefugoData | null) => void,
+  onError?: (error: unknown) => void
+): () => void {
   const refugoRef = doc(db, REFUGO_COLLECTION, MAIN_REFUGO_DOC_ID);
   
   const unsubscribe = onSnapshot(refugoRef, (snap) => {
@@ -149,7 +152,7 @@ export function listenToRefugo(callback: (data: RefugoData | null) => void): () 
     }
   }, (error) => {
     console.warn('Erro ao escutar refugo em tempo real:', error);
-    callback(null);
+    onError?.(error);
   });
 
   return unsubscribe;
@@ -1442,4 +1445,3 @@ export async function syncListaToGoogleSheets(listaId: string): Promise<{ succes
     return { success: false, synced: 0 };
   }
 }
-

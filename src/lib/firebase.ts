@@ -375,26 +375,23 @@ export async function clearRefugo(): Promise<boolean> {
 
 export function listenToRefugo(callback: (data: RefugoData | null) => void): () => void {
   let remoteSeen = false;
-  let remoteIsEmpty = false;
-  let cachedData: RefugoData | null = null;
 
   void getLocalValue<RefugoData>(LOCAL_REFUGO_KEY).then(cached => {
-    cachedData = cached;
-    if (cachedData && (!remoteSeen || remoteIsEmpty)) callback(cachedData);
+    if (cached && !remoteSeen) callback(cached);
   });
 
-  return listenToRefugoCore(data => {
-    remoteSeen = true;
-    remoteIsEmpty = !data;
-
-    if (!data && cachedData) {
-      callback(cachedData);
-      return;
+  return listenToRefugoCore(
+    data => {
+      remoteSeen = true;
+      if (data) void setLocalValue(LOCAL_REFUGO_KEY, data);
+      else void deleteLocalValue(LOCAL_REFUGO_KEY);
+      callback(data);
+    },
+    error => {
+      console.warn('[Refugo] servidor indisponível; mantendo último cache conhecido:', error);
+      void getLocalValue<RefugoData>(LOCAL_REFUGO_KEY).then(cached => callback(cached));
     }
-
-    if (data) void setLocalValue(LOCAL_REFUGO_KEY, data);
-    callback(data);
-  });
+  );
 }
 
 /**
@@ -595,10 +592,13 @@ export function listenToRefugoScansIncremental(
       if (isInitial) {
         remoteInitialSeen = true;
         const normalizedInitial = (initialScans || []).map(normalizeRefugoRouteStatus);
-        const effectiveInitial = normalizedInitial.length > 0 ? normalizedInitial : cachedScans;
-        if (normalizedInitial.length > 0) void setLocalValue(LOCAL_REFUGO_SCANS_KEY, normalizedInitial);
-        if (effectiveInitial.length > 0) schedulePermanentBackfill(effectiveInitial);
-        callback([], true, effectiveInitial);
+        if (normalizedInitial.length > 0) {
+          void setLocalValue(LOCAL_REFUGO_SCANS_KEY, normalizedInitial);
+          schedulePermanentBackfill(normalizedInitial);
+        } else {
+          void deleteLocalValue(LOCAL_REFUGO_SCANS_KEY);
+        }
+        callback([], true, normalizedInitial);
         return;
       }
 

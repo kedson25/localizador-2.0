@@ -399,7 +399,7 @@ export function ControleRefugo({ currentUser }: { currentUser?: User | null }) {
           return hasChanges ? updated : prev;
         });
       }
-    });
+    }, showError);
 
     // Carregamento lazy/background das listas de coleta (NÃO bloqueia a inicialização do scanner)
     const unsubListas = listenToListas(data => {
