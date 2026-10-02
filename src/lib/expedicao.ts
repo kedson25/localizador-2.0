@@ -80,6 +80,13 @@ function routeCandidates(route: string) {
   return new Set([key(route), ...parts]);
 }
 
+function classificationFromEstado(estado: string): EnrichedExpedicaoRow['classificacao'] | null {
+  const normalized = key(estado);
+  if (normalized.includes('a mais') || normalized.includes('amais')) return 'A mais';
+  if (normalized.includes('faltante')) return 'Faltante';
+  return null;
+}
+
 export function enrichExpedicao(store: ExpedicaoStore): EnrichedExpedicaoRow[] {
   const byRoute = new Map<string, BaseDespachoRow>();
   const byPlate = new Map<string, BaseDespachoRow>();
@@ -96,12 +103,15 @@ export function enrichExpedicao(store: ExpedicaoStore): EnrichedExpedicaoRow[] {
       || byPlate.get(key(row.placaInformada));
     const inAduana = aduanaIds.has(row.pacote);
     const inAuditoria = auditoriaIds.has(row.pacote);
+    // Na Aduana, "Estado" é o apontamento oficial do auditor. A comparação
+    // entre as duas abas só é usada quando o arquivo não traz esse campo.
+    const classificationFromFile = classificationFromEstado(row.estado);
     return {
       ...row,
       rotaOtimizada: base?.rotaOtimizada || '',
       doca: base?.doca || '',
       placa: base?.placa || row.placaInformada,
-      classificacao: inAduana && inAuditoria ? 'Em ambos' : inAduana ? 'A mais' : 'Faltante',
+      classificacao: classificationFromFile || (inAduana && inAuditoria ? 'Em ambos' : inAduana ? 'A mais' : 'Faltante'),
     };
   });
 }

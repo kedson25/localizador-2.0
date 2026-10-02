@@ -4,9 +4,14 @@ import { enrichExpedicao, parseBaseDespacho, parseExpedicaoRows } from '../src/l
 describe('Expedição', () => {
   it('completa rota, doca e placa usando a base despacho', () => {
     const base = parseBaseDespacho('Rota otimizada,Rota original,Doca,Placa\nVJ11_AM1,AM1_113,1,SDQ3J67');
-    const aduana = parseExpedicaoRows('Shipment ID,Placa,ID da rota,Estado\n117193,SDQ3J67,VJ11_AM1 | 503,Correto', 'aduana');
+    const aduana = parseExpedicaoRows('Shipment ID,Placa,ID da rota,Estado\n47774449934,SDQ3J67,VJ11_AM1 | 503,A mais', 'aduana');
     const rows = enrichExpedicao({ base, aduana, auditoria: [] });
     expect(rows[0]).toMatchObject({ rotaOtimizada: 'VJ11_AM1', doca: '1', placa: 'SDQ3J67', classificacao: 'A mais' });
+  });
+
+  it('usa o Estado da Aduana como classificação oficial', () => {
+    const aduana = parseExpedicaoRows('Shipment ID,Estado\n48066008566,Faltante', 'aduana');
+    expect(enrichExpedicao({ base: [], aduana, auditoria: [] })[0].classificacao).toBe('Faltante');
   });
 
   it('marca itens exclusivos da auditoria como faltantes', () => {
