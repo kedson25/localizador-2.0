@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { Clock, PackageCheck, Search, Trash2, Truck, UploadCloud } from 'lucide-react';
 import { getLocalValue, setLocalValue } from '../lib/localPersistence';
+import { searchTodayListOccurrences, type TodayListOccurrence } from '../lib/listaMultiSearch';
 import {
   enrichExpedicao,
   getBaseDockChanges,
@@ -10,7 +11,6 @@ import {
   parseExpedicaoRows,
   type ExpedicaoDocaChange,
   type ExpedicaoStore,
-  type FonteExpedicao,
   type FonteImportacaoExpedicao,
 } from '../lib/expedicao';
 
@@ -55,6 +55,22 @@ function changeTone(change: ExpedicaoDocaChange) {
   return 'border-amber-300 bg-amber-50 text-amber-900';
 }
 
+function dockTone(change?: ExpedicaoDocaChange) {
+  if (!change) return 'border-slate-200 bg-white';
+  if (change.tipo === 'nova_placa' || change.tipo === 'troca_placa') return 'border-blue-400 bg-blue-50';
+  if (change.tipo === 'erro_removido' || change.tipo === 'placa_removida') return 'border-emerald-400 bg-emerald-50';
+  if (change.tipo === 'novo_erro') return 'border-red-400 bg-red-50';
+  return 'border-amber-400 bg-amber-50';
+}
+
+function occurrenceLabel(occurrence: TodayListOccurrence) {
+  return [
+    occurrence.listaNome,
+    occurrence.grupoNome,
+    occurrence.listaSaida,
+  ].filter(Boolean).join(' • ');
+}
+
 export function ExpedicaoPanel() {
   const [store, setStore] = useState<ExpedicaoStore>(empty);
   const [ready, setReady] = useState(false);
@@ -62,6 +78,9 @@ export function ExpedicaoPanel() {
   const [filter, setFilter] = useState<'todos' | 'A mais' | 'Faltante'>('todos');
   const [selectedDoca, setSelectedDoca] = useState<string | null>(null);
   const [report, setReport] = useState(false);
+  const [backlogById, setBacklogById] = useState<Record<string, TodayListOccurrence[]>>({});
+  const [backlogLoading, setBacklogLoading] = useState(false);
+  const [backlogError, setBacklogError] = useState('');
   const baseInput = useRef<HTMLInputElement>(null);
   const aduanaInput = useRef<HTMLInputElement>(null);
   const auditInput = useRef<HTMLInputElement>(null);
@@ -147,11 +166,56 @@ export function ExpedicaoPanel() {
     setQuery('');
     setFilter('todos');
     setSelectedDoca(null);
+    setBacklogById({});
+    setBacklogError('');
     setReport(false);
   };
 
   const enriched = useMemo(() => enrichExpedicao(store), [store]);
   const dockHistory = store.historicoDoca || [];
+
+  const faltanteIds = useMemo(
+    () => enriched.filter(row => row.classificacao === 'Faltante').map(row => row.pacote).sort(),
+    [enriched],
+  );
+  const faltanteKey = faltanteIds.join('|');
+
+  useEffect(() => {
+    let active = true;
+
+    if (!ready || !faltanteIds.length) {
+      setBacklogById({});
+      setBacklogLoading(false);
+      setBacklogError('');
+      return () => { active = false; };
+    }
+
+    setBacklogLoading(true);
+    setBacklogError('');
+
+    searchTodayListOccurrences(faltanteIds)
+      .then(found => {
+        if (!active) return;
+        const next: Record<string, TodayListOccurrence[]> = {};
+        faltanteIds.forEach(pacote => {
+          const upper = pacote.trim().toUpperCase();
+          const digits = upper.replace(/\D/g, '');
+          next[pacote] = found.get(upper) || (digits ? found.get(digits) : undefined) || [];
+        });
+        setBacklogById(next);
+      })
+      .catch(error => {
+        if (!active) return;
+        console.error('[Expedição] Falha ao verificar listas backlog:', error);
+        setBacklogById({});
+        setBacklogError('Não foi possível verificar as listas backlog agora.');
+      })
+      .finally(() => {
+        if (active) setBacklogLoading(false);
+      });
+
+    return () => { active = false; };
+  }, [ready, faltanteKey]);
 
   const counts = useMemo(() => ({
     amais: enriched.filter(row => row.classificacao === 'A mais').length,
@@ -159,6 +223,11 @@ export function ExpedicaoPanel() {
     localizados: enriched.filter(row => Boolean(store.localizados?.[row.pacote])).length,
     semDoca: enriched.filter(row => !row.doca).length,
   }), [enriched, store.localizados]);
+
+  const faltantesEmBacklog = useMemo(
+    () => Object.values(backlogById).filter(occurrences => occurrences.length > 0).length,
+    [backlogById],
+  );
 
   const heatmap = useMemo(() => Array.from({ length: 20 }, (_, index) => {
     const doca = String(index + 1);
@@ -234,31 +303,31 @@ export function ExpedicaoPanel() {
   );
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4 lg:-mx-8 xl:-mx-16 2xl:-mx-20">
       <input ref={baseInput} className="hidden" type="file" accept=".csv,text/csv" onChange={event => event.target.files?.[0] && importFile(event.target.files[0], 'base')} />
       <input ref={aduanaInput} className="hidden" type="file" accept=".csv,text/csv" onChange={event => event.target.files?.[0] && importFile(event.target.files[0], 'aduana')} />
       <input ref={auditInput} className="hidden" type="file" accept=".csv,text/csv" onChange={event => event.target.files?.[0] && importFile(event.target.files[0], 'auditoria')} />
 
-      <section className="rounded-2xl border-2 border-blue-200 bg-gradient-to-r from-white via-blue-50 to-white p-5 shadow-md sm:p-6">
-        <div className="flex flex-col justify-between gap-5 lg:flex-row lg:items-center">
+      <section className="rounded-2xl border border-blue-200 bg-gradient-to-r from-white via-blue-50 to-white p-4 shadow-sm sm:p-5">
+        <div className="flex flex-col justify-between gap-4 xl:flex-row xl:items-center">
           <div>
             <div className="flex items-center gap-2 text-blue-700">
               <PackageCheck className="h-5 w-5" />
               <span className="text-xs font-bold uppercase tracking-wider">Expedição — Monitor por doca</span>
             </div>
-            <h1 className="mt-2 text-3xl font-black tracking-tight text-[#102a67]">Mudanças e erros por doca</h1>
+            <h1 className="mt-1 text-3xl font-black tracking-tight text-[#102a67]">Mudanças e erros por doca</h1>
             <p className="mt-1 max-w-3xl text-sm text-slate-500">
               ID → placa da Aduana → placa na Base Despacho → doca, rota e onda. Cada novo CSV é comparado com o anterior.
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2 xl:max-w-[560px] xl:justify-end">
             {upload(store.base.length ? 'Atualizar Base Despacho' : 'Carregar Base Despacho', baseInput)}
             {upload('Atualizar Aduana', aduanaInput, true)}
             {upload('Atualizar Auditoria', auditInput, true)}
-            <button onClick={resetExpedicao} className="inline-flex items-center gap-2 rounded-lg border-2 border-red-300 bg-white px-3.5 py-2.5 text-xs font-black text-red-700 hover:bg-red-50">
+            <button onClick={resetExpedicao} className="inline-flex items-center gap-2 rounded-lg border border-red-300 bg-white px-3.5 py-2.5 text-xs font-black text-red-700 hover:bg-red-50">
               <Trash2 className="h-4 w-4" /> Zerar
             </button>
-            <button onClick={closeExpedicao} disabled={!totalErrors} className="rounded-lg border-2 border-amber-400 bg-[#ffd52f] px-3.5 py-2.5 text-xs font-black text-slate-950 disabled:cursor-not-allowed disabled:opacity-50">
+            <button onClick={closeExpedicao} disabled={!totalErrors} className="rounded-lg border border-amber-400 bg-[#ffd52f] px-3.5 py-2.5 text-xs font-black text-slate-950 disabled:cursor-not-allowed disabled:opacity-50">
               Encerrar
             </button>
           </div>
@@ -266,7 +335,7 @@ export function ExpedicaoPanel() {
       </section>
 
       {!store.base.length && (
-        <section className="flex flex-col justify-between gap-3 rounded-xl border-2 border-amber-400 bg-amber-50 p-4 sm:flex-row sm:items-center">
+        <section className="flex flex-col justify-between gap-3 rounded-xl border border-amber-400 bg-amber-50 p-4 sm:flex-row sm:items-center">
           <div>
             <p className="text-sm font-black text-amber-950">Base Despacho ainda não carregada</p>
             <p className="text-xs text-amber-800">Sem ela o sistema conhece o erro, mas não consegue resolver a doca pela placa.</p>
@@ -276,7 +345,7 @@ export function ExpedicaoPanel() {
       )}
 
       {store.ultimaImportacao && (
-        <section className="flex flex-col gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+        <section className="flex flex-col gap-3 rounded-xl border border-blue-200 bg-blue-50 p-3.5 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
             <Clock className="h-5 w-5 text-blue-700" />
             <div>
@@ -293,67 +362,74 @@ export function ExpedicaoPanel() {
       )}
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {[
-          ['A mais', counts.amais, 'border-red-300 text-red-700'],
-          ['Faltantes', counts.faltantes, 'border-amber-300 text-amber-800'],
-          ['Localizados', counts.localizados, 'border-emerald-300 text-emerald-700'],
-          ['Sem doca', counts.semDoca, 'border-slate-300 text-slate-700'],
-        ].map(([label, count, style]) => (
-          <div key={String(label)} className={`rounded-xl border-2 bg-white p-4 shadow-sm ${style}`}>
-            <p className="text-xs font-bold text-slate-600">{label}</p>
-            <p className="mt-1 text-2xl font-black">{count}</p>
+        <div className="rounded-xl border border-red-300 bg-white p-4 shadow-sm">
+          <p className="text-xs font-bold text-slate-600">A mais</p>
+          <p className="mt-1 text-2xl font-black text-red-700">{counts.amais}</p>
+        </div>
+        <div className="rounded-xl border border-amber-300 bg-white p-4 shadow-sm">
+          <p className="text-xs font-bold text-slate-600">Faltantes</p>
+          <div className="mt-1 flex items-end justify-between gap-3">
+            <p className="text-2xl font-black text-amber-800">{counts.faltantes}</p>
+            <span className="text-[10px] font-black text-slate-500">
+              {backlogLoading ? 'verificando backlog…' : `${faltantesEmBacklog} em backlog`}
+            </span>
           </div>
-        ))}
+        </div>
+        <div className="rounded-xl border border-emerald-300 bg-white p-4 shadow-sm">
+          <p className="text-xs font-bold text-slate-600">Localizados</p>
+          <p className="mt-1 text-2xl font-black text-emerald-700">{counts.localizados}</p>
+        </div>
+        <div className="rounded-xl border border-slate-300 bg-white p-4 shadow-sm">
+          <p className="text-xs font-bold text-slate-600">Sem doca</p>
+          <p className="mt-1 text-2xl font-black text-slate-700">{counts.semDoca}</p>
+        </div>
       </div>
 
-      <section className="rounded-2xl border-2 border-black bg-white p-4 shadow-md">
-        <div className="mb-4 flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+      {backlogError && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-900">{backlogError}</div>
+      )}
+
+      <section className="rounded-2xl border border-slate-300 bg-white p-3 shadow-sm sm:p-4">
+        <div className="mb-3 flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
           <div>
-            <h2 className="font-black text-black">Docas — 20 docas</h2>
-            <p className="text-xs text-slate-600">Docas com selo “MUDOU” tiveram alteração registrada durante a operação.</p>
+            <h2 className="text-lg font-black text-black">Docas — 20 docas</h2>
+            <p className="text-xs text-slate-600">Somente docas que tiveram mudança ficam coloridas. As demais permanecem neutras.</p>
           </div>
           {selectedDoca && (
-            <button onClick={() => setSelectedDoca(null)} className="rounded-lg border-2 border-black px-3 py-2 text-xs font-black">
+            <button onClick={() => setSelectedDoca(null)} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-black">
               Limpar seleção
             </button>
           )}
         </div>
 
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_390px]">
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+        <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_380px] 2xl:grid-cols-[minmax(0,1fr)_400px]">
+          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
             {heatmap.map(item => {
-              const total = item.amais + item.faltantes;
               const changed = item.changes.length > 0;
-              const tone = changed
-                ? 'border-blue-600 bg-blue-50 ring-2 ring-blue-200'
-                : total === 0
-                  ? 'border-slate-300 bg-slate-50'
-                  : total < 4
-                    ? 'border-amber-400 bg-amber-50'
-                    : total < 9
-                      ? 'border-orange-400 bg-orange-50'
-                      : 'border-red-500 bg-red-50';
+              const tone = dockTone(item.latest);
+              const labelTone = changed ? 'text-red-700' : 'text-slate-500';
+              const missingTone = changed ? 'text-amber-700' : 'text-slate-500';
 
               return (
                 <button
                   key={item.doca}
                   onClick={() => setSelectedDoca(item.doca)}
-                  className={`relative rounded-xl border-2 p-3 text-left transition hover:-translate-y-0.5 hover:shadow-md ${tone} ${selectedDoca === item.doca ? 'ring-4 ring-indigo-300' : ''}`}
+                  className={`relative min-h-[105px] rounded-xl border p-3 text-left transition hover:-translate-y-0.5 hover:shadow-md ${tone} ${selectedDoca === item.doca ? 'ring-2 ring-slate-900' : ''}`}
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-sm font-black text-black">DOCA {item.doca}</span>
+                    <span className="text-sm font-black text-slate-950">DOCA {item.doca}</span>
                     {changed && (
-                      <span className="rounded-full bg-blue-700 px-2 py-1 text-[9px] font-black text-white">
+                      <span className="rounded-full bg-slate-900 px-2 py-1 text-[9px] font-black text-white">
                         MUDOU {formatTime(item.latest?.registradoEm)}
                       </span>
                     )}
                   </div>
-                  <div className="mt-3 grid grid-cols-2 gap-2 border-t border-black/15 pt-3 text-xs">
-                    <span className="text-red-700">A MAIS<b className="mt-1 block text-xl text-slate-950">{item.amais}</b></span>
-                    <span className="text-amber-700">FALTANTE<b className="mt-1 block text-xl text-slate-950">{item.faltantes}</b></span>
+                  <div className="mt-3 grid grid-cols-2 gap-2 border-t border-slate-200 pt-3 text-[10px]">
+                    <span className={labelTone}>A MAIS<b className="mt-1 block text-xl text-slate-950">{item.amais}</b></span>
+                    <span className={missingTone}>FALTANTE<b className="mt-1 block text-xl text-slate-950">{item.faltantes}</b></span>
                   </div>
-                  {item.latest && (
-                    <div className="mt-3 line-clamp-2 rounded-md bg-white/90 px-2 py-1.5 text-[10px] font-bold text-slate-700">
+                  {changed && item.latest && (
+                    <div className="mt-2 line-clamp-2 rounded-md bg-white/80 px-2 py-1 text-[9px] font-bold text-slate-700">
                       {item.latest.mensagem}
                     </div>
                   )}
@@ -362,8 +438,8 @@ export function ExpedicaoPanel() {
             })}
           </div>
 
-          <aside className="h-fit max-h-[680px] overflow-y-auto rounded-xl border-2 border-black bg-slate-50 p-4 xl:sticky xl:top-20">
-            <div className="border-b-2 border-black pb-3">
+          <aside className="h-fit max-h-[650px] overflow-y-auto rounded-xl border border-slate-300 bg-slate-50 p-4 xl:sticky xl:top-20">
+            <div className="border-b border-slate-300 pb-3">
               <p className="text-xs font-black uppercase text-slate-500">Detalhes da doca</p>
               <h3 className="text-xl font-black text-black">{selectedDoca ? `DOCA ${selectedDoca}` : 'Selecione uma doca'}</h3>
             </div>
@@ -377,23 +453,47 @@ export function ExpedicaoPanel() {
                       const recovered = Boolean(store.localizados?.[row.pacote]);
                       const status = recovered ? 'Recuperado' : row.classificacao;
                       const style = recovered
-                        ? 'border-emerald-400 bg-emerald-50'
+                        ? 'border-emerald-300 bg-emerald-50'
                         : row.classificacao === 'Faltante'
-                          ? 'border-amber-400 bg-amber-50'
-                          : 'border-red-400 bg-red-50';
+                          ? 'border-amber-300 bg-amber-50'
+                          : 'border-red-300 bg-red-50';
+                      const backlog = backlogById[row.pacote] || [];
 
                       return (
-                        <label key={row.pacote} className={`flex cursor-pointer items-start gap-3 rounded-lg border-2 p-3 ${style}`}>
-                          <input type="checkbox" checked={recovered} onChange={() => toggleLocated(row.pacote)} className="mt-1 h-5 w-5 shrink-0 accent-emerald-600" />
-                          <span className="min-w-0 flex-1">
-                            <span className="flex items-center justify-between gap-2">
-                              <b className="font-mono text-sm text-slate-950">{row.pacote}</b>
-                              <strong className="rounded-full bg-white/80 px-2 py-1 text-[10px] uppercase">{status}</strong>
-                            </span>
-                            <span className="mt-1 block text-[10px] font-bold text-slate-500">
-                              {row.placa || 'Sem placa'} • {row.rotaOtimizada || 'Sem rota'} • {row.onda || 'Sem onda'}
+                        <label key={row.pacote} className={`block cursor-pointer rounded-lg border p-3 ${style}`}>
+                          <span className="flex items-start gap-3">
+                            <input type="checkbox" checked={recovered} onChange={() => toggleLocated(row.pacote)} className="mt-1 h-5 w-5 shrink-0 accent-emerald-600" />
+                            <span className="min-w-0 flex-1">
+                              <span className="flex items-center justify-between gap-2">
+                                <b className="font-mono text-sm text-slate-950">{row.pacote}</b>
+                                <strong className="rounded-full bg-white/80 px-2 py-1 text-[10px] uppercase">{status}</strong>
+                              </span>
+                              <span className="mt-1 block text-[10px] font-bold text-slate-500">
+                                {row.placa || 'Sem placa'} • {row.rotaOtimizada || 'Sem rota'} • {row.onda || 'Sem onda'}
+                              </span>
                             </span>
                           </span>
+
+                          {row.classificacao === 'A mais' && (
+                            <div className="mt-2 rounded-md border border-blue-200 bg-white/80 px-2.5 py-2 text-[10px] text-blue-900">
+                              <b>Deveria estar:</b>{' '}
+                              {row.rotaOtimizada && row.doca
+                                ? `DOCA ${row.doca} • ${row.rotaOtimizada}${row.onda ? ` • ${row.onda}` : ''}`
+                                : 'rota/doca não encontrada na Base Despacho para esta placa'}
+                            </div>
+                          )}
+
+                          {row.classificacao === 'Faltante' && (
+                            <div className={`mt-2 rounded-md border px-2.5 py-2 text-[10px] ${backlog.length ? 'border-emerald-300 bg-emerald-50 text-emerald-900' : 'border-slate-200 bg-white/80 text-slate-600'}`}>
+                              <b>Backlog:</b>{' '}
+                              {backlogLoading
+                                ? 'verificando listas…'
+                                : backlog.length
+                                  ? backlog.slice(0, 3).map(occurrenceLabel).join(' | ')
+                                  : 'ID não encontrado nas listas do dia'}
+                              {backlog.length > 3 && <span> • +{backlog.length - 3} ocorrência(s)</span>}
+                            </div>
+                          )}
                         </label>
                       );
                     }) : <p className="rounded-lg bg-white p-4 text-center text-sm text-slate-500">Nenhum erro atual nesta doca.</p>}
@@ -416,7 +516,7 @@ export function ExpedicaoPanel() {
                 </div>
               </div>
             ) : (
-              <p className="py-10 text-center text-sm text-slate-500">Clique em uma doca para ver erros atuais e o histórico de mudanças.</p>
+              <p className="py-10 text-center text-sm text-slate-500">Clique em uma doca para ver erros atuais, destino esperado e backlog.</p>
             )}
           </aside>
         </div>
@@ -443,31 +543,47 @@ export function ExpedicaoPanel() {
         </div>
 
         <div className="app-scroll-x">
-          <table className="w-full min-w-[980px] border-collapse text-center text-xs">
+          <table className="w-full min-w-[1160px] border-collapse text-center text-xs">
             <thead className="bg-[#f0f0f0] text-slate-950">
               <tr>
-                {['ID', 'Origem', 'Placa', 'Rota Otimizada', 'Doca', 'Onda', 'Estado', 'Localizado'].map(head => (
+                {['ID', 'Origem', 'Placa', 'Rota Otimizada', 'Doca', 'Onda', 'Estado', 'Destino / Backlog', 'Localizado'].map(head => (
                   <th key={head} className="border-b-2 border-r border-[#8f9bad] px-3 py-3 font-black last:border-r-0">{head}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {rows.slice(0, 1000).map(row => (
-                <tr key={row.pacote} className="hover:bg-[#f7fbf8]">
-                  <td className="border-b border-r border-[#cbd5e1] px-3 py-2 font-mono font-bold">{row.pacote}</td>
-                  <td className="border-b border-r border-[#cbd5e1] px-3 py-2 font-bold capitalize text-blue-700">{row.origem}</td>
-                  <td className="border-b border-r border-[#cbd5e1] px-3 py-2 font-mono">{row.placa || '—'}</td>
-                  <td className="border-b border-r border-[#cbd5e1] px-3 py-2 font-semibold">{row.rotaOtimizada || 'Não localizada'}</td>
-                  <td className="border-b border-r border-[#cbd5e1] px-3 py-2 font-black">{row.doca || '—'}</td>
-                  <td className="border-b border-r border-[#cbd5e1] px-3 py-2">{row.onda || '—'}</td>
-                  <td className={`border-b border-r border-[#cbd5e1] px-3 py-2 font-black ${stateColor(row.classificacao)}`}>{row.classificacao}</td>
-                  <td className="border-b border-[#cbd5e1] px-3 py-2">
-                    <input type="checkbox" checked={Boolean(store.localizados?.[row.pacote])} onChange={() => toggleLocated(row.pacote)} className="h-4 w-4 accent-emerald-600" />
-                  </td>
-                </tr>
-              ))}
+              {rows.slice(0, 1000).map(row => {
+                const backlog = backlogById[row.pacote] || [];
+                return (
+                  <tr key={row.pacote} className="hover:bg-[#f7fbf8]">
+                    <td className="border-b border-r border-[#cbd5e1] px-3 py-2 font-mono font-bold">{row.pacote}</td>
+                    <td className="border-b border-r border-[#cbd5e1] px-3 py-2 font-bold capitalize text-blue-700">{row.origem}</td>
+                    <td className="border-b border-r border-[#cbd5e1] px-3 py-2 font-mono">{row.placa || '—'}</td>
+                    <td className="border-b border-r border-[#cbd5e1] px-3 py-2 font-semibold">{row.rotaOtimizada || 'Não localizada'}</td>
+                    <td className="border-b border-r border-[#cbd5e1] px-3 py-2 font-black">{row.doca || '—'}</td>
+                    <td className="border-b border-r border-[#cbd5e1] px-3 py-2">{row.onda || '—'}</td>
+                    <td className={`border-b border-r border-[#cbd5e1] px-3 py-2 font-black ${stateColor(row.classificacao)}`}>{row.classificacao}</td>
+                    <td className="border-b border-r border-[#cbd5e1] px-3 py-2 text-left">
+                      {row.classificacao === 'A mais' ? (
+                        row.rotaOtimizada && row.doca
+                          ? <span className="font-bold text-blue-800">DOCA {row.doca} • {row.rotaOtimizada}{row.onda ? ` • ${row.onda}` : ''}</span>
+                          : <span className="text-slate-500">Destino não localizado</span>
+                      ) : backlogLoading ? (
+                        <span className="text-slate-500">Verificando backlog…</span>
+                      ) : backlog.length ? (
+                        <span className="font-bold text-emerald-700">{backlog.slice(0, 2).map(occurrenceLabel).join(' | ')}</span>
+                      ) : (
+                        <span className="text-slate-500">Não encontrado em lista do dia</span>
+                      )}
+                    </td>
+                    <td className="border-b border-[#cbd5e1] px-3 py-2">
+                      <input type="checkbox" checked={Boolean(store.localizados?.[row.pacote])} onChange={() => toggleLocated(row.pacote)} className="h-4 w-4 accent-emerald-600" />
+                    </td>
+                  </tr>
+                );
+              })}
               {!rows.length && (
-                <tr><td colSpan={8} className="px-4 py-10 text-center text-sm text-slate-500">Nenhum erro encontrado com os filtros atuais.</td></tr>
+                <tr><td colSpan={9} className="px-4 py-10 text-center text-sm text-slate-500">Nenhum erro encontrado com os filtros atuais.</td></tr>
               )}
             </tbody>
           </table>
@@ -475,7 +591,7 @@ export function ExpedicaoPanel() {
       </section>
 
       {!!counts.semDoca && (
-        <section className="rounded-xl border-2 border-slate-300 bg-slate-50 p-4">
+        <section className="rounded-xl border border-slate-300 bg-slate-50 p-4">
           <div className="flex items-start gap-3">
             <Truck className="mt-0.5 h-5 w-5 text-slate-700" />
             <div>
@@ -487,7 +603,7 @@ export function ExpedicaoPanel() {
       )}
 
       {report && (
-        <section className="rounded-xl border-2 border-black bg-[#fff7cc] p-4">
+        <section className="rounded-xl border border-black bg-[#fff7cc] p-4">
           <div className="grid gap-4 sm:grid-cols-4">
             <div><p className="text-xs font-bold text-slate-500">Pendentes</p><p className="text-2xl font-black">{pending}</p></div>
             <div><p className="text-xs font-bold text-slate-500">Recuperação</p><p className="text-2xl font-black">{recoveryRate}%</p></div>
