@@ -9,6 +9,27 @@ describe('Expedição', () => {
     expect(rows[0]).toMatchObject({ rotaOtimizada: 'VJ11_AM1', doca: '1', onda: 'Onda 4', placa: 'SDQ3J67', classificacao: 'A mais' });
   });
 
+  it('prioriza o ID do pacote para achar a doca e placa corretas de um A mais', () => {
+    const base = parseBaseDespacho([
+      'Shipment ID,Onda,Rota otimizada,Rota original,Doca,Placa',
+      '47774449934,Onda 4,VJ11_AM1,AM1_113,1,SDQ3J67',
+      '49999999999,Onda 5,B2_AM1,AM1_220,9,ABC1D23',
+    ].join('\n'));
+    const aduana = parseExpedicaoRows(
+      'Shipment ID,Placa,ID da rota,Estado\n47774449934,ABC1D23,B2_AM1,A mais',
+      'aduana',
+    );
+    const rows = enrichExpedicao({ base, aduana, auditoria: [] });
+    expect(rows[0]).toMatchObject({
+      pacote: '47774449934',
+      rotaOtimizada: 'VJ11_AM1',
+      doca: '1',
+      onda: 'Onda 4',
+      placa: 'SDQ3J67',
+      classificacao: 'A mais',
+    });
+  });
+
   it('usa o Estado da Aduana como classificação oficial', () => {
     const aduana = parseExpedicaoRows('Shipment ID,Estado\n48066008566,Faltante', 'aduana');
     expect(enrichExpedicao({ base: [], aduana, auditoria: [] })[0].classificacao).toBe('Faltante');
