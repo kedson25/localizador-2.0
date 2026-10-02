@@ -50,10 +50,11 @@ export interface ExpedicaoEncerramento {
 }
 
 export function getChanges(previous: ExpedicaoRow[], next: ExpedicaoRow[], origem: FonteExpedicao): ExpedicaoHistorico[] {
-  const old = new Map(previous.map(row => [row.pacote, row]));
+  const recordKey = (row: ExpedicaoRow) => `${row.pacote}|${key(row.rotaInformada)}`;
+  const old = new Map(previous.map(row => [recordKey(row), row]));
   const now = new Date().toISOString();
   return next.flatMap(row => {
-    const before = old.get(row.pacote);
+    const before = old.get(recordKey(row));
     if (!before) return [{ pacote: row.pacote, origem, tipo: 'novo' as const, estado: row.estado, registradoEm: now }];
     if (key(before.estado) !== key(row.estado) || key(before.rotaInformada) !== key(row.rotaInformada)) return [{ pacote: row.pacote, origem, tipo: 'alterado' as const, estado: row.estado, estadoAnterior: before.estado, registradoEm: now }];
     return [];
@@ -63,6 +64,10 @@ export function getChanges(previous: ExpedicaoRow[], next: ExpedicaoRow[], orige
 const clean = (value: unknown) => String(value ?? '').replace(/^\uFEFF/, '').trim();
 const key = (value: unknown) => clean(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 const id = (value: unknown) => clean(value).replace(/\D/g, '') || clean(value).toUpperCase();
+const isErrorState = (value: string) => {
+  const normalized = key(value);
+  return normalized.includes('a mais') || normalized.includes('amais') || normalized.includes('faltante');
+};
 
 function value(row: Record<string, unknown>, ...names: string[]) {
   const found = Object.keys(row).find(column => names.some(name => key(column) === key(name)));
@@ -91,15 +96,15 @@ export function parseBaseDespacho(text: string): BaseDespachoRow[] {
 export function parseExpedicaoRows(text: string, origem: FonteExpedicao): ExpedicaoRow[] {
   const rows = csv(text).map(raw => {
     const pacote = id(value(raw, 'Shipment ID', 'ID do pacote', 'ID do pacote,', 'Pacote', 'ID'));
-    const rotaInformada = value(raw, 'ID da rota', 'Rota', 'Rota sugerida');
+    const rotaInformada = value(raw, 'ID da rota', 'Rota', 'Rota sugerida', 'Contenedor');
     const placaInformada = value(raw, 'Placa');
     const estado = value(raw, 'Estado', 'Status de resolução', 'Status');
     const detalhe = origem === 'aduana'
       ? value(raw, 'Rep auditoria', 'Data auditoria')
       : value(raw, 'Problema', 'Motivo', 'Problem Solver');
     return { pacote, rotaInformada, placaInformada, estado, detalhe, origem, raw: Object.fromEntries(Object.entries(raw).map(([k, v]) => [k, clean(v)])) };
-  }).filter(row => row.pacote);
-  return Array.from(new Map(rows.map(row => [row.pacote, row])).values());
+  }).filter(row => row.pacote && isErrorState(row.estado));
+  return Array.from(new Map(rows.map(row => [`${row.pacote}|${key(row.rotaInformada)}|${key(row.estado)}`, row])).values());
 }
 
 export interface EnrichedExpedicaoRow extends ExpedicaoRow {
