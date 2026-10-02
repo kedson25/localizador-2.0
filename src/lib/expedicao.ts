@@ -3,6 +3,7 @@ import Papa from 'papaparse';
 export type FonteExpedicao = 'aduana' | 'auditoria';
 
 export interface BaseDespachoRow {
+  pacote: string;
   onda: string;
   rotaOtimizada: string;
   rotaOriginal: string;
@@ -84,13 +85,30 @@ function csv(text: string) {
 
 export function parseBaseDespacho(text: string): BaseDespachoRow[] {
   const records = csv(text).map(row => ({
+    pacote: id(value(
+      row,
+      'Shipment ID',
+      'Shipment',
+      'shipment_id',
+      'ID do pacote',
+      'ID do pacote,',
+      'Pacote',
+      'ID da remessa',
+      'ID do envio',
+      'ID de envio',
+      'ID',
+    )),
     onda: value(row, 'Onda'),
     rotaOtimizada: value(row, 'Rota otimizada'),
     rotaOriginal: value(row, 'Rota original'),
     doca: value(row, 'Doca'),
     placa: value(row, 'Placa'),
-  })).filter(row => row.rotaOtimizada || row.rotaOriginal || row.placa);
-  return Array.from(new Map(records.map(row => [`${key(row.rotaOtimizada)}|${key(row.rotaOriginal)}|${key(row.placa)}`, row])).values());
+  })).filter(row => row.pacote || row.rotaOtimizada || row.rotaOriginal || row.placa);
+
+  return Array.from(new Map(records.map(row => [
+    `${row.pacote}|${key(row.rotaOtimizada)}|${key(row.rotaOriginal)}|${key(row.placa)}`,
+    row,
+  ])).values());
 }
 
 export function parseExpedicaoRows(text: string, origem: FonteExpedicao): ExpedicaoRow[] {
@@ -128,18 +146,26 @@ function classificationFromEstado(estado: string): EnrichedExpedicaoRow['classif
 }
 
 export function enrichExpedicao(store: ExpedicaoStore): EnrichedExpedicaoRow[] {
+  const byPackage = new Map<string, BaseDespachoRow>();
   const byRoute = new Map<string, BaseDespachoRow>();
   const byPlate = new Map<string, BaseDespachoRow>();
+
   store.base.forEach(row => {
+    if (row.pacote) byPackage.set(row.pacote, row);
     [row.rotaOtimizada, row.rotaOriginal].forEach(route => routeCandidates(route).forEach(candidate => {
       if (candidate) byRoute.set(candidate, row);
     }));
     if (key(row.placa)) byPlate.set(key(row.placa), row);
   });
+
   const aduanaIds = new Set(store.aduana.map(row => row.pacote));
   const auditoriaIds = new Set(store.auditoria.map(row => row.pacote));
+
   return [...store.aduana, ...store.auditoria].map(row => {
-    const base = Array.from(routeCandidates(row.rotaInformada)).map(candidate => byRoute.get(candidate)).find(Boolean)
+    // O ID do pacote é a fonte mais confiável para descobrir onde ele deveria estar.
+    // Isso é essencial para itens "A mais", pois a rota/placa informada pode ser justamente a errada.
+    const base = byPackage.get(row.pacote)
+      || Array.from(routeCandidates(row.rotaInformada)).map(candidate => byRoute.get(candidate)).find(Boolean)
       || byPlate.get(key(row.placaInformada));
     const inAduana = aduanaIds.has(row.pacote);
     const inAuditoria = auditoriaIds.has(row.pacote);
