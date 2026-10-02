@@ -3,10 +3,10 @@ import { enrichExpedicao, parseBaseDespacho, parseExpedicaoRows } from '../src/l
 
 describe('Expedição', () => {
   it('completa rota, doca e placa usando a base despacho', () => {
-    const base = parseBaseDespacho('Rota otimizada,Rota original,Doca,Placa\nVJ11_AM1,AM1_113,1,SDQ3J67');
+    const base = parseBaseDespacho('Onda,Rota otimizada,Rota original,Doca,Placa\nOnda 4,VJ11_AM1,AM1_113,1,SDQ3J67');
     const aduana = parseExpedicaoRows('Shipment ID,Placa,ID da rota,Estado\n47774449934,SDQ3J67,VJ11_AM1 | 503,A mais', 'aduana');
     const rows = enrichExpedicao({ base, aduana, auditoria: [] });
-    expect(rows[0]).toMatchObject({ rotaOtimizada: 'VJ11_AM1', doca: '1', placa: 'SDQ3J67', classificacao: 'A mais' });
+    expect(rows[0]).toMatchObject({ rotaOtimizada: 'VJ11_AM1', doca: '1', onda: 'Onda 4', placa: 'SDQ3J67', classificacao: 'A mais' });
   });
 
   it('usa o Estado da Aduana como classificação oficial', () => {

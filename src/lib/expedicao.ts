@@ -3,6 +3,7 @@ import Papa from 'papaparse';
 export type FonteExpedicao = 'aduana' | 'auditoria';
 
 export interface BaseDespachoRow {
+  onda: string;
   rotaOtimizada: string;
   rotaOriginal: string;
   doca: string;
@@ -23,6 +24,7 @@ export interface ExpedicaoStore {
   base: BaseDespachoRow[];
   aduana: ExpedicaoRow[];
   auditoria: ExpedicaoRow[];
+  localizados?: Record<string, boolean>;
   updatedAt?: string;
   filenames?: Partial<Record<'base' | FonteExpedicao, string>>;
 }
@@ -46,6 +48,7 @@ function csv(text: string) {
 
 export function parseBaseDespacho(text: string): BaseDespachoRow[] {
   const records = csv(text).map(row => ({
+    onda: value(row, 'Onda'),
     rotaOtimizada: value(row, 'Rota otimizada'),
     rotaOriginal: value(row, 'Rota original'),
     doca: value(row, 'Doca'),
@@ -69,6 +72,7 @@ export function parseExpedicaoRows(text: string, origem: FonteExpedicao): Expedi
 }
 
 export interface EnrichedExpedicaoRow extends ExpedicaoRow {
+  onda: string;
   rotaOtimizada: string;
   doca: string;
   placa: string;
@@ -108,6 +112,7 @@ export function enrichExpedicao(store: ExpedicaoStore): EnrichedExpedicaoRow[] {
     const classificationFromFile = classificationFromEstado(row.estado);
     return {
       ...row,
+      onda: base?.onda || '',
       rotaOtimizada: base?.rotaOtimizada || '',
       doca: base?.doca || '',
       placa: base?.placa || row.placaInformada,
