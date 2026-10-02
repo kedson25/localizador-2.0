@@ -20,6 +20,7 @@ import { Login } from './components/Login';
 import { AdminPanel } from './components/AdminPanel';
 import { OperationNavigation } from './components/OperationNavigation';
 import { AvariasDashboard } from './components/AvariasDashboard';
+import { ExpedicaoPanel } from './components/ExpedicaoPanel';
 import { User, getCurrentUser } from './lib/auth';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { saveToColetor, loadFromColetor, clearColetor } from './lib/firebase';
@@ -45,6 +46,7 @@ export default function App() {
                       location.pathname.startsWith('/correlacao') ? 'Correlação' :
                       location.pathname.startsWith('/remover') ? 'Remover' :
                       location.pathname.startsWith('/reporte') ? 'Reporte' :
+                      location.pathname.startsWith('/expedicao') ? 'Expedição' :
                       location.pathname.startsWith('/configuracoes') ? 'Configurações' :
                       location.pathname.startsWith('/admin') ? 'Admin' : 'Módulos';
 
@@ -259,6 +261,7 @@ export default function App() {
                 element={insideDashboard(<BrancasPanelWithCsvFallback currentUser={currentUser} />)}
               />
               <Route path="/avarias" element={insideDashboard(<AvariasDashboard />)} />
+              <Route path="/expedicao" element={insideDashboard(<ExpedicaoPanel />)} />
             </>
           )}
 
