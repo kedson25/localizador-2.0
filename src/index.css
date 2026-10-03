@@ -41,6 +41,37 @@
   background-color: #94a3b8;
 }
 
+/*
+ * Expedição — correção de layout desktop.
+ * A grade ganhou mais conteúdo (match de vagas + recuperados) e não pode
+ * ficar presa à antiga altura fixa de 690px, senão a última linha invade
+ * os filtros/tabela. A grade cresce naturalmente; somente o painel lateral
+ * mantém altura controlada e rolagem própria.
+ */
+@media (min-width: 1280px) {
+  [class~="xl:h-[690px]"] {
+    height: auto !important;
+    align-items: start !important;
+  }
+
+  [class~="xl:h-[690px]"] > [class~="xl:h-full"][class~="xl:grid-rows-4"] {
+    height: auto !important;
+    grid-template-rows: repeat(4, minmax(148px, auto)) !important;
+    align-content: start !important;
+  }
+
+  [class~="xl:h-[690px]"] > [class~="xl:h-full"][class~="xl:grid-rows-4"] > button {
+    min-height: 148px !important;
+    height: auto !important;
+  }
+
+  [class~="xl:h-[690px]"] > aside {
+    height: 690px !important;
+    max-height: 690px !important;
+    overflow-y: auto !important;
+  }
+}
+
 /* Suporte a Safe Areas para celulares com entalhes/Dynamic Island */
 .safe-bottom {
   padding-bottom: env(safe-area-inset-bottom, 0.75rem);
@@ -48,5 +79,3 @@
 .safe-top {
   padding-top: env(safe-area-inset-top, 0.5rem);
 }
-
-
