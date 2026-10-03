@@ -50,41 +50,6 @@ function affectsDock(change: ExpedicaoDocaChange, doca: string) {
   return change.doca === doca || change.docaAnterior === doca;
 }
 
-function dockTone(change: ExpedicaoDocaChange | undefined, fullyResolved: boolean) {
-  if (fullyResolved) return 'border-slate-400 bg-slate-200/90';
-  if (!change) return 'border-slate-200 bg-white';
-
-  if (change.classificacao === 'A mais') {
-    return 'border-red-500 bg-red-50 ring-1 ring-red-100';
-  }
-
-  if (change.classificacao === 'Faltante') {
-    return 'border-amber-500 bg-amber-50 ring-1 ring-amber-100';
-  }
-
-  if (change.tipo === 'erro_removido' || change.tipo === 'placa_removida') {
-    return 'border-emerald-400 bg-emerald-50';
-  }
-
-  if (change.tipo === 'nova_placa' || change.tipo === 'troca_placa') {
-    return 'border-blue-400 bg-blue-50';
-  }
-
-  return 'border-amber-400 bg-amber-50';
-}
-
-function historyTone(change: ExpedicaoDocaChange) {
-  if (change.classificacao === 'A mais') return 'border-red-200 bg-red-50';
-  if (change.classificacao === 'Faltante') return 'border-amber-200 bg-amber-50';
-  if (change.tipo === 'erro_removido' || change.tipo === 'placa_removida') {
-    return 'border-emerald-200 bg-emerald-50';
-  }
-  if (change.tipo === 'nova_placa' || change.tipo === 'troca_placa') {
-    return 'border-blue-200 bg-blue-50';
-  }
-  return 'border-slate-200 bg-white';
-}
-
 function gaiolaFromRoute(route: string) {
   return String(route || '')
     .split('|')[0]
@@ -104,14 +69,15 @@ function occurrenceLabel(occurrence: TodayListOccurrence) {
   const saida = shortSaida(occurrence.listaSaida || occurrence.listaNome);
   const grupo = occurrence.grupoNome || 'Grupo não informado';
   const responsavel = occurrence.item?.responsavel?.trim() || 'não informado';
-
   return `${saida}, ${grupo}, bipado por: ${responsavel}`;
 }
 
-function vagaMessage(message: string) {
-  return String(message || '')
-    .replace(/\bdocas\b/gi, 'vagas')
-    .replace(/\bdoca\b/gi, 'vaga');
+function originLabel(value: string) {
+  return value === 'auditoria' ? 'Auditoria' : 'Aduana';
+}
+
+function typeTextClass(type: 'A mais' | 'Faltante') {
+  return type === 'A mais' ? 'text-red-600' : 'text-amber-700';
 }
 
 export function ExpedicaoPanel() {
@@ -185,7 +151,6 @@ export function ExpedicaoPanel() {
     const errorChanges = hasBaseline
       ? getExpedicaoDockChanges(beforeEnriched, afterEnriched, source, registradoEm)
       : [];
-
     const changes = [...baseChanges, ...errorChanges];
 
     next.ultimaComparacao = changes;
@@ -253,17 +218,11 @@ export function ExpedicaoPanel() {
         if (!active) return;
 
         const next: Record<string, TodayListOccurrence[]> = {};
-
         faltanteIds.forEach(pacote => {
           const upper = pacote.trim().toUpperCase();
           const digits = upper.replace(/\D/g, '');
-
-          next[pacote] =
-            found.get(upper)
-            || (digits ? found.get(digits) : undefined)
-            || [];
+          next[pacote] = found.get(upper) || (digits ? found.get(digits) : undefined) || [];
         });
-
         setBacklogById(next);
       })
       .catch(error => {
@@ -298,7 +257,6 @@ export function ExpedicaoPanel() {
     const records = enriched.filter(row => row.destinoDoca === doca);
     const changes = latestDockChanges.filter(change => affectsDock(change, doca));
     const latest = changes[changes.length - 1];
-
     const total = records.length;
     const resolved = records.filter(row => (
       Boolean(store.localizados?.[row.pacote])
@@ -315,7 +273,7 @@ export function ExpedicaoPanel() {
       total,
       resolved,
       fullyResolved: total > 0 && resolved === total,
-      changes,
+      changed: changes.length > 0,
       latest,
     };
   }), [enriched, latestDockChanges, store.localizados, backlogById]);
@@ -327,6 +285,7 @@ export function ExpedicaoPanel() {
       const listText = (backlogById[row.pacote] || []).map(occurrenceLabel).join(' ');
       const searchable = [
         row.pacote,
+        row.origem,
         row.encontradoPlaca,
         gaiolaFromRoute(row.encontradoRota),
         row.destinoRota,
@@ -350,21 +309,20 @@ export function ExpedicaoPanel() {
     [enriched, selectedDoca],
   );
 
-  const selectedDockChanges = useMemo(
-    () => selectedDoca
-      ? (store.historicoDoca || [])
-        .filter(change => affectsDock(change, selectedDoca))
-        .slice(-8)
-        .reverse()
-      : [],
-    [store.historicoDoca, selectedDoca],
-  );
-
   const totalErrors = counts.amais + counts.faltantes;
-  const resolvedTotal = counts.localizados + recuperadosEmLista;
+  const resolvedTotal = useMemo(
+    () => enriched.filter(row => (
+      Boolean(store.localizados?.[row.pacote])
+      || (
+        row.classificacao === 'Faltante'
+        && (backlogById[row.pacote]?.length || 0) > 0
+      )
+    )).length,
+    [enriched, store.localizados, backlogById],
+  );
   const pending = Math.max(0, totalErrors - resolvedTotal);
   const recoveryRate = totalErrors
-    ? Math.min(100, Math.round((resolvedTotal / totalErrors) * 100))
+    ? Math.round((resolvedTotal / totalErrors) * 100)
     : 0;
 
   const closeExpedicao = async () => {
@@ -381,7 +339,6 @@ export function ExpedicaoPanel() {
       ...store,
       encerramentos: [closing, ...(store.encerramentos || [])],
     });
-
     setReport(true);
   };
 
@@ -397,10 +354,10 @@ export function ExpedicaoPanel() {
     <button
       type="button"
       onClick={() => ref.current?.click()}
-      className={`inline-flex h-9 items-center gap-2 rounded-lg px-3 text-xs font-black shadow-sm transition ${
+      className={`inline-flex h-9 items-center gap-2 rounded-none border px-3 text-xs font-black transition ${
         primary
-          ? 'bg-[#253b80] text-white hover:bg-[#1f2464]'
-          : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+          ? 'border-[#253b80] bg-[#253b80] text-white hover:bg-[#1f2464]'
+          : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
       }`}
     >
       <UploadCloud className="h-4 w-4" />
@@ -432,10 +389,10 @@ export function ExpedicaoPanel() {
         onChange={event => event.target.files?.[0] && importFile(event.target.files[0], 'auditoria')}
       />
 
-      <section className="rounded-2xl border border-blue-200 bg-white px-4 py-3 shadow-sm sm:px-5">
+      <section className="rounded-none border border-slate-300 bg-white px-4 py-3 shadow-sm sm:px-5">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex items-center gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-700">
+            <span className="flex h-10 w-10 items-center justify-center rounded-none border border-slate-200 bg-white text-blue-700">
               <PackageCheck className="h-5 w-5" />
             </span>
             <div>
@@ -448,21 +405,19 @@ export function ExpedicaoPanel() {
             {upload('Despacho', baseInput)}
             {upload('Aduana', aduanaInput, true)}
             {upload('Auditoria', auditInput, true)}
-
             <button
               type="button"
               onClick={resetExpedicao}
-              className="inline-flex h-9 items-center gap-2 rounded-lg border border-red-300 bg-white px-3 text-xs font-black text-red-700 hover:bg-red-50"
+              className="inline-flex h-9 items-center gap-2 rounded-none border border-slate-300 bg-white px-3 text-xs font-black text-red-700 hover:bg-slate-50"
             >
               <Trash2 className="h-4 w-4" />
               Zerar
             </button>
-
             <button
               type="button"
               onClick={closeExpedicao}
               disabled={!totalErrors}
-              className="h-9 rounded-lg border border-amber-400 bg-[#ffd52f] px-3 text-xs font-black text-slate-950 disabled:opacity-40"
+              className="h-9 rounded-none border border-slate-400 bg-[#ffd52f] px-3 text-xs font-black text-slate-950 disabled:opacity-40"
             >
               Encerrar
             </button>
@@ -471,25 +426,20 @@ export function ExpedicaoPanel() {
       </section>
 
       {!store.base.length && (
-        <section className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-xs font-bold text-amber-900">
+        <section className="rounded-none border border-amber-300 bg-white px-4 py-3 text-xs font-bold text-amber-900">
           Carregue a Base Despacho para calcular o destino correto.
         </section>
       )}
 
       {store.ultimaImportacao && (
-        <section className="flex items-center justify-between gap-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5">
+        <section className="flex items-center justify-between gap-3 rounded-none border border-slate-300 bg-white px-4 py-2.5">
           <div className="flex min-w-0 items-center gap-2">
             <Clock className="h-4 w-4 shrink-0 text-blue-700" />
             <p className="truncate text-xs font-bold text-slate-800">
               {store.ultimaImportacao.arquivo} • {formatDateTime(store.ultimaImportacao.registradoEm)}
             </p>
           </div>
-
-          <span className={`shrink-0 rounded-full px-3 py-1 text-[10px] font-black ${
-            store.ultimaImportacao.alteracoes === 0
-              ? 'bg-white text-slate-600'
-              : 'bg-blue-700 text-white'
-          }`}>
+          <span className="shrink-0 border border-slate-300 bg-white px-3 py-1 text-[10px] font-black text-slate-700">
             {store.ultimaImportacao.alteracoes === 0
               ? 'Sem mudanças'
               : `${store.ultimaImportacao.alteracoes} mudanças`}
@@ -497,48 +447,44 @@ export function ExpedicaoPanel() {
         </section>
       )}
 
-      <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
-        <div className="rounded-xl border-2 border-red-400 bg-red-50 px-4 py-3 shadow-sm">
-          <p className="text-[10px] font-black uppercase text-red-700">A mais</p>
-          <p className="text-3xl font-black text-red-700">{counts.amais}</p>
+      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="rounded-none border border-slate-300 bg-white px-4 py-3 shadow-sm">
+          <p className="text-[10px] font-black uppercase text-slate-500">A mais</p>
+          <p className="text-3xl font-black text-red-600">{counts.amais}</p>
         </div>
-
-        <div className="rounded-xl border-2 border-amber-400 bg-amber-50 px-4 py-3 shadow-sm">
-          <p className="text-[10px] font-black uppercase text-amber-800">Faltantes</p>
-          <p className="text-3xl font-black text-amber-800">{counts.faltantes}</p>
+        <div className="rounded-none border border-slate-300 bg-white px-4 py-3 shadow-sm">
+          <p className="text-[10px] font-black uppercase text-slate-500">Faltantes</p>
+          <p className="text-3xl font-black text-amber-700">{counts.faltantes}</p>
         </div>
-
-        <div className="rounded-xl border-2 border-emerald-400 bg-emerald-50 px-4 py-3 shadow-sm">
-          <p className="text-[10px] font-black uppercase text-emerald-800">Recuperados em lista</p>
+        <div className="rounded-none border border-slate-300 bg-white px-4 py-3 shadow-sm">
+          <p className="text-[10px] font-black uppercase text-slate-500">Recuperados em lista</p>
           <p className="text-3xl font-black text-emerald-700">
             {backlogLoading ? '…' : recuperadosEmLista}
           </p>
         </div>
-
-        <div className="rounded-xl border-2 border-slate-300 bg-slate-50 px-4 py-3 shadow-sm">
-          <p className="text-[10px] font-black uppercase text-slate-600">Sem destino</p>
+        <div className="rounded-none border border-slate-300 bg-white px-4 py-3 shadow-sm">
+          <p className="text-[10px] font-black uppercase text-slate-500">Sem destino</p>
           <p className="text-3xl font-black text-slate-700">{counts.semDestino}</p>
         </div>
       </div>
 
       {backlogError && (
-        <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-900">
+        <div className="rounded-none border border-amber-300 bg-white px-3 py-2 text-xs font-bold text-amber-900">
           {backlogError}
         </div>
       )}
 
-      <section className="rounded-2xl border border-slate-300 bg-white p-3 shadow-sm">
+      <section className="rounded-none border border-slate-300 bg-white p-3 shadow-sm">
         <div className="mb-3 flex items-center justify-between gap-3">
           <div className="flex items-baseline gap-2">
             <h2 className="text-lg font-black text-slate-950">20 vagas</h2>
             <span className="text-[10px] font-bold text-slate-400">cinza = concluída</span>
           </div>
-
           {selectedDoca && (
             <button
               type="button"
               onClick={() => setSelectedDoca(null)}
-              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-black"
+              className="rounded-none border border-slate-300 bg-white px-3 py-2 text-xs font-black"
             >
               Limpar
             </button>
@@ -547,88 +493,70 @@ export function ExpedicaoPanel() {
 
         <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_440px]">
           <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
-            {heatmap.map(item => {
-              const changed = item.changes.length > 0;
-              const tone = dockTone(item.latest, item.fullyResolved);
+            {heatmap.map(item => (
+              <button
+                key={item.doca}
+                type="button"
+                onClick={() => setSelectedDoca(item.doca)}
+                className={`relative min-h-[108px] rounded-none border p-3 text-left transition hover:border-slate-500 ${
+                  item.fullyResolved ? 'bg-slate-100 border-slate-400' : 'bg-white border-slate-300'
+                } ${selectedDoca === item.doca ? 'ring-2 ring-slate-900' : ''}`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-black text-slate-950">VAGA {item.doca}</span>
+                  {item.fullyResolved ? (
+                    <span className="border border-slate-500 bg-slate-700 px-2 py-0.5 text-[9px] font-black text-white">OK</span>
+                  ) : item.changed ? (
+                    <span className="border border-slate-300 bg-white px-2 py-0.5 text-[9px] font-black text-slate-700">
+                      {formatTime(item.latest?.registradoEm)}
+                    </span>
+                  ) : null}
+                </div>
 
-              return (
-                <button
-                  key={item.doca}
-                  type="button"
-                  onClick={() => setSelectedDoca(item.doca)}
-                  className={`relative min-h-[112px] rounded-xl border-2 p-3 text-left transition hover:-translate-y-0.5 hover:shadow-md ${tone} ${
-                    selectedDoca === item.doca ? 'ring-2 ring-slate-900' : ''
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-sm font-black text-slate-950">VAGA {item.doca}</span>
-
-                    {item.fullyResolved ? (
-                      <span className="rounded-full bg-slate-700 px-2 py-1 text-[9px] font-black text-white">OK</span>
-                    ) : changed ? (
-                      <span className="rounded-full bg-slate-900 px-2 py-1 text-[9px] font-black text-white">
-                        {formatTime(item.latest?.registradoEm)}
-                      </span>
-                    ) : null}
+                <div className="mt-3 grid grid-cols-2 gap-3 border-t border-slate-200 pt-3">
+                  <div>
+                    <p className="text-[9px] font-black uppercase text-slate-500">A mais</p>
+                    <p className="text-xl font-black text-red-600">{item.amais}</p>
                   </div>
-
-                  <div className="mt-3 grid grid-cols-2 gap-2 border-t border-slate-200 pt-3">
-                    <div className="rounded-lg border border-red-200 bg-red-50 px-2 py-1.5">
-                      <p className="text-[9px] font-black uppercase text-red-700">A mais</p>
-                      <p className="text-xl font-black text-red-700">{item.amais}</p>
-                    </div>
-
-                    <div className="rounded-lg border border-amber-200 bg-amber-50 px-2 py-1.5">
-                      <p className="text-[9px] font-black uppercase text-amber-800">Faltante</p>
-                      <p className="text-xl font-black text-amber-800">{item.faltantes}</p>
-                    </div>
+                  <div>
+                    <p className="text-[9px] font-black uppercase text-slate-500">Faltante</p>
+                    <p className="text-xl font-black text-amber-700">{item.faltantes}</p>
                   </div>
+                </div>
 
-                  {item.total > 0 && (
-                    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200">
-                      <div
-                        className={`h-full rounded-full transition-all ${
-                          item.fullyResolved ? 'bg-slate-600' : 'bg-emerald-500'
-                        }`}
-                        style={{ width: `${Math.round((item.resolved / item.total) * 100)}%` }}
-                      />
-                    </div>
-                  )}
-                </button>
-              );
-            })}
+                {item.total > 0 && (
+                  <div className="mt-2 h-1 overflow-hidden bg-slate-200">
+                    <div
+                      className="h-full bg-emerald-600 transition-all"
+                      style={{ width: `${Math.round((item.resolved / item.total) * 100)}%` }}
+                    />
+                  </div>
+                )}
+              </button>
+            ))}
           </div>
 
-          <aside className="max-h-[720px] overflow-y-auto rounded-xl border border-slate-300 bg-slate-50 p-3 xl:sticky xl:top-20">
+          <aside className="max-h-[720px] overflow-y-auto rounded-none border border-slate-300 bg-white p-3 xl:sticky xl:top-20">
             <div className="flex items-center justify-between border-b border-slate-300 pb-2.5">
               <h3 className="text-xl font-black text-slate-950">
                 {selectedDoca ? `VAGA ${selectedDoca}` : 'Selecione uma vaga'}
               </h3>
-
               {selectedDoca && (
-                <span className="text-[10px] font-black text-slate-500">
-                  {selectedDockItems.length} itens
-                </span>
+                <span className="text-[10px] font-black text-slate-500">{selectedDockItems.length} itens</span>
               )}
             </div>
 
             {selectedDoca ? (
-              <div className="mt-3 space-y-2">
+              <div className="mt-3 divide-y divide-slate-200 border border-slate-200">
                 {selectedDockItems.length ? selectedDockItems.map(row => {
                   const manuallyRecovered = Boolean(store.localizados?.[row.pacote]);
                   const backlog = backlogById[row.pacote] || [];
                   const recoveredInList = row.classificacao === 'Faltante' && backlog.length > 0;
 
-                  const cardStyle = manuallyRecovered
-                    ? 'border-slate-400 bg-slate-200/90'
-                    : row.classificacao === 'Faltante'
-                      ? 'border-amber-400 bg-amber-50'
-                      : 'border-red-400 bg-red-50';
-
                   return (
                     <label
                       key={row.pacote}
-                      className={`block cursor-pointer rounded-xl border-2 p-3 ${cardStyle}`}
+                      className={`block cursor-pointer p-3 ${manuallyRecovered ? 'bg-slate-100' : 'bg-white'}`}
                     >
                       <span className="flex items-start gap-3">
                         <input
@@ -639,88 +567,50 @@ export function ExpedicaoPanel() {
                         />
 
                         <span className="min-w-0 flex-1">
-                          <span className="flex items-center justify-between gap-2">
-                            <b className="font-mono text-sm text-slate-950">{row.pacote}</b>
-
-                            <strong className={`rounded-full px-2 py-1 text-[9px] font-black uppercase ${
-                              row.classificacao === 'A mais'
-                                ? 'bg-red-600 text-white'
-                                : 'bg-amber-400 text-amber-950'
-                            }`}>
+                          <span className="flex items-start justify-between gap-3">
+                            <span>
+                              <b className="block font-mono text-sm text-slate-950">{row.pacote}</b>
+                              <span className="mt-0.5 block text-[9px] font-bold uppercase tracking-wide text-slate-500">
+                                Origem: {originLabel(row.origem)}
+                              </span>
+                            </span>
+                            <strong className={`text-[9px] font-black uppercase ${typeTextClass(row.classificacao)}`}>
                               {row.classificacao}
                             </strong>
                           </span>
 
-                          <span className="mt-2 block rounded-md border border-slate-200 bg-white/90 px-2.5 py-2 text-[10px] font-bold text-slate-700">
-                            Gaiola {gaiolaFromRoute(row.encontradoRota) || 'não informada'}, placa: {row.encontradoPlaca || 'não informada'}
-                          </span>
+                          <div className="mt-2 border-t border-slate-200 pt-2 text-[10px] font-bold text-slate-700">
+                            Gaiola {gaiolaFromRoute(row.encontradoRota) || 'não informada'} - placa: {row.encontradoPlaca || 'não informada'}
+                          </div>
 
                           {row.classificacao === 'A mais' ? (
-                            <span className="mt-2 block rounded-md border border-blue-300 bg-blue-50 px-2.5 py-2 text-[10px] font-bold text-blue-900">
+                            <div className="mt-1 text-[10px] font-bold text-slate-600">
                               <b>Destino:</b>{' '}
                               {row.destinoDoca && row.destinoRota
-                                ? `VAGA ${row.destinoDoca} • ${row.destinoRota}${row.destinoOnda ? ` • ${row.destinoOnda}` : ''}`
+                                ? `VAGA ${row.destinoDoca} - ${row.destinoRota}${row.destinoOnda ? ` - ${row.destinoOnda}` : ''}`
                                 : 'não localizado na Base Despacho'}
-                            </span>
+                            </div>
                           ) : (
-                            <span className={`mt-2 block rounded-md border px-2.5 py-2 text-[10px] font-bold ${
-                              recoveredInList
-                                ? 'border-emerald-400 bg-emerald-50 text-emerald-900'
-                                : 'border-slate-200 bg-white/90 text-slate-600'
-                            }`}>
+                            <div className="mt-1 text-[10px] font-bold text-slate-600">
                               {backlogLoading ? (
                                 'Verificando listas…'
-                              ) : backlog.length ? (
+                              ) : recoveredInList ? (
                                 <>
-                                  <span className="mb-1 block font-black uppercase text-emerald-700">
-                                    Recuperado em lista
-                                  </span>
-                                  {backlog.slice(0, 2).map((occurrence, index) => (
-                                    <span key={`${occurrence.listaId}-${index}`} className="block">
-                                      {occurrenceLabel(occurrence)}
-                                    </span>
-                                  ))}
-                                  {backlog.length > 2 && (
-                                    <span className="mt-1 block">+{backlog.length - 2} ocorrência(s)</span>
-                                  )}
+                                  <span className="font-black text-emerald-700">Recuperado em lista:</span>{' '}
+                                  {backlog.slice(0, 2).map(occurrenceLabel).join(' | ')}
+                                  {backlog.length > 2 ? ` | +${backlog.length - 2}` : ''}
                                 </>
                               ) : (
                                 'Não encontrado nas listas do dia'
                               )}
-                            </span>
+                            </div>
                           )}
                         </span>
                       </span>
                     </label>
                   );
                 }) : (
-                  <p className="rounded-lg bg-white p-4 text-center text-sm text-slate-500">
-                    Sem erros nesta vaga.
-                  </p>
-                )}
-
-                {!!selectedDockChanges.length && (
-                  <div className="pt-2">
-                    <p className="mb-2 text-[10px] font-black uppercase text-slate-400">Log</p>
-
-                    <div className="space-y-1.5">
-                      {selectedDockChanges.map(change => (
-                        <div
-                          key={change.id}
-                          className={`rounded-md border px-2.5 py-2 ${historyTone(change)}`}
-                        >
-                          <div className="flex items-center justify-between gap-2 text-[9px] font-bold text-slate-500">
-                            <span>{change.fonte}</span>
-                            <span>{formatDateTime(change.registradoEm)}</span>
-                          </div>
-
-                          <p className="mt-0.5 text-[10px] font-black text-slate-800">
-                            {vagaMessage(change.mensagem)}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+                  <p className="p-4 text-center text-sm text-slate-500">Sem erros nesta vaga.</p>
                 )}
               </div>
             ) : (
@@ -730,26 +620,18 @@ export function ExpedicaoPanel() {
         </div>
       </section>
 
-      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex flex-col gap-2 border-b border-slate-200 bg-slate-50 p-2.5 sm:flex-row sm:items-center sm:justify-between">
+      <section className="overflow-hidden rounded-none border border-slate-300 bg-white shadow-sm">
+        <div className="flex flex-col gap-2 border-b border-slate-200 bg-white p-2.5 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-wrap gap-1.5">
             {(['todos', 'A mais', 'Faltante'] as const).map(option => (
               <button
                 key={option}
                 type="button"
                 onClick={() => setFilter(option)}
-                className={`rounded-md border px-3 py-2 text-xs font-black ${
+                className={`rounded-none border px-3 py-2 text-xs font-black ${
                   filter === option
-                    ? option === 'A mais'
-                      ? 'border-red-600 bg-red-600 text-white'
-                      : option === 'Faltante'
-                        ? 'border-amber-400 bg-amber-400 text-amber-950'
-                        : 'border-slate-900 bg-slate-900 text-white'
-                    : option === 'A mais'
-                      ? 'border-red-200 bg-red-50 text-red-700'
-                      : option === 'Faltante'
-                        ? 'border-amber-200 bg-amber-50 text-amber-800'
-                        : 'border-slate-200 bg-white text-slate-600'
+                    ? 'border-slate-900 bg-slate-900 text-white'
+                    : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-50'
                 }`}
               >
                 {option === 'todos' ? 'Todos' : option}
@@ -762,17 +644,17 @@ export function ExpedicaoPanel() {
             <input
               value={query}
               onChange={event => setQuery(event.target.value)}
-              placeholder="ID, gaiola, placa ou lista"
-              className="h-9 w-full rounded-md border border-slate-300 bg-white pl-9 pr-3 text-xs outline-none focus:border-blue-500"
+              placeholder="ID, origem, gaiola, placa ou lista"
+              className="h-9 w-full rounded-none border border-slate-300 bg-white pl-9 pr-3 text-xs outline-none focus:border-blue-500"
             />
           </label>
         </div>
 
         <div className="app-scroll-x">
           <table className="w-full min-w-[1040px] border-collapse text-xs">
-            <thead className="bg-white text-slate-500">
+            <thead className="bg-slate-50 text-slate-500">
               <tr>
-                {['ID', 'Tipo', 'Encontrado', 'Destino / Lista', 'OK'].map(head => (
+                {['ID / Origem', 'Tipo', 'Encontrado', 'Destino / Lista', 'OK'].map(head => (
                   <th
                     key={head}
                     className="border-b border-r border-slate-200 px-3 py-2.5 text-left font-black last:border-r-0"
@@ -789,75 +671,52 @@ export function ExpedicaoPanel() {
                 const recoveredInList = row.classificacao === 'Faltante' && backlog.length > 0;
 
                 return (
-                  <tr
-                    key={row.pacote}
-                    className={`${
-                      row.classificacao === 'A mais'
-                        ? 'bg-red-50/60 hover:bg-red-50'
-                        : 'bg-amber-50/60 hover:bg-amber-50'
-                    }`}
-                  >
-                    <td className="border-b border-r border-slate-200 px-3 py-2 font-mono font-black text-slate-900">
-                      {row.pacote}
+                  <tr key={row.pacote} className="bg-white hover:bg-slate-50">
+                    <td className="border-b border-r border-slate-200 px-3 py-2">
+                      <div className="font-mono font-black text-slate-900">{row.pacote}</div>
+                      <div className="mt-0.5 text-[9px] font-bold uppercase tracking-wide text-slate-500">
+                        Origem: {originLabel(row.origem)}
+                      </div>
                     </td>
 
                     <td className="border-b border-r border-slate-200 px-3 py-2">
-                      <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-black uppercase ${
-                        row.classificacao === 'A mais'
-                          ? 'bg-red-600 text-white'
-                          : 'bg-amber-400 text-amber-950'
-                      }`}>
+                      <span className={`font-black uppercase ${typeTextClass(row.classificacao)}`}>
                         {row.classificacao}
                       </span>
                     </td>
 
                     <td className="border-b border-r border-slate-200 px-3 py-2 font-bold text-slate-700">
-                      Gaiola {gaiolaFromRoute(row.encontradoRota) || '—'}, placa: {row.encontradoPlaca || '—'}
+                      Gaiola {gaiolaFromRoute(row.encontradoRota) || '—'} - placa: {row.encontradoPlaca || '—'}
                     </td>
 
-                    <td className="border-b border-r border-slate-200 px-3 py-2">
+                    <td className="border-b border-r border-slate-200 px-3 py-2 text-slate-700">
                       {row.classificacao === 'A mais' ? (
                         row.destinoDoca && row.destinoRota ? (
-                          <span className="font-black text-blue-800">
-                            VAGA {row.destinoDoca} • {row.destinoRota}
-                            {row.destinoOnda ? ` • ${row.destinoOnda}` : ''}
+                          <span className="font-bold">
+                            VAGA {row.destinoDoca} - {row.destinoRota}{row.destinoOnda ? ` - ${row.destinoOnda}` : ''}
                           </span>
                         ) : (
                           <span className="text-slate-400">Sem destino</span>
                         )
                       ) : backlogLoading ? (
                         <span className="text-slate-400">Verificando listas…</span>
-                      ) : backlog.length ? (
-                        <div className="space-y-0.5 font-bold text-emerald-800">
-                          <span className="inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] font-black uppercase text-emerald-800">
-                            Recuperado em lista
-                          </span>
-                          <div>{occurrenceLabel(backlog[0])}</div>
-                          {backlog.length > 1 && (
-                            <div className="text-[10px] text-emerald-700">
-                              +{backlog.length - 1} ocorrência(s)
-                            </div>
-                          )}
-                        </div>
+                      ) : recoveredInList ? (
+                        <span className="font-bold">
+                          Recuperado em lista - {occurrenceLabel(backlog[0])}
+                          {backlog.length > 1 ? ` | +${backlog.length - 1}` : ''}
+                        </span>
                       ) : (
                         <span className="text-slate-400">Fora das listas do dia</span>
                       )}
                     </td>
 
                     <td className="border-b border-slate-200 px-3 py-2 text-center">
-                      <div className="flex flex-col items-center gap-1">
-                        <input
-                          type="checkbox"
-                          checked={Boolean(store.localizados?.[row.pacote])}
-                          onChange={() => toggleLocated(row.pacote)}
-                          className="h-4 w-4 accent-slate-700"
-                        />
-                        {recoveredInList && (
-                          <span className="text-[9px] font-black uppercase text-emerald-700">
-                            lista ✓
-                          </span>
-                        )}
-                      </div>
+                      <input
+                        type="checkbox"
+                        checked={Boolean(store.localizados?.[row.pacote])}
+                        onChange={() => toggleLocated(row.pacote)}
+                        className="h-4 w-4 accent-slate-700"
+                      />
                     </td>
                   </tr>
                 );
@@ -876,7 +735,7 @@ export function ExpedicaoPanel() {
       </section>
 
       {report && (
-        <section className="rounded-xl border border-slate-300 bg-white px-4 py-3">
+        <section className="rounded-none border border-slate-300 bg-white px-4 py-3">
           <div className="flex flex-wrap items-center gap-6 text-sm">
             <span><b>Pendentes:</b> {pending}</span>
             <span><b>Recuperados em lista:</b> {recuperadosEmLista}</span>
