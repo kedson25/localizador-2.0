@@ -51,25 +51,67 @@ function affectsDock(change: ExpedicaoDocaChange, doca: string) {
 }
 
 function dockTone(change: ExpedicaoDocaChange | undefined, fullyResolved: boolean) {
-  if (fullyResolved) return 'border-slate-300 bg-slate-200/80';
+  if (fullyResolved) return 'border-slate-400 bg-slate-200/90';
   if (!change) return 'border-slate-200 bg-white';
-  if (change.tipo === 'novo_erro') return 'border-red-400 bg-red-50';
-  if (change.tipo === 'erro_removido' || change.tipo === 'placa_removida') return 'border-emerald-400 bg-emerald-50';
-  if (change.tipo === 'nova_placa' || change.tipo === 'troca_placa') return 'border-blue-400 bg-blue-50';
+
+  if (change.classificacao === 'A mais') {
+    return 'border-red-500 bg-red-50 ring-1 ring-red-100';
+  }
+
+  if (change.classificacao === 'Faltante') {
+    return 'border-amber-500 bg-amber-50 ring-1 ring-amber-100';
+  }
+
+  if (change.tipo === 'erro_removido' || change.tipo === 'placa_removida') {
+    return 'border-emerald-400 bg-emerald-50';
+  }
+
+  if (change.tipo === 'nova_placa' || change.tipo === 'troca_placa') {
+    return 'border-blue-400 bg-blue-50';
+  }
+
   return 'border-amber-400 bg-amber-50';
 }
 
 function historyTone(change: ExpedicaoDocaChange) {
-  if (change.tipo === 'novo_erro') return 'border-red-200 bg-red-50';
-  if (change.tipo === 'erro_removido' || change.tipo === 'placa_removida') return 'border-emerald-200 bg-emerald-50';
-  if (change.tipo === 'nova_placa' || change.tipo === 'troca_placa') return 'border-blue-200 bg-blue-50';
-  return 'border-amber-200 bg-amber-50';
+  if (change.classificacao === 'A mais') return 'border-red-200 bg-red-50';
+  if (change.classificacao === 'Faltante') return 'border-amber-200 bg-amber-50';
+  if (change.tipo === 'erro_removido' || change.tipo === 'placa_removida') {
+    return 'border-emerald-200 bg-emerald-50';
+  }
+  if (change.tipo === 'nova_placa' || change.tipo === 'troca_placa') {
+    return 'border-blue-200 bg-blue-50';
+  }
+  return 'border-slate-200 bg-white';
+}
+
+function gaiolaFromRoute(route: string) {
+  return String(route || '')
+    .split('|')[0]
+    .trim();
+}
+
+function shortSaida(value: string) {
+  const text = String(value || '').trim();
+  const match = text.match(/Saída\s+(AM|PM|SD)/i);
+  if (match) return `Saída ${match[1].toUpperCase()}`;
+
+  const fallback = text.match(/\b(AM|PM|SD)\b/i);
+  return fallback ? `Saída ${fallback[1].toUpperCase()}` : (text || 'Saída não informada');
 }
 
 function occurrenceLabel(occurrence: TodayListOccurrence) {
-  return [occurrence.listaNome, occurrence.grupoNome, occurrence.listaSaida]
-    .filter(Boolean)
-    .join(' • ');
+  const saida = shortSaida(occurrence.listaSaida || occurrence.listaNome);
+  const grupo = occurrence.grupoNome || 'Grupo não informado';
+  const responsavel = occurrence.item?.responsavel?.trim() || 'não informado';
+
+  return `${saida}, ${grupo}, bipado por: ${responsavel}`;
+}
+
+function vagaMessage(message: string) {
+  return String(message || '')
+    .replace(/\bdocas\b/gi, 'vagas')
+    .replace(/\bdoca\b/gi, 'vaga');
 }
 
 export function ExpedicaoPanel() {
@@ -143,10 +185,9 @@ export function ExpedicaoPanel() {
     const errorChanges = hasBaseline
       ? getExpedicaoDockChanges(beforeEnriched, afterEnriched, source, registradoEm)
       : [];
+
     const changes = [...baseChanges, ...errorChanges];
 
-    // A tela usa SOMENTE esta comparação para colorir docas.
-    // Se a nova importação não tiver mudança, todas voltam ao estado neutro.
     next.ultimaComparacao = changes;
     next.historicoDoca = [...(store.historicoDoca || []), ...changes].slice(-20000);
     next.ultimaImportacao = {
@@ -169,6 +210,7 @@ export function ExpedicaoPanel() {
 
   const resetExpedicao = async () => {
     if (!window.confirm('Zerar a Expedição e apagar as bases e históricos salvos neste navegador?')) return;
+
     await save(empty);
     setQuery('');
     setFilter('todos');
@@ -188,6 +230,7 @@ export function ExpedicaoPanel() {
       .sort(),
     [enriched],
   );
+
   const faltanteKey = faltanteIds.join('|');
 
   useEffect(() => {
@@ -197,7 +240,9 @@ export function ExpedicaoPanel() {
       setBacklogById({});
       setBacklogLoading(false);
       setBacklogError('');
-      return () => { active = false; };
+      return () => {
+        active = false;
+      };
     }
 
     setBacklogLoading(true);
@@ -206,25 +251,34 @@ export function ExpedicaoPanel() {
     searchTodayListOccurrences(faltanteIds)
       .then(found => {
         if (!active) return;
+
         const next: Record<string, TodayListOccurrence[]> = {};
+
         faltanteIds.forEach(pacote => {
           const upper = pacote.trim().toUpperCase();
           const digits = upper.replace(/\D/g, '');
-          next[pacote] = found.get(upper) || (digits ? found.get(digits) : undefined) || [];
+
+          next[pacote] =
+            found.get(upper)
+            || (digits ? found.get(digits) : undefined)
+            || [];
         });
+
         setBacklogById(next);
       })
       .catch(error => {
         if (!active) return;
-        console.error('[Expedição] Falha ao verificar backlog:', error);
+        console.error('[Expedição] Falha ao verificar listas:', error);
         setBacklogById({});
-        setBacklogError('Falha ao consultar backlog.');
+        setBacklogError('Falha ao consultar as listas.');
       })
       .finally(() => {
         if (active) setBacklogLoading(false);
       });
 
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, [ready, faltanteKey]);
 
   const counts = useMemo(() => ({
@@ -234,7 +288,7 @@ export function ExpedicaoPanel() {
     semDestino: enriched.filter(row => !row.destinoDoca).length,
   }), [enriched, store.localizados]);
 
-  const faltantesEmBacklog = useMemo(
+  const recuperadosEmLista = useMemo(
     () => Object.values(backlogById).filter(items => items.length > 0).length,
     [backlogById],
   );
@@ -244,8 +298,15 @@ export function ExpedicaoPanel() {
     const records = enriched.filter(row => row.destinoDoca === doca);
     const changes = latestDockChanges.filter(change => affectsDock(change, doca));
     const latest = changes[changes.length - 1];
+
     const total = records.length;
-    const resolved = records.filter(row => Boolean(store.localizados?.[row.pacote])).length;
+    const resolved = records.filter(row => (
+      Boolean(store.localizados?.[row.pacote])
+      || (
+        row.classificacao === 'Faltante'
+        && (backlogById[row.pacote]?.length || 0) > 0
+      )
+    )).length;
 
     return {
       doca,
@@ -257,21 +318,21 @@ export function ExpedicaoPanel() {
       changes,
       latest,
     };
-  }), [enriched, latestDockChanges, store.localizados]);
+  }), [enriched, latestDockChanges, store.localizados, backlogById]);
 
   const rows = useMemo(() => {
     const needle = query.trim().toLowerCase();
 
     return enriched.filter(row => {
-      const backlogText = (backlogById[row.pacote] || []).map(occurrenceLabel).join(' ');
+      const listText = (backlogById[row.pacote] || []).map(occurrenceLabel).join(' ');
       const searchable = [
         row.pacote,
         row.encontradoPlaca,
-        row.encontradoRota,
+        gaiolaFromRoute(row.encontradoRota),
         row.destinoRota,
         row.destinoDoca,
         row.destinoOnda,
-        backlogText,
+        listText,
       ].join(' ').toLowerCase();
 
       return (
@@ -300,9 +361,10 @@ export function ExpedicaoPanel() {
   );
 
   const totalErrors = counts.amais + counts.faltantes;
-  const pending = Math.max(0, totalErrors - counts.localizados);
+  const resolvedTotal = counts.localizados + recuperadosEmLista;
+  const pending = Math.max(0, totalErrors - resolvedTotal);
   const recoveryRate = totalErrors
-    ? Math.round((counts.localizados / totalErrors) * 100)
+    ? Math.min(100, Math.round((resolvedTotal / totalErrors) * 100))
     : 0;
 
   const closeExpedicao = async () => {
@@ -319,6 +381,7 @@ export function ExpedicaoPanel() {
       ...store,
       encerramentos: [closing, ...(store.encerramentos || [])],
     });
+
     setReport(true);
   };
 
@@ -377,7 +440,7 @@ export function ExpedicaoPanel() {
             </span>
             <div>
               <p className="text-[10px] font-black uppercase tracking-[0.14em] text-blue-700">Expedição</p>
-              <h1 className="text-2xl font-black tracking-tight text-[#102a67]">Monitor por doca</h1>
+              <h1 className="text-2xl font-black tracking-tight text-[#102a67]">Monitor por vagas</h1>
             </div>
           </div>
 
@@ -385,6 +448,7 @@ export function ExpedicaoPanel() {
             {upload('Despacho', baseInput)}
             {upload('Aduana', aduanaInput, true)}
             {upload('Auditoria', auditInput, true)}
+
             <button
               type="button"
               onClick={resetExpedicao}
@@ -393,6 +457,7 @@ export function ExpedicaoPanel() {
               <Trash2 className="h-4 w-4" />
               Zerar
             </button>
+
             <button
               type="button"
               onClick={closeExpedicao}
@@ -419,6 +484,7 @@ export function ExpedicaoPanel() {
               {store.ultimaImportacao.arquivo} • {formatDateTime(store.ultimaImportacao.registradoEm)}
             </p>
           </div>
+
           <span className={`shrink-0 rounded-full px-3 py-1 text-[10px] font-black ${
             store.ultimaImportacao.alteracoes === 0
               ? 'bg-white text-slate-600'
@@ -432,22 +498,25 @@ export function ExpedicaoPanel() {
       )}
 
       <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
-        <div className="rounded-xl border border-red-200 bg-white px-4 py-3 shadow-sm">
-          <p className="text-[10px] font-black uppercase text-slate-500">A mais</p>
+        <div className="rounded-xl border-2 border-red-400 bg-red-50 px-4 py-3 shadow-sm">
+          <p className="text-[10px] font-black uppercase text-red-700">A mais</p>
           <p className="text-3xl font-black text-red-700">{counts.amais}</p>
         </div>
-        <div className="rounded-xl border border-amber-200 bg-white px-4 py-3 shadow-sm">
-          <p className="text-[10px] font-black uppercase text-slate-500">Faltantes</p>
+
+        <div className="rounded-xl border-2 border-amber-400 bg-amber-50 px-4 py-3 shadow-sm">
+          <p className="text-[10px] font-black uppercase text-amber-800">Faltantes</p>
           <p className="text-3xl font-black text-amber-800">{counts.faltantes}</p>
         </div>
-        <div className="rounded-xl border border-blue-200 bg-white px-4 py-3 shadow-sm">
-          <p className="text-[10px] font-black uppercase text-slate-500">No backlog</p>
-          <p className="text-3xl font-black text-blue-700">
-            {backlogLoading ? '…' : faltantesEmBacklog}
+
+        <div className="rounded-xl border-2 border-emerald-400 bg-emerald-50 px-4 py-3 shadow-sm">
+          <p className="text-[10px] font-black uppercase text-emerald-800">Recuperados em lista</p>
+          <p className="text-3xl font-black text-emerald-700">
+            {backlogLoading ? '…' : recuperadosEmLista}
           </p>
         </div>
-        <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-          <p className="text-[10px] font-black uppercase text-slate-500">Sem destino</p>
+
+        <div className="rounded-xl border-2 border-slate-300 bg-slate-50 px-4 py-3 shadow-sm">
+          <p className="text-[10px] font-black uppercase text-slate-600">Sem destino</p>
           <p className="text-3xl font-black text-slate-700">{counts.semDestino}</p>
         </div>
       </div>
@@ -461,9 +530,10 @@ export function ExpedicaoPanel() {
       <section className="rounded-2xl border border-slate-300 bg-white p-3 shadow-sm">
         <div className="mb-3 flex items-center justify-between gap-3">
           <div className="flex items-baseline gap-2">
-            <h2 className="text-lg font-black text-slate-950">20 docas</h2>
+            <h2 className="text-lg font-black text-slate-950">20 vagas</h2>
             <span className="text-[10px] font-bold text-slate-400">cinza = concluída</span>
           </div>
+
           {selectedDoca && (
             <button
               type="button"
@@ -475,7 +545,7 @@ export function ExpedicaoPanel() {
           )}
         </div>
 
-        <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_420px]">
+        <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_440px]">
           <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
             {heatmap.map(item => {
               const changed = item.changes.length > 0;
@@ -486,12 +556,13 @@ export function ExpedicaoPanel() {
                   key={item.doca}
                   type="button"
                   onClick={() => setSelectedDoca(item.doca)}
-                  className={`relative min-h-[104px] rounded-xl border p-3 text-left transition hover:-translate-y-0.5 hover:shadow-md ${tone} ${
+                  className={`relative min-h-[112px] rounded-xl border-2 p-3 text-left transition hover:-translate-y-0.5 hover:shadow-md ${tone} ${
                     selectedDoca === item.doca ? 'ring-2 ring-slate-900' : ''
                   }`}
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-sm font-black text-slate-950">DOCA {item.doca}</span>
+                    <span className="text-sm font-black text-slate-950">VAGA {item.doca}</span>
+
                     {item.fullyResolved ? (
                       <span className="rounded-full bg-slate-700 px-2 py-1 text-[9px] font-black text-white">OK</span>
                     ) : changed ? (
@@ -502,20 +573,23 @@ export function ExpedicaoPanel() {
                   </div>
 
                   <div className="mt-3 grid grid-cols-2 gap-2 border-t border-slate-200 pt-3">
-                    <div>
-                      <p className="text-[9px] font-black uppercase text-slate-500">A mais</p>
-                      <p className="text-xl font-black text-slate-950">{item.amais}</p>
+                    <div className="rounded-lg border border-red-200 bg-red-50 px-2 py-1.5">
+                      <p className="text-[9px] font-black uppercase text-red-700">A mais</p>
+                      <p className="text-xl font-black text-red-700">{item.amais}</p>
                     </div>
-                    <div>
-                      <p className="text-[9px] font-black uppercase text-slate-500">Faltante</p>
-                      <p className="text-xl font-black text-slate-950">{item.faltantes}</p>
+
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 px-2 py-1.5">
+                      <p className="text-[9px] font-black uppercase text-amber-800">Faltante</p>
+                      <p className="text-xl font-black text-amber-800">{item.faltantes}</p>
                     </div>
                   </div>
 
                   {item.total > 0 && (
                     <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200">
                       <div
-                        className="h-full rounded-full bg-slate-700 transition-all"
+                        className={`h-full rounded-full transition-all ${
+                          item.fullyResolved ? 'bg-slate-600' : 'bg-emerald-500'
+                        }`}
                         style={{ width: `${Math.round((item.resolved / item.total) * 100)}%` }}
                       />
                     </div>
@@ -525,71 +599,94 @@ export function ExpedicaoPanel() {
             })}
           </div>
 
-          <aside className="max-h-[690px] overflow-y-auto rounded-xl border border-slate-300 bg-slate-50 p-3 xl:sticky xl:top-20">
+          <aside className="max-h-[720px] overflow-y-auto rounded-xl border border-slate-300 bg-slate-50 p-3 xl:sticky xl:top-20">
             <div className="flex items-center justify-between border-b border-slate-300 pb-2.5">
               <h3 className="text-xl font-black text-slate-950">
-                {selectedDoca ? `DOCA ${selectedDoca}` : 'Selecione uma doca'}
+                {selectedDoca ? `VAGA ${selectedDoca}` : 'Selecione uma vaga'}
               </h3>
+
               {selectedDoca && (
-                <span className="text-[10px] font-black text-slate-500">{selectedDockItems.length} itens</span>
+                <span className="text-[10px] font-black text-slate-500">
+                  {selectedDockItems.length} itens
+                </span>
               )}
             </div>
 
             {selectedDoca ? (
               <div className="mt-3 space-y-2">
                 {selectedDockItems.length ? selectedDockItems.map(row => {
-                  const recovered = Boolean(store.localizados?.[row.pacote]);
+                  const manuallyRecovered = Boolean(store.localizados?.[row.pacote]);
                   const backlog = backlogById[row.pacote] || [];
-                  const cardStyle = recovered
-                    ? 'border-slate-300 bg-slate-200/80'
+                  const recoveredInList = row.classificacao === 'Faltante' && backlog.length > 0;
+
+                  const cardStyle = manuallyRecovered
+                    ? 'border-slate-400 bg-slate-200/90'
                     : row.classificacao === 'Faltante'
-                      ? 'border-amber-300 bg-amber-50'
-                      : 'border-red-300 bg-red-50';
+                      ? 'border-amber-400 bg-amber-50'
+                      : 'border-red-400 bg-red-50';
 
                   return (
-                    <label key={row.pacote} className={`block cursor-pointer rounded-lg border p-3 ${cardStyle}`}>
+                    <label
+                      key={row.pacote}
+                      className={`block cursor-pointer rounded-xl border-2 p-3 ${cardStyle}`}
+                    >
                       <span className="flex items-start gap-3">
                         <input
                           type="checkbox"
-                          checked={recovered}
+                          checked={manuallyRecovered}
                           onChange={() => toggleLocated(row.pacote)}
                           className="mt-0.5 h-5 w-5 shrink-0 accent-slate-700"
                         />
+
                         <span className="min-w-0 flex-1">
                           <span className="flex items-center justify-between gap-2">
                             <b className="font-mono text-sm text-slate-950">{row.pacote}</b>
-                            <strong className="rounded-full bg-white/80 px-2 py-1 text-[9px] uppercase text-slate-700">
-                              {recovered ? 'OK' : row.classificacao}
+
+                            <strong className={`rounded-full px-2 py-1 text-[9px] font-black uppercase ${
+                              row.classificacao === 'A mais'
+                                ? 'bg-red-600 text-white'
+                                : 'bg-amber-400 text-amber-950'
+                            }`}>
+                              {row.classificacao}
                             </strong>
                           </span>
 
+                          <span className="mt-2 block rounded-md border border-slate-200 bg-white/90 px-2.5 py-2 text-[10px] font-bold text-slate-700">
+                            Gaiola {gaiolaFromRoute(row.encontradoRota) || 'não informada'}, placa: {row.encontradoPlaca || 'não informada'}
+                          </span>
+
                           {row.classificacao === 'A mais' ? (
-                            <span className="mt-2 block space-y-1.5 text-[10px]">
-                              <span className="block rounded-md bg-white/80 px-2.5 py-2 text-slate-700">
-                                <b>Encontrado:</b>{' '}
-                                {row.encontradoRota || 'rota não informada'}
-                                {row.encontradoPlaca ? ` • ${row.encontradoPlaca}` : ''}
-                              </span>
-                              <span className="block rounded-md border border-blue-200 bg-blue-50 px-2.5 py-2 text-blue-900">
-                                <b>Destino:</b>{' '}
-                                {row.destinoDoca && row.destinoRota
-                                  ? `DOCA ${row.destinoDoca} • ${row.destinoRota}${row.destinoOnda ? ` • ${row.destinoOnda}` : ''}`
-                                  : 'não localizado na Base Despacho'}
-                              </span>
+                            <span className="mt-2 block rounded-md border border-blue-300 bg-blue-50 px-2.5 py-2 text-[10px] font-bold text-blue-900">
+                              <b>Destino:</b>{' '}
+                              {row.destinoDoca && row.destinoRota
+                                ? `VAGA ${row.destinoDoca} • ${row.destinoRota}${row.destinoOnda ? ` • ${row.destinoOnda}` : ''}`
+                                : 'não localizado na Base Despacho'}
                             </span>
                           ) : (
-                            <span className={`mt-2 block rounded-md border px-2.5 py-2 text-[10px] ${
-                              backlog.length
-                                ? 'border-emerald-300 bg-emerald-50 text-emerald-900'
-                                : 'border-slate-200 bg-white/80 text-slate-600'
+                            <span className={`mt-2 block rounded-md border px-2.5 py-2 text-[10px] font-bold ${
+                              recoveredInList
+                                ? 'border-emerald-400 bg-emerald-50 text-emerald-900'
+                                : 'border-slate-200 bg-white/90 text-slate-600'
                             }`}>
-                              <b>Backlog:</b>{' '}
-                              {backlogLoading
-                                ? 'verificando…'
-                                : backlog.length
-                                  ? backlog.slice(0, 3).map(occurrenceLabel).join(' | ')
-                                  : 'não encontrado'}
-                              {backlog.length > 3 ? ` • +${backlog.length - 3}` : ''}
+                              {backlogLoading ? (
+                                'Verificando listas…'
+                              ) : backlog.length ? (
+                                <>
+                                  <span className="mb-1 block font-black uppercase text-emerald-700">
+                                    Recuperado em lista
+                                  </span>
+                                  {backlog.slice(0, 2).map((occurrence, index) => (
+                                    <span key={`${occurrence.listaId}-${index}`} className="block">
+                                      {occurrenceLabel(occurrence)}
+                                    </span>
+                                  ))}
+                                  {backlog.length > 2 && (
+                                    <span className="mt-1 block">+{backlog.length - 2} ocorrência(s)</span>
+                                  )}
+                                </>
+                              ) : (
+                                'Não encontrado nas listas do dia'
+                              )}
                             </span>
                           )}
                         </span>
@@ -597,20 +694,29 @@ export function ExpedicaoPanel() {
                     </label>
                   );
                 }) : (
-                  <p className="rounded-lg bg-white p-4 text-center text-sm text-slate-500">Sem erros nesta doca.</p>
+                  <p className="rounded-lg bg-white p-4 text-center text-sm text-slate-500">
+                    Sem erros nesta vaga.
+                  </p>
                 )}
 
                 {!!selectedDockChanges.length && (
                   <div className="pt-2">
                     <p className="mb-2 text-[10px] font-black uppercase text-slate-400">Log</p>
+
                     <div className="space-y-1.5">
                       {selectedDockChanges.map(change => (
-                        <div key={change.id} className={`rounded-md border px-2.5 py-2 ${historyTone(change)}`}>
+                        <div
+                          key={change.id}
+                          className={`rounded-md border px-2.5 py-2 ${historyTone(change)}`}
+                        >
                           <div className="flex items-center justify-between gap-2 text-[9px] font-bold text-slate-500">
                             <span>{change.fonte}</span>
                             <span>{formatDateTime(change.registradoEm)}</span>
                           </div>
-                          <p className="mt-0.5 text-[10px] font-black text-slate-800">{change.mensagem}</p>
+
+                          <p className="mt-0.5 text-[10px] font-black text-slate-800">
+                            {vagaMessage(change.mensagem)}
+                          </p>
                         </div>
                       ))}
                     </div>
@@ -618,7 +724,7 @@ export function ExpedicaoPanel() {
                 )}
               </div>
             ) : (
-              <p className="py-10 text-center text-sm text-slate-500">Clique em uma doca.</p>
+              <p className="py-10 text-center text-sm text-slate-500">Clique em uma vaga.</p>
             )}
           </aside>
         </div>
@@ -632,10 +738,18 @@ export function ExpedicaoPanel() {
                 key={option}
                 type="button"
                 onClick={() => setFilter(option)}
-                className={`rounded-md px-3 py-2 text-xs font-black ${
+                className={`rounded-md border px-3 py-2 text-xs font-black ${
                   filter === option
-                    ? 'bg-slate-900 text-white'
-                    : 'bg-white text-slate-600'
+                    ? option === 'A mais'
+                      ? 'border-red-600 bg-red-600 text-white'
+                      : option === 'Faltante'
+                        ? 'border-amber-400 bg-amber-400 text-amber-950'
+                        : 'border-slate-900 bg-slate-900 text-white'
+                    : option === 'A mais'
+                      ? 'border-red-200 bg-red-50 text-red-700'
+                      : option === 'Faltante'
+                        ? 'border-amber-200 bg-amber-50 text-amber-800'
+                        : 'border-slate-200 bg-white text-slate-600'
                 }`}
               >
                 {option === 'todos' ? 'Todos' : option}
@@ -643,56 +757,107 @@ export function ExpedicaoPanel() {
             ))}
           </div>
 
-          <label className="relative min-w-[260px]">
+          <label className="relative min-w-[280px]">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
             <input
               value={query}
               onChange={event => setQuery(event.target.value)}
-              placeholder="ID, placa, rota ou lista"
+              placeholder="ID, gaiola, placa ou lista"
               className="h-9 w-full rounded-md border border-slate-300 bg-white pl-9 pr-3 text-xs outline-none focus:border-blue-500"
             />
           </label>
         </div>
 
         <div className="app-scroll-x">
-          <table className="w-full min-w-[980px] border-collapse text-xs">
+          <table className="w-full min-w-[1040px] border-collapse text-xs">
             <thead className="bg-white text-slate-500">
               <tr>
-                {['ID', 'Tipo', 'Encontrado', 'Destino / Backlog', 'OK'].map(head => (
-                  <th key={head} className="border-b border-r border-slate-200 px-3 py-2.5 text-left font-black last:border-r-0">{head}</th>
+                {['ID', 'Tipo', 'Encontrado', 'Destino / Lista', 'OK'].map(head => (
+                  <th
+                    key={head}
+                    className="border-b border-r border-slate-200 px-3 py-2.5 text-left font-black last:border-r-0"
+                  >
+                    {head}
+                  </th>
                 ))}
               </tr>
             </thead>
+
             <tbody>
               {rows.slice(0, 1000).map(row => {
                 const backlog = backlogById[row.pacote] || [];
+                const recoveredInList = row.classificacao === 'Faltante' && backlog.length > 0;
+
                 return (
-                  <tr key={row.pacote} className="hover:bg-slate-50">
-                    <td className="border-b border-r border-slate-200 px-3 py-2 font-mono font-black text-slate-900">{row.pacote}</td>
-                    <td className="border-b border-r border-slate-200 px-3 py-2 font-black">{row.classificacao}</td>
-                    <td className="border-b border-r border-slate-200 px-3 py-2 text-slate-600">
-                      {row.encontradoRota || '—'}{row.encontradoPlaca ? ` • ${row.encontradoPlaca}` : ''}
+                  <tr
+                    key={row.pacote}
+                    className={`${
+                      row.classificacao === 'A mais'
+                        ? 'bg-red-50/60 hover:bg-red-50'
+                        : 'bg-amber-50/60 hover:bg-amber-50'
+                    }`}
+                  >
+                    <td className="border-b border-r border-slate-200 px-3 py-2 font-mono font-black text-slate-900">
+                      {row.pacote}
                     </td>
+
+                    <td className="border-b border-r border-slate-200 px-3 py-2">
+                      <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-black uppercase ${
+                        row.classificacao === 'A mais'
+                          ? 'bg-red-600 text-white'
+                          : 'bg-amber-400 text-amber-950'
+                      }`}>
+                        {row.classificacao}
+                      </span>
+                    </td>
+
+                    <td className="border-b border-r border-slate-200 px-3 py-2 font-bold text-slate-700">
+                      Gaiola {gaiolaFromRoute(row.encontradoRota) || '—'}, placa: {row.encontradoPlaca || '—'}
+                    </td>
+
                     <td className="border-b border-r border-slate-200 px-3 py-2">
                       {row.classificacao === 'A mais' ? (
-                        row.destinoDoca && row.destinoRota
-                          ? <span className="font-bold text-blue-800">DOCA {row.destinoDoca} • {row.destinoRota}{row.destinoOnda ? ` • ${row.destinoOnda}` : ''}</span>
-                          : <span className="text-slate-400">Sem destino</span>
+                        row.destinoDoca && row.destinoRota ? (
+                          <span className="font-black text-blue-800">
+                            VAGA {row.destinoDoca} • {row.destinoRota}
+                            {row.destinoOnda ? ` • ${row.destinoOnda}` : ''}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400">Sem destino</span>
+                        )
                       ) : backlogLoading ? (
-                        <span className="text-slate-400">Verificando…</span>
+                        <span className="text-slate-400">Verificando listas…</span>
                       ) : backlog.length ? (
-                        <span className="font-bold text-emerald-700">{backlog.slice(0, 2).map(occurrenceLabel).join(' | ')}</span>
+                        <div className="space-y-0.5 font-bold text-emerald-800">
+                          <span className="inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] font-black uppercase text-emerald-800">
+                            Recuperado em lista
+                          </span>
+                          <div>{occurrenceLabel(backlog[0])}</div>
+                          {backlog.length > 1 && (
+                            <div className="text-[10px] text-emerald-700">
+                              +{backlog.length - 1} ocorrência(s)
+                            </div>
+                          )}
+                        </div>
                       ) : (
-                        <span className="text-slate-400">Fora do backlog</span>
+                        <span className="text-slate-400">Fora das listas do dia</span>
                       )}
                     </td>
+
                     <td className="border-b border-slate-200 px-3 py-2 text-center">
-                      <input
-                        type="checkbox"
-                        checked={Boolean(store.localizados?.[row.pacote])}
-                        onChange={() => toggleLocated(row.pacote)}
-                        className="h-4 w-4 accent-slate-700"
-                      />
+                      <div className="flex flex-col items-center gap-1">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(store.localizados?.[row.pacote])}
+                          onChange={() => toggleLocated(row.pacote)}
+                          className="h-4 w-4 accent-slate-700"
+                        />
+                        {recoveredInList && (
+                          <span className="text-[9px] font-black uppercase text-emerald-700">
+                            lista ✓
+                          </span>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
@@ -700,7 +865,9 @@ export function ExpedicaoPanel() {
 
               {!rows.length && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-10 text-center text-sm text-slate-500">Nenhum item.</td>
+                  <td colSpan={5} className="px-4 py-10 text-center text-sm text-slate-500">
+                    Nenhum item.
+                  </td>
                 </tr>
               )}
             </tbody>
@@ -712,7 +879,8 @@ export function ExpedicaoPanel() {
         <section className="rounded-xl border border-slate-300 bg-white px-4 py-3">
           <div className="flex flex-wrap items-center gap-6 text-sm">
             <span><b>Pendentes:</b> {pending}</span>
-            <span><b>Resolvidos:</b> {counts.localizados}</span>
+            <span><b>Recuperados em lista:</b> {recuperadosEmLista}</span>
+            <span><b>Marcados OK:</b> {counts.localizados}</span>
             <span><b>Taxa:</b> {recoveryRate}%</span>
           </div>
         </section>
