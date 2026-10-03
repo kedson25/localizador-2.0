@@ -40,6 +40,7 @@ const QUICK_LINKS: QuickLink[] = [
   { label: 'Reporte WhatsApp', path: '/reporte', keywords: 'reporte whatsapp relatorio' },
   { label: 'Análise de Brancas', path: '/brancas', keywords: 'brancas auditoria rota' },
   { label: 'Avarias', path: '/avarias', keywords: 'avarias danos reporte diario csv ranking metricas' },
+  { label: 'Expedição', path: '/expedicao', keywords: 'expedicao doca amais faltante despacho auditoria' },
   { label: 'Configurações', path: '/configuracoes', keywords: 'configuracoes preferencias' },
   { label: 'Relatórios', path: '/admin', keywords: 'relatorios admin metricas', adminOnly: true },
 ];
@@ -68,6 +69,7 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
   const isSettings = location.pathname.startsWith('/configuracoes');
   const isModulesArea = location.pathname === '/';
   const isAvarias = location.pathname.startsWith('/avarias');
+  const isExpedicao = location.pathname.startsWith('/expedicao');
 
   const results = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -284,7 +286,9 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
           </div>
         </header>
 
-        <main className="mx-auto w-full max-w-[1280px] px-4 py-5 sm:px-6 lg:px-8 lg:py-7">
+        <main className={isExpedicao
+          ? 'w-full max-w-none px-3 py-4 sm:px-4 lg:px-5 xl:px-6'
+          : 'mx-auto w-full max-w-[1280px] px-4 py-5 sm:px-6 lg:px-8 lg:py-7'}>
           {(title || subtitle) && (
             <div className="mb-5">
               {title && <h1 className="text-2xl font-black tracking-tight text-slate-900 sm:text-3xl">{title}</h1>}
