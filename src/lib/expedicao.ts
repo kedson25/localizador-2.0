@@ -93,6 +93,7 @@ const id = (value: unknown) => {
   return text.replace(/\D/g, '') || text.toUpperCase();
 };
 const plateKey = (value: unknown) => clean(value).toUpperCase().replace(/[^A-Z0-9]/g, '');
+const routeKey = (value: unknown) => key(clean(value).split('|')[0].trim());
 const normalizeDock = (value: unknown) => {
   const text = clean(value);
   const match = text.match(/\d+/);
@@ -252,6 +253,7 @@ export interface EnrichedExpedicaoRow extends ExpedicaoRow {
   classificacao: 'A mais' | 'Faltante';
   encontradoRota: string;
   encontradoPlaca: string;
+  encontradoDoca: string;
   destinoRota: string;
   destinoDoca: string;
   destinoOnda: string;
@@ -260,19 +262,29 @@ export interface EnrichedExpedicaoRow extends ExpedicaoRow {
 /**
  * Regra operacional da Expedição:
  * - Auditoria representa ONDE o pacote foi encontrado (placa + ID da rota).
- * - A placa da Auditoria é cruzada com a Base Despacho.
- * - O resultado da Base Despacho representa ONDE o pacote DEVERIA estar
- *   (doca + rota otimizada + onda).
+ * - A rota informada da Auditoria é cruzada com a Base Despacho para descobrir
+ *   a VAGA física em que o pacote foi encontrado.
+ * - A placa da Auditoria é cruzada com a Base Despacho para descobrir ONDE o
+ *   pacote DEVERIA estar (vaga + rota otimizada + onda).
  * - Quando não existe Auditoria para o ID, Aduana é usada como fallback.
  * - Cada Shipment ID aparece uma única vez.
  */
 export function enrichExpedicao(store: ExpedicaoStore): EnrichedExpedicaoRow[] {
   const byPlate = new Map<string, BaseDespachoRow>();
+  const byRoute = new Map<string, BaseDespachoRow>();
 
-  // Mantém o mesmo comportamento de uma busca do tipo XLOOKUP: primeira placa válida vence.
   store.base.forEach(row => {
     const normalizedPlate = plateKey(row.placa);
-    if (normalizedPlate && !byPlate.has(normalizedPlate)) byPlate.set(normalizedPlate, row);
+    if (normalizedPlate && !byPlate.has(normalizedPlate)) {
+      byPlate.set(normalizedPlate, row);
+    }
+
+    [row.rotaOtimizada, row.rotaOriginal].forEach(route => {
+      const normalizedRoute = routeKey(route);
+      if (normalizedRoute && !byRoute.has(normalizedRoute)) {
+        byRoute.set(normalizedRoute, row);
+      }
+    });
   });
 
   const aduanaById = new Map(store.aduana.map(row => [row.pacote, row]));
@@ -284,9 +296,7 @@ export function enrichExpedicao(store: ExpedicaoStore): EnrichedExpedicaoRow[] {
     const aduana = aduanaById.get(pacote);
     const auditoria = auditoriaById.get(pacote);
 
-    // Estado pode continuar vindo da Aduana quando ela existe.
     const stateRow = aduana || auditoria;
-    // Local encontrado deve priorizar Auditoria: é nela que temos placa e rota físicas.
     const foundRow = auditoria || aduana;
     if (!stateRow || !foundRow) return;
 
@@ -296,7 +306,8 @@ export function enrichExpedicao(store: ExpedicaoStore): EnrichedExpedicaoRow[] {
 
     const encontradoPlaca = clean(foundRow.placaInformada || stateRow.placaInformada).toUpperCase();
     const encontradoRota = clean(foundRow.rotaInformada || stateRow.rotaInformada);
-    const base = encontradoPlaca ? byPlate.get(plateKey(encontradoPlaca)) : undefined;
+    const foundBase = encontradoRota ? byRoute.get(routeKey(encontradoRota)) : undefined;
+    const destinationBase = encontradoPlaca ? byPlate.get(plateKey(encontradoPlaca)) : undefined;
     const origem: FonteExpedicao = auditoria ? 'auditoria' : 'aduana';
 
     result.push({
@@ -308,15 +319,16 @@ export function enrichExpedicao(store: ExpedicaoStore): EnrichedExpedicaoRow[] {
       detalhe: foundRow.detalhe || stateRow.detalhe,
       dataRegistro: foundRow.dataRegistro || stateRow.dataRegistro,
       placa: encontradoPlaca,
-      onda: base?.onda || '',
-      rotaOtimizada: base?.rotaOtimizada || '',
-      doca: base?.doca || '',
+      onda: destinationBase?.onda || '',
+      rotaOtimizada: destinationBase?.rotaOtimizada || '',
+      doca: destinationBase?.doca || '',
       classificacao,
       encontradoRota,
       encontradoPlaca,
-      destinoRota: base?.rotaOtimizada || '',
-      destinoDoca: base?.doca || '',
-      destinoOnda: base?.onda || '',
+      encontradoDoca: foundBase?.doca || '',
+      destinoRota: destinationBase?.rotaOtimizada || '',
+      destinoDoca: destinationBase?.doca || '',
+      destinoOnda: destinationBase?.onda || '',
     });
   });
 
