@@ -498,7 +498,7 @@ export function ExpedicaoPanel() {
                 key={item.doca}
                 type="button"
                 onClick={() => setSelectedDoca(item.doca)}
-                className={`relative min-h-[108px] rounded-none border p-3 text-left transition hover:border-slate-500 ${
+                className={`relative flex min-h-[138px] flex-col rounded-none border p-3 text-left transition hover:border-slate-500 ${
                   item.fullyResolved ? 'bg-slate-100 border-slate-400' : 'bg-white border-slate-300'
                 } ${selectedDoca === item.doca ? 'ring-2 ring-slate-900' : ''}`}
               >
@@ -524,14 +524,28 @@ export function ExpedicaoPanel() {
                   </div>
                 </div>
 
-                {item.total > 0 && (
-                  <div className="mt-2 h-1 overflow-hidden bg-slate-200">
+                <div className="mt-auto border-t border-slate-200 pt-2">
+                  <div className="flex items-end justify-between gap-2">
+                    <div>
+                      <p className="text-[9px] font-black uppercase text-slate-500">Recuperados</p>
+                      <p className="text-base font-black text-emerald-700">{item.resolved}</p>
+                    </div>
+                    <span className="text-[9px] font-bold text-slate-400">
+                      {item.resolved}/{item.total}
+                    </span>
+                  </div>
+
+                  <div className="mt-1.5 h-1 overflow-hidden bg-slate-200">
                     <div
                       className="h-full bg-emerald-600 transition-all"
-                      style={{ width: `${Math.round((item.resolved / item.total) * 100)}%` }}
+                      style={{
+                        width: item.total
+                          ? `${Math.round((item.resolved / item.total) * 100)}%`
+                          : '0%',
+                      }}
                     />
                   </div>
-                )}
+                </div>
               </button>
             ))}
           </div>
