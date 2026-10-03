@@ -72,6 +72,11 @@
   }
 }
 
+/* Expedição — destino de pacote A mais em azul, sem colorir a linha inteira. */
+.app-scroll-x table tbody tr:has(td:nth-child(2) .text-red-600) td:nth-child(4) > span.font-bold {
+  color: #1d4ed8 !important;
+}
+
 /* Suporte a Safe Areas para celulares com entalhes/Dynamic Island */
 .safe-bottom {
   padding-bottom: env(safe-area-inset-bottom, 0.75rem);
