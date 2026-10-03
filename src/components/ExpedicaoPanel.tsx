@@ -16,6 +16,10 @@ import {
 
 const STORAGE_KEY = 'expedicao-daily-v1';
 
+type TipoFilter = 'todos' | 'A mais' | 'Faltante';
+type OrigemFilter = 'todas' | 'aduana' | 'auditoria';
+type DestinoFilter = 'todos' | 'em-lista' | 'fora-lista' | 'com-destino' | 'sem-destino';
+
 const empty: ExpedicaoStore = {
   base: [],
   aduana: [],
@@ -51,9 +55,7 @@ function affectsDock(change: ExpedicaoDocaChange, doca: string) {
 }
 
 function gaiolaFromRoute(route: string) {
-  return String(route || '')
-    .split('|')[0]
-    .trim();
+  return String(route || '').split('|')[0].trim();
 }
 
 function shortSaida(value: string) {
@@ -76,7 +78,8 @@ function originLabel(value: string) {
   return value === 'auditoria' ? 'Auditoria' : 'Aduana';
 }
 
-function typeTextClass(type: 'A mais' | 'Faltante') {
+function typeTextClass(type: 'A mais' | 'Faltante', muted = false) {
+  if (muted) return 'text-slate-600';
   return type === 'A mais' ? 'text-red-600' : 'text-amber-700';
 }
 
@@ -84,7 +87,9 @@ export function ExpedicaoPanel() {
   const [store, setStore] = useState<ExpedicaoStore>(empty);
   const [ready, setReady] = useState(false);
   const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState<'todos' | 'A mais' | 'Faltante'>('todos');
+  const [filter, setFilter] = useState<TipoFilter>('todos');
+  const [originFilter, setOriginFilter] = useState<OrigemFilter>('todas');
+  const [destinationFilter, setDestinationFilter] = useState<DestinoFilter>('todos');
   const [selectedDoca, setSelectedDoca] = useState<string | null>(null);
   const [report, setReport] = useState(false);
   const [backlogById, setBacklogById] = useState<Record<string, TodayListOccurrence[]>>({});
@@ -153,6 +158,8 @@ export function ExpedicaoPanel() {
       : [];
     const changes = [...baseChanges, ...errorChanges];
 
+    // Mantém os pacotes já marcados/recuperados. A nova carga só reabre a vaga
+    // quando o snapshot atual possuir novos itens ainda pendentes.
     next.ultimaComparacao = changes;
     next.historicoDoca = [...(store.historicoDoca || []), ...changes].slice(-20000);
     next.ultimaImportacao = {
@@ -173,12 +180,18 @@ export function ExpedicaoPanel() {
     },
   });
 
+  const resetFilters = () => {
+    setFilter('todos');
+    setOriginFilter('todas');
+    setDestinationFilter('todos');
+    setQuery('');
+  };
+
   const resetExpedicao = async () => {
     if (!window.confirm('Zerar a Expedição e apagar as bases e históricos salvos neste navegador?')) return;
 
     await save(empty);
-    setQuery('');
-    setFilter('todos');
+    resetFilters();
     setSelectedDoca(null);
     setBacklogById({});
     setBacklogError('');
@@ -205,9 +218,7 @@ export function ExpedicaoPanel() {
       setBacklogById({});
       setBacklogLoading(false);
       setBacklogError('');
-      return () => {
-        active = false;
-      };
+      return () => { active = false; };
     }
 
     setBacklogLoading(true);
@@ -235,9 +246,7 @@ export function ExpedicaoPanel() {
         if (active) setBacklogLoading(false);
       });
 
-    return () => {
-      active = false;
-    };
+    return () => { active = false; };
   }, [ready, faltanteKey]);
 
   const counts = useMemo(() => ({
@@ -282,7 +291,10 @@ export function ExpedicaoPanel() {
     const needle = query.trim().toLowerCase();
 
     return enriched.filter(row => {
-      const listText = (backlogById[row.pacote] || []).map(occurrenceLabel).join(' ');
+      const backlog = backlogById[row.pacote] || [];
+      const recoveredInList = row.classificacao === 'Faltante' && backlog.length > 0;
+      const hasDestination = Boolean(row.destinoDoca && row.destinoRota);
+      const listText = backlog.map(occurrenceLabel).join(' ');
       const searchable = [
         row.pacote,
         row.origem,
@@ -294,19 +306,40 @@ export function ExpedicaoPanel() {
         listText,
       ].join(' ').toLowerCase();
 
+      const matchDestination = destinationFilter === 'todos'
+        || (destinationFilter === 'em-lista' && recoveredInList)
+        || (destinationFilter === 'fora-lista' && row.classificacao === 'Faltante' && !recoveredInList)
+        || (destinationFilter === 'com-destino' && hasDestination)
+        || (destinationFilter === 'sem-destino' && !hasDestination);
+
       return (
         (filter === 'todos' || row.classificacao === filter)
+        && (originFilter === 'todas' || row.origem === originFilter)
+        && matchDestination
         && (!selectedDoca || row.destinoDoca === selectedDoca)
         && searchable.includes(needle)
       );
     });
-  }, [enriched, filter, selectedDoca, query, backlogById]);
+  }, [
+    enriched,
+    filter,
+    originFilter,
+    destinationFilter,
+    selectedDoca,
+    query,
+    backlogById,
+  ]);
 
   const selectedDockItems = useMemo(
     () => selectedDoca
       ? enriched.filter(row => row.destinoDoca === selectedDoca)
       : [],
     [enriched, selectedDoca],
+  );
+
+  const selectedDock = useMemo(
+    () => selectedDoca ? heatmap.find(item => item.doca === selectedDoca) : undefined,
+    [heatmap, selectedDoca],
   );
 
   const totalErrors = counts.amais + counts.faltantes;
@@ -478,7 +511,7 @@ export function ExpedicaoPanel() {
         <div className="mb-3 flex items-center justify-between gap-3">
           <div className="flex items-baseline gap-2">
             <h2 className="text-lg font-black text-slate-950">20 vagas</h2>
-            <span className="text-[10px] font-bold text-slate-400">cinza = concluída</span>
+            <span className="text-[10px] font-bold text-slate-400">cinza = 100% recuperada</span>
           </div>
           {selectedDoca && (
             <button
@@ -491,68 +524,85 @@ export function ExpedicaoPanel() {
           )}
         </div>
 
-        <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_440px]">
-          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
-            {heatmap.map(item => (
-              <button
-                key={item.doca}
-                type="button"
-                onClick={() => setSelectedDoca(item.doca)}
-                className={`relative flex min-h-[138px] flex-col rounded-none border p-3 text-left transition hover:border-slate-500 ${
-                  item.fullyResolved ? 'bg-slate-100 border-slate-400' : 'bg-white border-slate-300'
-                } ${selectedDoca === item.doca ? 'ring-2 ring-slate-900' : ''}`}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm font-black text-slate-950">VAGA {item.doca}</span>
-                  {item.fullyResolved ? (
-                    <span className="border border-slate-500 bg-slate-700 px-2 py-0.5 text-[9px] font-black text-white">OK</span>
-                  ) : item.changed ? (
-                    <span className="border border-slate-300 bg-white px-2 py-0.5 text-[9px] font-black text-slate-700">
-                      {formatTime(item.latest?.registradoEm)}
+        <div className="grid gap-3 xl:h-[690px] xl:grid-cols-[minmax(0,1fr)_440px]">
+          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4 xl:h-full xl:grid-cols-5 xl:grid-rows-4">
+            {heatmap.map(item => {
+              const muted = item.fullyResolved;
+
+              return (
+                <button
+                  key={item.doca}
+                  type="button"
+                  onClick={() => setSelectedDoca(item.doca)}
+                  className={`relative flex min-h-[138px] flex-col rounded-none border p-3 text-left transition hover:border-slate-500 xl:min-h-0 ${
+                    muted ? 'border-slate-400 bg-slate-200' : 'border-slate-300 bg-white'
+                  } ${selectedDoca === item.doca ? 'ring-2 ring-slate-900' : ''}`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className={`text-sm font-black ${muted ? 'text-slate-600' : 'text-slate-950'}`}>
+                      VAGA {item.doca}
                     </span>
-                  ) : null}
-                </div>
-
-                <div className="mt-3 grid grid-cols-2 gap-3 border-t border-slate-200 pt-3">
-                  <div>
-                    <p className="text-[9px] font-black uppercase text-slate-500">A mais</p>
-                    <p className="text-xl font-black text-red-600">{item.amais}</p>
+                    {muted ? (
+                      <span className="border border-slate-500 bg-slate-600 px-2 py-0.5 text-[9px] font-black text-white">
+                        100%
+                      </span>
+                    ) : item.changed ? (
+                      <span className="border border-slate-300 bg-white px-2 py-0.5 text-[9px] font-black text-slate-700">
+                        {formatTime(item.latest?.registradoEm)}
+                      </span>
+                    ) : null}
                   </div>
-                  <div>
-                    <p className="text-[9px] font-black uppercase text-slate-500">Faltante</p>
-                    <p className="text-xl font-black text-amber-700">{item.faltantes}</p>
-                  </div>
-                </div>
 
-                <div className="mt-auto border-t border-slate-200 pt-2">
-                  <div className="flex items-end justify-between gap-2">
+                  <div className="mt-3 grid grid-cols-2 gap-3 border-t border-slate-300 pt-3">
                     <div>
-                      <p className="text-[9px] font-black uppercase text-slate-500">Recuperados</p>
-                      <p className="text-base font-black text-emerald-700">{item.resolved}</p>
+                      <p className="text-[9px] font-black uppercase text-slate-500">A mais</p>
+                      <p className={`text-xl font-black ${muted ? 'text-slate-600' : 'text-red-600'}`}>
+                        {item.amais}
+                      </p>
                     </div>
-                    <span className="text-[9px] font-bold text-slate-400">
-                      {item.resolved}/{item.total}
-                    </span>
+                    <div>
+                      <p className="text-[9px] font-black uppercase text-slate-500">Faltante</p>
+                      <p className={`text-xl font-black ${muted ? 'text-slate-600' : 'text-amber-700'}`}>
+                        {item.faltantes}
+                      </p>
+                    </div>
                   </div>
 
-                  <div className="mt-1.5 h-1 overflow-hidden bg-slate-200">
-                    <div
-                      className="h-full bg-emerald-600 transition-all"
-                      style={{
-                        width: item.total
-                          ? `${Math.round((item.resolved / item.total) * 100)}%`
-                          : '0%',
-                      }}
-                    />
+                  <div className="mt-auto border-t border-slate-300 pt-2">
+                    <div className="flex items-end justify-between gap-2">
+                      <div>
+                        <p className="text-[9px] font-black uppercase text-slate-500">Recuperados</p>
+                        <p className={`text-base font-black ${muted ? 'text-slate-600' : 'text-emerald-700'}`}>
+                          {item.resolved}
+                        </p>
+                      </div>
+                      <span className="text-[9px] font-bold text-slate-500">
+                        {item.resolved}/{item.total}
+                      </span>
+                    </div>
+                    <div className="mt-1.5 h-1 overflow-hidden bg-slate-300">
+                      <div
+                        className={`h-full transition-all ${muted ? 'bg-slate-600' : 'bg-emerald-600'}`}
+                        style={{
+                          width: item.total
+                            ? `${Math.round((item.resolved / item.total) * 100)}%`
+                            : '0%',
+                        }}
+                      />
+                    </div>
                   </div>
-                </div>
-              </button>
-            ))}
+                </button>
+              );
+            })}
           </div>
 
-          <aside className="max-h-[720px] overflow-y-auto rounded-none border border-slate-300 bg-white p-3 xl:sticky xl:top-20">
-            <div className="flex items-center justify-between border-b border-slate-300 pb-2.5">
-              <h3 className="text-xl font-black text-slate-950">
+          <aside className={`h-[520px] min-h-0 overflow-y-auto rounded-none border p-3 xl:h-full ${
+            selectedDock?.fullyResolved
+              ? 'border-slate-400 bg-slate-100'
+              : 'border-slate-300 bg-white'
+          }`}>
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-300 bg-inherit pb-2.5">
+              <h3 className={`text-xl font-black ${selectedDock?.fullyResolved ? 'text-slate-600' : 'text-slate-950'}`}>
                 {selectedDoca ? `VAGA ${selectedDoca}` : 'Selecione uma vaga'}
               </h3>
               {selectedDoca && (
@@ -566,11 +616,12 @@ export function ExpedicaoPanel() {
                   const manuallyRecovered = Boolean(store.localizados?.[row.pacote]);
                   const backlog = backlogById[row.pacote] || [];
                   const recoveredInList = row.classificacao === 'Faltante' && backlog.length > 0;
+                  const muted = Boolean(selectedDock?.fullyResolved);
 
                   return (
                     <label
                       key={row.pacote}
-                      className={`block cursor-pointer p-3 ${manuallyRecovered ? 'bg-slate-100' : 'bg-white'}`}
+                      className={`block cursor-pointer p-3 ${muted || manuallyRecovered ? 'bg-slate-100' : 'bg-white'}`}
                     >
                       <span className="flex items-start gap-3">
                         <input
@@ -583,17 +634,19 @@ export function ExpedicaoPanel() {
                         <span className="min-w-0 flex-1">
                           <span className="flex items-start justify-between gap-3">
                             <span>
-                              <b className="block font-mono text-sm text-slate-950">{row.pacote}</b>
+                              <b className={`block font-mono text-sm ${muted ? 'text-slate-600' : 'text-slate-950'}`}>
+                                {row.pacote}
+                              </b>
                               <span className="mt-0.5 block text-[9px] font-bold uppercase tracking-wide text-slate-500">
                                 Origem: {originLabel(row.origem)}
                               </span>
                             </span>
-                            <strong className={`text-[9px] font-black uppercase ${typeTextClass(row.classificacao)}`}>
+                            <strong className={`text-[9px] font-black uppercase ${typeTextClass(row.classificacao, muted)}`}>
                               {row.classificacao}
                             </strong>
                           </span>
 
-                          <div className="mt-2 border-t border-slate-200 pt-2 text-[10px] font-bold text-slate-700">
+                          <div className="mt-2 border-t border-slate-200 pt-2 text-[10px] font-bold text-slate-600">
                             Gaiola {gaiolaFromRoute(row.encontradoRota) || 'não informada'} - placa: {row.encontradoPlaca || 'não informada'}
                           </div>
 
@@ -610,7 +663,9 @@ export function ExpedicaoPanel() {
                                 'Verificando listas…'
                               ) : recoveredInList ? (
                                 <>
-                                  <span className="font-black text-emerald-700">Recuperado em lista:</span>{' '}
+                                  <span className={muted ? 'font-black text-slate-600' : 'font-black text-emerald-700'}>
+                                    Recuperado em lista:
+                                  </span>{' '}
                                   {backlog.slice(0, 2).map(occurrenceLabel).join(' | ')}
                                   {backlog.length > 2 ? ` | +${backlog.length - 2}` : ''}
                                 </>
@@ -635,38 +690,80 @@ export function ExpedicaoPanel() {
       </section>
 
       <section className="overflow-hidden rounded-none border border-slate-300 bg-white shadow-sm">
-        <div className="flex flex-col gap-2 border-b border-slate-200 bg-white p-2.5 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex flex-wrap gap-1.5">
-            {(['todos', 'A mais', 'Faltante'] as const).map(option => (
-              <button
-                key={option}
-                type="button"
-                onClick={() => setFilter(option)}
-                className={`rounded-none border px-3 py-2 text-xs font-black ${
-                  filter === option
-                    ? 'border-slate-900 bg-slate-900 text-white'
-                    : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-50'
-                }`}
+        <div className="border-b border-slate-200 bg-white p-2.5">
+          <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap gap-1.5">
+                {(['todos', 'A mais', 'Faltante'] as const).map(option => (
+                  <button
+                    key={option}
+                    type="button"
+                    onClick={() => setFilter(option)}
+                    className={`rounded-none border px-3 py-2 text-xs font-black ${
+                      filter === option
+                        ? 'border-slate-900 bg-slate-900 text-white'
+                        : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    {option === 'todos' ? 'Todos' : option}
+                  </button>
+                ))}
+              </div>
+
+              <select
+                value={originFilter}
+                onChange={event => setOriginFilter(event.target.value as OrigemFilter)}
+                className="h-9 rounded-none border border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-700 outline-none focus:border-blue-500"
+                aria-label="Filtrar por origem"
               >
-                {option === 'todos' ? 'Todos' : option}
-              </button>
-            ))}
+                <option value="todas">Origem: todas</option>
+                <option value="aduana">Origem: Aduana</option>
+                <option value="auditoria">Origem: Auditoria</option>
+              </select>
+
+              <select
+                value={destinationFilter}
+                onChange={event => setDestinationFilter(event.target.value as DestinoFilter)}
+                className="h-9 rounded-none border border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-700 outline-none focus:border-blue-500"
+                aria-label="Filtrar por destino"
+              >
+                <option value="todos">Destino: todos</option>
+                <option value="em-lista">Recuperado em lista</option>
+                <option value="fora-lista">Fora das listas</option>
+                <option value="com-destino">Com destino</option>
+                <option value="sem-destino">Sem destino</option>
+              </select>
+
+              {(filter !== 'todos' || originFilter !== 'todas' || destinationFilter !== 'todos' || query) && (
+                <button
+                  type="button"
+                  onClick={resetFilters}
+                  className="h-9 rounded-none border border-slate-300 bg-white px-3 text-xs font-black text-slate-600 hover:bg-slate-50"
+                >
+                  Limpar filtros
+                </button>
+              )}
+            </div>
+
+            <label className="relative w-full xl:w-[300px]">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+              <input
+                value={query}
+                onChange={event => setQuery(event.target.value)}
+                placeholder="ID, origem, gaiola, placa ou lista"
+                className="h-9 w-full rounded-none border border-slate-300 bg-white pl-9 pr-3 text-xs outline-none focus:border-blue-500"
+              />
+            </label>
           </div>
 
-          <label className="relative min-w-[280px]">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-            <input
-              value={query}
-              onChange={event => setQuery(event.target.value)}
-              placeholder="ID, origem, gaiola, placa ou lista"
-              className="h-9 w-full rounded-none border border-slate-300 bg-white pl-9 pr-3 text-xs outline-none focus:border-blue-500"
-            />
-          </label>
+          <div className="mt-2 text-[10px] font-bold text-slate-500">
+            {rows.length} resultado(s)
+          </div>
         </div>
 
-        <div className="app-scroll-x">
+        <div className="app-scroll-x max-h-[620px] overflow-y-auto">
           <table className="w-full min-w-[1040px] border-collapse text-xs">
-            <thead className="bg-slate-50 text-slate-500">
+            <thead className="sticky top-0 z-10 bg-slate-50 text-slate-500">
               <tr>
                 {['ID / Origem', 'Tipo', 'Encontrado', 'Destino / Lista', 'OK'].map(head => (
                   <th
@@ -739,7 +836,7 @@ export function ExpedicaoPanel() {
               {!rows.length && (
                 <tr>
                   <td colSpan={5} className="px-4 py-10 text-center text-sm text-slate-500">
-                    Nenhum item.
+                    Nenhum item com esses filtros.
                   </td>
                 </tr>
               )}
