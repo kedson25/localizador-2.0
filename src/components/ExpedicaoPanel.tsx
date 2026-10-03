@@ -19,24 +19,6 @@ const STORAGE_KEY = 'expedicao-daily-v1';
 type TipoFilter = 'todos' | 'A mais' | 'Faltante';
 type OrigemFilter = 'todas' | 'aduana' | 'auditoria';
 type DestinoFilter = 'todos' | 'em-lista' | 'fora-lista' | 'com-destino' | 'sem-destino';
-type VagaMatch = {
-  key: string;
-  a: string;
-  b: string;
-  count: number;
-  color: string;
-};
-
-const MATCH_COLORS = [
-  '#2563eb',
-  '#7c3aed',
-  '#0f766e',
-  '#c2410c',
-  '#be185d',
-  '#0891b2',
-  '#4d7c0f',
-  '#9333ea',
-];
 
 const empty: ExpedicaoStore = {
   base: [],
@@ -99,21 +81,6 @@ function originLabel(value: string) {
 function typeTextClass(type: 'A mais' | 'Faltante', muted = false) {
   if (muted) return 'text-slate-600';
   return type === 'A mais' ? 'text-red-600' : 'text-amber-700';
-}
-
-function orderedPair(a: string, b: string) {
-  const first = Number(a);
-  const second = Number(b);
-  return first <= second ? [a, b] as const : [b, a] as const;
-}
-
-function colorForPair(pairKey: string) {
-  let hash = 0;
-  for (let index = 0; index < pairKey.length; index += 1) {
-    hash = ((hash << 5) - hash) + pairKey.charCodeAt(index);
-    hash |= 0;
-  }
-  return MATCH_COLORS[Math.abs(hash) % MATCH_COLORS.length];
 }
 
 export function ExpedicaoPanel() {
@@ -191,6 +158,8 @@ export function ExpedicaoPanel() {
       : [];
     const changes = [...baseChanges, ...errorChanges];
 
+    // Mantém os pacotes já marcados/recuperados. A nova carga só reabre a vaga
+    // quando o snapshot atual possuir novos itens ainda pendentes.
     next.ultimaComparacao = changes;
     next.historicoDoca = [...(store.historicoDoca || []), ...changes].slice(-20000);
     next.ultimaImportacao = {
@@ -292,52 +261,11 @@ export function ExpedicaoPanel() {
     [backlogById],
   );
 
-  const dockMatches = useMemo(() => {
-    const pairs = new Map<string, VagaMatch>();
-
-    enriched.forEach(row => {
-      const recovered = Boolean(store.localizados?.[row.pacote])
-        || (row.classificacao === 'Faltante' && (backlogById[row.pacote]?.length || 0) > 0);
-
-      if (recovered) return;
-      if (!row.encontradoDoca || !row.destinoDoca || row.encontradoDoca === row.destinoDoca) return;
-
-      const [a, b] = orderedPair(row.encontradoDoca, row.destinoDoca);
-      const key = `${a}-${b}`;
-      const current = pairs.get(key);
-
-      if (current) {
-        current.count += 1;
-      } else {
-        pairs.set(key, {
-          key,
-          a,
-          b,
-          count: 1,
-          color: colorForPair(key),
-        });
-      }
-    });
-
-    const byDock = new Map<string, VagaMatch[]>();
-    pairs.forEach(match => {
-      [match.a, match.b].forEach(doca => {
-        const current = byDock.get(doca) || [];
-        current.push(match);
-        byDock.set(doca, current);
-      });
-    });
-
-    byDock.forEach(matches => matches.sort((left, right) => right.count - left.count));
-    return byDock;
-  }, [enriched, store.localizados, backlogById]);
-
   const heatmap = useMemo(() => Array.from({ length: 20 }, (_, index) => {
     const doca = String(index + 1);
     const records = enriched.filter(row => row.destinoDoca === doca);
     const changes = latestDockChanges.filter(change => affectsDock(change, doca));
     const latest = changes[changes.length - 1];
-    const matches = dockMatches.get(doca) || [];
     const total = records.length;
     const resolved = records.filter(row => (
       Boolean(store.localizados?.[row.pacote])
@@ -353,12 +281,11 @@ export function ExpedicaoPanel() {
       faltantes: records.filter(row => row.classificacao === 'Faltante').length,
       total,
       resolved,
-      fullyResolved: total > 0 && resolved === total && matches.length === 0,
+      fullyResolved: total > 0 && resolved === total,
       changed: changes.length > 0,
       latest,
-      matches,
     };
-  }), [enriched, latestDockChanges, store.localizados, backlogById, dockMatches]);
+  }), [enriched, latestDockChanges, store.localizados, backlogById]);
 
   const rows = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -372,7 +299,6 @@ export function ExpedicaoPanel() {
         row.pacote,
         row.origem,
         row.encontradoPlaca,
-        row.encontradoDoca,
         gaiolaFromRoute(row.encontradoRota),
         row.destinoRota,
         row.destinoDoca,
@@ -390,7 +316,7 @@ export function ExpedicaoPanel() {
         (filter === 'todos' || row.classificacao === filter)
         && (originFilter === 'todas' || row.origem === originFilter)
         && matchDestination
-        && (!selectedDoca || row.destinoDoca === selectedDoca || row.encontradoDoca === selectedDoca)
+        && (!selectedDoca || row.destinoDoca === selectedDoca)
         && searchable.includes(needle)
       );
     });
@@ -406,7 +332,7 @@ export function ExpedicaoPanel() {
 
   const selectedDockItems = useMemo(
     () => selectedDoca
-      ? enriched.filter(row => row.destinoDoca === selectedDoca || row.encontradoDoca === selectedDoca)
+      ? enriched.filter(row => row.destinoDoca === selectedDoca)
       : [],
     [enriched, selectedDoca],
   );
@@ -585,7 +511,7 @@ export function ExpedicaoPanel() {
         <div className="mb-3 flex items-center justify-between gap-3">
           <div className="flex items-baseline gap-2">
             <h2 className="text-lg font-black text-slate-950">20 vagas</h2>
-            <span className="text-[10px] font-bold text-slate-400">mesma cor = vagas relacionadas</span>
+            <span className="text-[10px] font-bold text-slate-400">cinza = 100% recuperada</span>
           </div>
           {selectedDoca && (
             <button
@@ -608,7 +534,7 @@ export function ExpedicaoPanel() {
                   key={item.doca}
                   type="button"
                   onClick={() => setSelectedDoca(item.doca)}
-                  className={`relative flex min-h-[148px] flex-col rounded-none border p-3 text-left transition hover:border-slate-500 xl:min-h-0 ${
+                  className={`relative flex min-h-[138px] flex-col rounded-none border p-3 text-left transition hover:border-slate-500 xl:min-h-0 ${
                     muted ? 'border-slate-400 bg-slate-200' : 'border-slate-300 bg-white'
                   } ${selectedDoca === item.doca ? 'ring-2 ring-slate-900' : ''}`}
                 >
@@ -627,27 +553,7 @@ export function ExpedicaoPanel() {
                     ) : null}
                   </div>
 
-                  <div className="mt-1 flex h-5 items-center gap-1 overflow-hidden">
-                    {!muted && item.matches.slice(0, 2).map(match => {
-                      const other = match.a === item.doca ? match.b : match.a;
-                      return (
-                        <span
-                          key={match.key}
-                          className="inline-flex h-5 shrink-0 items-center gap-1 border bg-white px-1.5 text-[9px] font-black"
-                          style={{ borderColor: match.color, color: match.color }}
-                          title={`VAGA ${match.a} ↔ VAGA ${match.b}: ${match.count} pacote(s) pendente(s)`}
-                        >
-                          <span className="h-2 w-2 shrink-0" style={{ backgroundColor: match.color }} />
-                          ↔ V{other}{match.count > 1 ? ` (${match.count})` : ''}
-                        </span>
-                      );
-                    })}
-                    {!muted && item.matches.length > 2 && (
-                      <span className="text-[9px] font-black text-slate-500">+{item.matches.length - 2}</span>
-                    )}
-                  </div>
-
-                  <div className="mt-1 grid grid-cols-2 gap-3 border-t border-slate-300 pt-2">
+                  <div className="mt-3 grid grid-cols-2 gap-3 border-t border-slate-300 pt-3">
                     <div>
                       <p className="text-[9px] font-black uppercase text-slate-500">A mais</p>
                       <p className={`text-xl font-black ${muted ? 'text-slate-600' : 'text-red-600'}`}>
@@ -714,7 +620,7 @@ export function ExpedicaoPanel() {
 
                   return (
                     <label
-                      key={`${row.pacote}-${row.destinoDoca}-${row.encontradoDoca}`}
+                      key={row.pacote}
                       className={`block cursor-pointer p-3 ${muted || manuallyRecovered ? 'bg-slate-100' : 'bg-white'}`}
                     >
                       <span className="flex items-start gap-3">
@@ -742,7 +648,6 @@ export function ExpedicaoPanel() {
 
                           <div className="mt-2 border-t border-slate-200 pt-2 text-[10px] font-bold text-slate-600">
                             Gaiola {gaiolaFromRoute(row.encontradoRota) || 'não informada'} - placa: {row.encontradoPlaca || 'não informada'}
-                            {row.encontradoDoca ? ` - VAGA ${row.encontradoDoca}` : ''}
                           </div>
 
                           {row.classificacao === 'A mais' ? (
@@ -757,10 +662,13 @@ export function ExpedicaoPanel() {
                               {backlogLoading ? (
                                 'Verificando listas…'
                               ) : recoveredInList ? (
-                                <span className={muted ? 'font-black text-slate-600' : 'font-black text-emerald-800'}>
+                                <>
+                                  <span className={muted ? 'font-black text-slate-600' : 'font-black text-emerald-700'}>
+                                    Recuperado em lista:
+                                  </span>{' '}
                                   {backlog.slice(0, 2).map(occurrenceLabel).join(' | ')}
                                   {backlog.length > 2 ? ` | +${backlog.length - 2}` : ''}
-                                </span>
+                                </>
                               ) : (
                                 'Não encontrado nas listas do dia'
                               )}
@@ -820,7 +728,7 @@ export function ExpedicaoPanel() {
                 aria-label="Filtrar por destino"
               >
                 <option value="todos">Destino: todos</option>
-                <option value="em-lista">Encontrado em lista</option>
+                <option value="em-lista">Recuperado em lista</option>
                 <option value="fora-lista">Fora das listas</option>
                 <option value="com-destino">Com destino</option>
                 <option value="sem-destino">Sem destino</option>
@@ -842,7 +750,7 @@ export function ExpedicaoPanel() {
               <input
                 value={query}
                 onChange={event => setQuery(event.target.value)}
-                placeholder="ID, origem, vaga, gaiola, placa ou lista"
+                placeholder="ID, origem, gaiola, placa ou lista"
                 className="h-9 w-full rounded-none border border-slate-300 bg-white pl-9 pr-3 text-xs outline-none focus:border-blue-500"
               />
             </label>
@@ -890,7 +798,6 @@ export function ExpedicaoPanel() {
 
                     <td className="border-b border-r border-slate-200 px-3 py-2 font-bold text-slate-700">
                       Gaiola {gaiolaFromRoute(row.encontradoRota) || '—'} - placa: {row.encontradoPlaca || '—'}
-                      {row.encontradoDoca ? ` - VAGA ${row.encontradoDoca}` : ''}
                     </td>
 
                     <td className="border-b border-r border-slate-200 px-3 py-2 text-slate-700">
@@ -905,8 +812,8 @@ export function ExpedicaoPanel() {
                       ) : backlogLoading ? (
                         <span className="text-slate-400">Verificando listas…</span>
                       ) : recoveredInList ? (
-                        <span className="font-bold text-emerald-800">
-                          {occurrenceLabel(backlog[0])}
+                        <span className="font-bold">
+                          Recuperado em lista - {occurrenceLabel(backlog[0])}
                           {backlog.length > 1 ? ` | +${backlog.length - 1}` : ''}
                         </span>
                       ) : (
