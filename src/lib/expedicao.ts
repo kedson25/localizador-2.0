@@ -250,20 +250,26 @@ export interface EnrichedExpedicaoRow extends ExpedicaoRow {
   doca: string;
   placa: string;
   classificacao: 'A mais' | 'Faltante';
+  encontradoRota: string;
+  encontradoPlaca: string;
+  destinoRota: string;
+  destinoDoca: string;
+  destinoOnda: string;
 }
 
 /**
- * Replica a estratégia da planilha "amais":
- * 1. o Shipment ID identifica o registro;
- * 2. placa e estado priorizam a base Aduana;
- * 3. Auditoria tem prioridade apenas para a Origem quando o ID existe nas duas bases;
- * 4. doca, rota e onda são descobertas exclusivamente cruzando a PLACA com Base Despacho;
- * 5. cada Shipment ID aparece uma única vez, evitando contagem duplicada entre Aduana/Auditoria.
+ * Regra operacional da Expedição:
+ * - Auditoria representa ONDE o pacote foi encontrado (placa + ID da rota).
+ * - A placa da Auditoria é cruzada com a Base Despacho.
+ * - O resultado da Base Despacho representa ONDE o pacote DEVERIA estar
+ *   (doca + rota otimizada + onda).
+ * - Quando não existe Auditoria para o ID, Aduana é usada como fallback.
+ * - Cada Shipment ID aparece uma única vez.
  */
 export function enrichExpedicao(store: ExpedicaoStore): EnrichedExpedicaoRow[] {
   const byPlate = new Map<string, BaseDespachoRow>();
 
-  // XLOOKUP da planilha usa a primeira ocorrência da placa.
+  // Mantém o mesmo comportamento de uma busca do tipo XLOOKUP: primeira placa válida vence.
   store.base.forEach(row => {
     const normalizedPlate = plateKey(row.placa);
     if (normalizedPlate && !byPlate.has(normalizedPlate)) byPlate.set(normalizedPlate, row);
@@ -278,27 +284,39 @@ export function enrichExpedicao(store: ExpedicaoStore): EnrichedExpedicaoRow[] {
     const aduana = aduanaById.get(pacote);
     const auditoria = auditoriaById.get(pacote);
 
-    // Igual à planilha: quando existe na Aduana, ela é a fonte de placa/estado.
-    const sourceRow = aduana || auditoria;
-    if (!sourceRow) return;
+    // Estado pode continuar vindo da Aduana quando ela existe.
+    const stateRow = aduana || auditoria;
+    // Local encontrado deve priorizar Auditoria: é nela que temos placa e rota físicas.
+    const foundRow = auditoria || aduana;
+    if (!stateRow || !foundRow) return;
 
-    const classificacao = classificationFromEstado(sourceRow.estado);
+    const classificacao = classificationFromEstado(stateRow.estado)
+      || classificationFromEstado(foundRow.estado);
     if (!classificacao) return;
 
-    const placa = clean(aduana?.placaInformada || auditoria?.placaInformada).toUpperCase();
-    const base = placa ? byPlate.get(plateKey(placa)) : undefined;
+    const encontradoPlaca = clean(foundRow.placaInformada || stateRow.placaInformada).toUpperCase();
+    const encontradoRota = clean(foundRow.rotaInformada || stateRow.rotaInformada);
+    const base = encontradoPlaca ? byPlate.get(plateKey(encontradoPlaca)) : undefined;
     const origem: FonteExpedicao = auditoria ? 'auditoria' : 'aduana';
 
     result.push({
-      ...sourceRow,
+      ...stateRow,
       pacote,
       origem,
-      placaInformada: placa,
-      placa: base?.placa || placa,
+      rotaInformada: encontradoRota,
+      placaInformada: encontradoPlaca,
+      detalhe: foundRow.detalhe || stateRow.detalhe,
+      dataRegistro: foundRow.dataRegistro || stateRow.dataRegistro,
+      placa: encontradoPlaca,
       onda: base?.onda || '',
       rotaOtimizada: base?.rotaOtimizada || '',
       doca: base?.doca || '',
       classificacao,
+      encontradoRota,
+      encontradoPlaca,
+      destinoRota: base?.rotaOtimizada || '',
+      destinoDoca: base?.doca || '',
+      destinoOnda: base?.onda || '',
     });
   });
 
@@ -394,6 +412,8 @@ export function getExpedicaoDockChanges(
 
     if (!old) {
       if (!row.doca) return;
+      const found = row.encontradoRota || row.encontradoPlaca || 'local não informado';
+      const destination = `D${row.doca}${row.rotaOtimizada ? ` ${row.rotaOtimizada}` : ''}`;
       changes.push({
         id: makeChangeId('novo-erro', registradoEm, `${row.pacote}-${row.doca}`),
         tipo: 'novo_erro',
@@ -402,7 +422,9 @@ export function getExpedicaoDockChanges(
         pacote: row.pacote,
         placa: row.placa,
         classificacao: row.classificacao,
-        mensagem: `Novo ${row.classificacao}: ${row.pacote}`,
+        mensagem: row.classificacao === 'A mais'
+          ? `Novo A mais ${row.pacote}: ${found} → ${destination}`
+          : `Novo Faltante: ${row.pacote}`,
         registradoEm,
       });
       return;
