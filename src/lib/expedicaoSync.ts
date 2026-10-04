@@ -1,6 +1,7 @@
 import {
   collection,
   doc,
+  getDoc,
   getDocs,
   onSnapshot,
   serverTimestamp,
@@ -37,13 +38,13 @@ type SharedMeta = {
   auditoriaRevision?: string | null;
   localizados?: Record<string, boolean>;
   ultimaComparacao?: ExpedicaoDocaChange[];
-  ultimaImportacao?: ExpedicaoImportacao;
+  ultimaImportacao?: ExpedicaoImportacao | null;
   filenames?: Partial<Record<SourceName, string>>;
   encerramentos?: ExpedicaoEncerramento[];
   updatedAtIso?: string;
 };
 
-export type ExpedicaoSharedStore = Pick<
+export type ExpedicaoSharedStore = Partial<Pick<
   ExpedicaoStore,
   | 'base'
   | 'aduana'
@@ -54,7 +55,9 @@ export type ExpedicaoSharedStore = Pick<
   | 'filenames'
   | 'encerramentos'
   | 'updatedAt'
->;
+>>;
+
+const SOURCES: SourceName[] = ['base', 'aduana', 'auditoria'];
 
 function safeJson<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
@@ -157,15 +160,29 @@ function sharedMetaPayload(store: ExpedicaoStore) {
 }
 
 export async function syncExpedicaoImport(store: ExpedicaoStore, source: SourceName): Promise<void> {
-  const rows = store[source] as SourceRows;
-  const revision = await writeSource(source, rows);
-  const revisionField = `${source}Revision`;
-
-  await setDoc(metaRef, {
+  const currentSnapshot = await getDoc(metaRef);
+  const current = currentSnapshot.exists() ? currentSnapshot.data() as SharedMeta : {};
+  const updates: Record<string, unknown> = {
     ...sharedMetaPayload(store),
-    [revisionField]: revision,
     updatedAtIso: store.updatedAt || new Date().toISOString(),
-  }, { merge: true });
+  };
+
+  for (const currentSource of SOURCES) {
+    const revisionField = `${currentSource}Revision` as keyof SharedMeta;
+    const existingRevision = current[revisionField];
+    const rows = store[currentSource] as SourceRows;
+
+    // Sempre publica a fonte recém-importada. Na primeira ativação do recurso,
+    // também semeia as outras bases já existentes no navegador para que o
+    // primeiro usuário não apague dados dos demais ao criar o estado remoto.
+    const shouldSync = currentSource === source
+      || (existingRevision === undefined && rows.length > 0);
+
+    if (!shouldSync) continue;
+    updates[`${currentSource}Revision`] = await writeSource(currentSource, rows);
+  }
+
+  await setDoc(metaRef, updates, { merge: true });
 }
 
 export async function syncExpedicaoMeta(store: ExpedicaoStore): Promise<void> {
@@ -199,6 +216,7 @@ export async function resetExpedicaoShared(): Promise<void> {
     auditoriaRevision: null,
     localizados: {},
     ultimaComparacao: [],
+    ultimaImportacao: null,
     filenames: {},
     encerramentos: [],
     updatedAtIso: now,
@@ -234,40 +252,56 @@ export function listenExpedicaoShared(
     const data = snapshot.data() as SharedMeta;
 
     try {
-      for (const source of ['base', 'aduana', 'auditoria'] as const) {
-        const revision = data[`${source}Revision` as keyof SharedMeta] as string | null | undefined;
+      const remote: ExpedicaoSharedStore = {};
+
+      if (Object.prototype.hasOwnProperty.call(data, 'localizados')) {
+        remote.localizados = data.localizados || {};
+      }
+      if (Object.prototype.hasOwnProperty.call(data, 'ultimaComparacao')) {
+        remote.ultimaComparacao = data.ultimaComparacao || [];
+      }
+      if (Object.prototype.hasOwnProperty.call(data, 'ultimaImportacao')) {
+        remote.ultimaImportacao = data.ultimaImportacao || undefined;
+      }
+      if (Object.prototype.hasOwnProperty.call(data, 'filenames')) {
+        remote.filenames = data.filenames || {};
+      }
+      if (Object.prototype.hasOwnProperty.call(data, 'encerramentos')) {
+        remote.encerramentos = data.encerramentos || [];
+      }
+      if (Object.prototype.hasOwnProperty.call(data, 'updatedAtIso')) {
+        remote.updatedAt = data.updatedAtIso || '';
+      }
+
+      for (const source of SOURCES) {
+        const revisionField = `${source}Revision` as keyof SharedMeta;
+        if (!Object.prototype.hasOwnProperty.call(data, revisionField)) continue;
+
+        const revision = data[revisionField] as string | null | undefined;
         const normalizedRevision = revision || null;
 
-        if (revisions[source] === normalizedRevision) continue;
-
         if (!normalizedRevision) {
-          cache[source] = [] as never;
+          if (source === 'base') cache.base = [];
+          if (source === 'aduana') cache.aduana = [];
+          if (source === 'auditoria') cache.auditoria = [];
           revisions[source] = null;
-          continue;
+        } else if (revisions[source] !== normalizedRevision) {
+          const rows = await readSource(source, normalizedRevision);
+          if (!active || currentGeneration !== generation) return;
+
+          if (source === 'base') cache.base = rows as BaseDespachoRow[];
+          if (source === 'aduana') cache.aduana = rows as ExpedicaoRow[];
+          if (source === 'auditoria') cache.auditoria = rows as ExpedicaoRow[];
+          revisions[source] = normalizedRevision;
         }
 
-        const rows = await readSource(source, normalizedRevision);
-        if (!active || currentGeneration !== generation) return;
-
-        if (source === 'base') cache.base = rows as BaseDespachoRow[];
-        if (source === 'aduana') cache.aduana = rows as ExpedicaoRow[];
-        if (source === 'auditoria') cache.auditoria = rows as ExpedicaoRow[];
-        revisions[source] = normalizedRevision;
+        if (source === 'base') remote.base = cache.base;
+        if (source === 'aduana') remote.aduana = cache.aduana;
+        if (source === 'auditoria') remote.auditoria = cache.auditoria;
       }
 
       if (!active || currentGeneration !== generation) return;
-
-      callback({
-        base: cache.base,
-        aduana: cache.aduana,
-        auditoria: cache.auditoria,
-        localizados: data.localizados || {},
-        ultimaComparacao: data.ultimaComparacao || [],
-        ultimaImportacao: data.ultimaImportacao,
-        filenames: data.filenames || {},
-        encerramentos: data.encerramentos || [],
-        updatedAt: data.updatedAtIso || '',
-      });
+      callback(remote);
     } catch (error) {
       console.error('[Expedição Sync] falha ao carregar estado compartilhado:', error);
       onError?.(error);
