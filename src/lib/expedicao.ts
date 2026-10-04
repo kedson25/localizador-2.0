@@ -239,55 +239,55 @@ function destinationFromShipment(rows: BaseDespachoRow[]) {
   return { row, confirmed: true, reason: 'Destino confirmado pelo Shipment ID na Base Despacho' };
 }
 
-function currentDockPlateMap(base: BaseDespachoRow[]) {
-  const map = new Map<string, Set<string>>();
-  base.forEach(row => {
-    const dock = normalizeDock(row.doca);
-    const plate = plateKey(row.placa);
-    if (!dock || !plate) return;
-    if (!map.has(dock)) map.set(dock, new Set());
-    map.get(dock)?.add(plate);
-  });
-  return map;
-}
-
-function dockForPlateAtTime(store: ExpedicaoStore, plate: string, eventDate: string) {
+function destinationFromAduanaPlate(rows: BaseDespachoRow[], plate: string) {
   const normalizedPlate = plateKey(plate);
-  if (!normalizedPlate) return '';
-  const eventTime = dateScore(eventDate);
-  const state = currentDockPlateMap(store.base);
-  const changes = [...(store.historicoDoca || [])]
-    .filter(change => change.fonte === 'base' && dateScore(change.registradoEm) > eventTime)
-    .sort((a, b) => dateScore(b.registradoEm) - dateScore(a.registradoEm));
+  if (!normalizedPlate) {
+    return { row: undefined as BaseDespachoRow | undefined, confirmed: false, reason: 'Aduana sem placa informada' };
+  }
+  if (!rows.length) {
+    return { row: undefined as BaseDespachoRow | undefined, confirmed: false, reason: `Placa ${clean(plate).toUpperCase()} não consta na Base Despacho` };
+  }
 
-  changes.forEach(change => {
-    const dock = normalizeDock(change.doca);
-    if (!dock) return;
-    if (!state.has(dock)) state.set(dock, new Set());
-    const set = state.get(dock)!;
-    if (change.tipo === 'nova_placa' && change.placa) set.delete(plateKey(change.placa));
-    if (change.tipo === 'placa_removida' && change.placaAnterior) set.add(plateKey(change.placaAnterior));
-    if (change.tipo === 'troca_placa') {
-      if (change.placa) set.delete(plateKey(change.placa));
-      if (change.placaAnterior) set.add(plateKey(change.placaAnterior));
-    }
+  const byDestination = new Map<string, BaseDespachoRow>();
+  rows.forEach(row => {
+    const dock = normalizeDock(row.doca);
+    const optimizedRoute = routeKey(row.rotaOtimizada);
+    const k = `${dock}|${optimizedRoute}`;
+    byDestination.set(k, row);
   });
 
-  const docks = [...state.entries()].filter(([, plates]) => plates.has(normalizedPlate)).map(([dock]) => dock);
-  return docks.length === 1 ? docks[0] : '';
+  if (byDestination.size !== 1) {
+    return { row: undefined as BaseDespachoRow | undefined, confirmed: false, reason: `Placa ${clean(plate).toUpperCase()} aparece em destinos diferentes na Base Despacho` };
+  }
+
+  const row = [...byDestination.values()][0];
+  if (!routeKey(row.rotaOtimizada)) {
+    return { row, confirmed: false, reason: `Placa ${clean(plate).toUpperCase()} encontrada no Despacho, mas sem Rota otimizada` };
+  }
+  if (!normalizeDock(row.doca)) {
+    return { row, confirmed: false, reason: `Placa ${clean(plate).toUpperCase()} encontrada no Despacho, mas sem vaga/doca definida` };
+  }
+
+  return {
+    row,
+    confirmed: true,
+    reason: `Destino confirmado pela placa ${clean(plate).toUpperCase()}; Rota otimizada do Despacho = destino esperado`,
+  };
 }
 
 /**
  * Precisão primeiro:
- * - cada fonte mantém sua própria leitura, sem a carga mais recente esconder a outra;
- * - destino = EXCLUSIVAMENTE Shipment ID na Base Despacho;
- * - nenhuma placa/rota é usada como fallback de destino;
- * - localização encontrada e destino são independentes;
- * - uma ocorrência só entra numa VAGA quando a localização encontrada foi confirmada.
+ * - Aduana: ID da rota = local onde o pacote foi encontrado;
+ * - Aduana: Placa -> Base Despacho -> Rota otimizada/Doca = onde o pacote deveria estar;
+ * - se a rota da Aduana divergir da Rota otimizada vinculada à placa, o pacote foi encontrado em outra rota;
+ * - Auditoria preserva o cruzamento por Shipment ID quando esse dado existir na Base Despacho;
+ * - localização encontrada e destino esperado são independentes;
+ * - nenhuma vaga é inventada quando rota/placa forem ambíguas.
  */
 export function enrichExpedicao(store: ExpedicaoStore): EnrichedExpedicaoRow[] {
   const byPackage = new Map<string, BaseDespachoRow[]>();
   const byRoute = new Map<string, BaseDespachoRow[]>();
+  const byPlate = new Map<string, BaseDespachoRow[]>();
 
   store.base.forEach(row => {
     if (row.pacote) {
@@ -295,6 +295,14 @@ export function enrichExpedicao(store: ExpedicaoStore): EnrichedExpedicaoRow[] {
       packageRows.push(row);
       byPackage.set(row.pacote, packageRows);
     }
+
+    const normalizedPlate = plateKey(row.placa);
+    if (normalizedPlate) {
+      const plateRows = byPlate.get(normalizedPlate) || [];
+      plateRows.push(row);
+      byPlate.set(normalizedPlate, plateRows);
+    }
+
     [row.rotaOtimizada, row.rotaOriginal].forEach(route => {
       const normalized = routeKey(route);
       if (!normalized) return;
@@ -311,31 +319,35 @@ export function enrichExpedicao(store: ExpedicaoStore): EnrichedExpedicaoRow[] {
     const classificacao = classificationFromEstado(stateRow.estado);
     if (!classificacao) return;
 
-    const destination = destinationFromShipment(byPackage.get(pacote) || []);
-    const destinationBase = destination.row;
     const encontradoRota = clean(stateRow.rotaInformada);
     const encontradoPlaca = clean(stateRow.placaInformada).toUpperCase();
     const routeRows = encontradoRota ? (byRoute.get(routeKey(encontradoRota)) || []) : [];
     const routeDock = uniqueDock(routeRows);
-    const locationBase = destinationBase || (routeDock ? routeRows[0] : undefined);
-    const temporalDock = stateRow.origem === 'aduana'
-      ? dockForPlateAtTime(store, encontradoPlaca, stateRow.dataRegistro)
-      : '';
-    const encontradoDoca = temporalDock || routeDock;
+    const locationBase = routeDock ? routeRows.find(row => normalizeDock(row.doca) === routeDock) : undefined;
+
+    const destination = stateRow.origem === 'aduana'
+      ? destinationFromAduanaPlate(byPlate.get(plateKey(encontradoPlaca)) || [], encontradoPlaca)
+      : destinationFromShipment(byPackage.get(pacote) || []);
+    const destinationBase = destination.row;
+
+    // Na Aduana, a rota informada é o local REAL encontrado. A placa serve somente
+    // para descobrir o destino esperado no Despacho, nunca para sobrescrever o local encontrado.
+    const encontradoDoca = routeDock;
     const localizacaoConfirmada = stateRow.origem === 'auditoria'
       ? Boolean(encontradoRota && routeDock)
-      : Boolean(temporalDock || routeDock);
+      : Boolean(encontradoRota && routeDock);
     const motivoLocalizacao = stateRow.origem === 'auditoria'
       ? routeDock
         ? 'Vaga localizada pela rota informada na Auditoria'
         : encontradoRota
           ? 'Rota da Auditoria não localizada no Despacho'
           : 'Auditoria sem rota/Contenedor'
-      : temporalDock
-        ? 'Vaga confirmada pela placa no horário do evento'
-        : routeDock
-          ? 'Vaga confirmada por rota única no Despacho'
-          : 'Vaga não confirmada: cruzamento ambíguo ou sem dados suficientes';
+      : routeDock
+        ? 'Local encontrado confirmado pelo ID da rota informado na Aduana'
+        : encontradoRota
+          ? 'ID da rota da Aduana não localizado na Base Despacho'
+          : 'Aduana sem ID da rota';
+
     const destinationRoutes = destinationBase
       ? [destinationBase.rotaOtimizada, destinationBase.rotaOriginal].map(routeKey).filter(Boolean)
       : [];
@@ -368,10 +380,10 @@ export function enrichExpedicao(store: ExpedicaoStore): EnrichedExpedicaoRow[] {
       destinoRota: destinationBase?.rotaOtimizada || '',
       destinoDoca: destinationBase?.doca || '',
       destinoOnda: destinationBase?.onda || '',
-      placa: locationBase?.placa || encontradoPlaca,
+      placa: encontradoPlaca || destinationBase?.placa || locationBase?.placa || '',
       onda: locationBase?.onda || '',
       rotaOtimizada: locationBase?.rotaOtimizada || '',
-      doca: locationBase?.doca || '',
+      doca: encontradoDoca || '',
       vagaOperacional: localizacaoConfirmada ? encontradoDoca : '',
     });
   });
