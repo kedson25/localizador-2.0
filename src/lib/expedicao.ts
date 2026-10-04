@@ -101,6 +101,8 @@ export interface EnrichedExpedicaoRow extends ExpedicaoRow {
   destinoOnda: string;
   localizacaoConfirmada: boolean;
   motivoLocalizacao: string;
+  destinoConfirmado: boolean;
+  motivoDestino: string;
 }
 
 const clean = (value: unknown) => String(value ?? '').replace(/^\uFEFF/, '').trim();
@@ -160,12 +162,14 @@ function dedupeLatestByPackage(rows: ExpedicaoRow[]) {
 
 export function parseBaseDespacho(text: string): BaseDespachoRow[] {
   const records = csv(text).map(row => ({
-    pacote: id(value(row, 'Shipment ID', 'Shipment', 'shipment_id', 'ID do pacote', 'Pacote', 'ID da remessa', 'ID do envio', 'ID de envio', 'ID')),
-    onda: value(row, 'Onda'),
-    rotaOtimizada: value(row, 'Rota otimizada', 'Rota Otimizada'),
-    rotaOriginal: value(row, 'Rota original', 'Rota Original'),
-    doca: normalizeDock(value(row, 'Doca')),
-    placa: clean(value(row, 'Placa')).toUpperCase(),
+    pacote: id(value(row,
+      'Shipment ID', 'Shipment', 'shipment_id', 'shipment id', 'ID do pacote', 'Pacote',
+      'ID da remessa', 'ID do envio', 'ID de envio', 'ID', 'shipmentid')),
+    onda: value(row, 'Onda', 'Wave'),
+    rotaOtimizada: value(row, 'Rota otimizada', 'Rota Otimizada', 'Optimized route', 'Route optimized'),
+    rotaOriginal: value(row, 'Rota original', 'Rota Original', 'Original route'),
+    doca: normalizeDock(value(row, 'Doca', 'Dock', 'Vaga')),
+    placa: clean(value(row, 'Placa', 'Plate', 'Vehicle plate')).toUpperCase(),
   })).filter(row => row.pacote || row.rotaOtimizada || row.rotaOriginal || row.placa);
 
   return Array.from(new Map<string, BaseDespachoRow>(records.map(row => [
@@ -216,6 +220,23 @@ function uniqueDock(rows: BaseDespachoRow[]) {
   return docks.length === 1 ? docks[0] : '';
 }
 
+function destinationFromShipment(rows: BaseDespachoRow[]) {
+  if (!rows.length) return { row: undefined as BaseDespachoRow | undefined, confirmed: false, reason: 'Shipment ID não consta na Base Despacho' };
+  const byDestination = new Map<string, BaseDespachoRow>();
+  rows.forEach(row => {
+    const k = `${normalizeDock(row.doca)}|${routeKey(row.rotaOtimizada)}|${key(row.onda)}`;
+    byDestination.set(k, row);
+  });
+  if (byDestination.size !== 1) {
+    return { row: undefined as BaseDespachoRow | undefined, confirmed: false, reason: 'Shipment ID aparece com destinos diferentes na Base Despacho' };
+  }
+  const row = [...byDestination.values()][0];
+  if (!normalizeDock(row.doca)) {
+    return { row, confirmed: false, reason: 'Shipment ID encontrado no Despacho, mas sem vaga/doca definida' };
+  }
+  return { row, confirmed: true, reason: 'Destino confirmado pelo Shipment ID na Base Despacho' };
+}
+
 function currentDockPlateMap(base: BaseDespachoRow[]) {
   const map = new Map<string, Set<string>>();
   base.forEach(row => {
@@ -256,19 +277,22 @@ function dockForPlateAtTime(store: ExpedicaoStore, plate: string, eventDate: str
 
 /**
  * Precisão primeiro:
- * - o estado ativo é sempre o evento MAIS RECENTE entre Aduana e Auditoria;
- * - se o último evento for Correto/Pendente/etc, o pacote sai da lista de erro;
- * - destino usa somente Shipment ID da Base Despacho (sem fallback por placa);
- * - Auditoria usa Contenedor/rua como localização principal;
- * - Aduana tenta confirmar vaga pela placa no horário do evento; se não houver confirmação única,
- *   usa a rota apenas quando ela aponta para uma única vaga. Em ambiguidade, não chuta.
+ * - estado ativo = evento mais recente entre Aduana e Auditoria;
+ * - destino = EXCLUSIVAMENTE Shipment ID na Base Despacho;
+ * - nenhuma placa/rota é usada como fallback de destino;
+ * - localização encontrada e destino são independentes;
+ * - Aduana só entra numa VAGA quando a localização encontrada foi confirmada.
  */
 export function enrichExpedicao(store: ExpedicaoStore): EnrichedExpedicaoRow[] {
-  const byPackage = new Map<string, BaseDespachoRow>();
+  const byPackage = new Map<string, BaseDespachoRow[]>();
   const byRoute = new Map<string, BaseDespachoRow[]>();
 
   store.base.forEach(row => {
-    if (row.pacote && !byPackage.has(row.pacote)) byPackage.set(row.pacote, row);
+    if (row.pacote) {
+      const packageRows = byPackage.get(row.pacote) || [];
+      packageRows.push(row);
+      byPackage.set(row.pacote, packageRows);
+    }
     [row.rotaOtimizada, row.rotaOriginal].forEach(route => {
       const normalized = routeKey(route);
       if (!normalized) return;
@@ -289,11 +313,12 @@ export function enrichExpedicao(store: ExpedicaoStore): EnrichedExpedicaoRow[] {
     const candidates = [aduana, auditoria].filter(Boolean) as ExpedicaoRow[];
     if (!candidates.length) return;
 
-    const stateRow = candidates.sort((a, b) => dateScore(b.dataRegistro) - dateScore(a.dataRegistro))[0];
+    const stateRow = [...candidates].sort((a, b) => dateScore(b.dataRegistro) - dateScore(a.dataRegistro))[0];
     const classificacao = classificationFromEstado(stateRow.estado);
     if (!classificacao) return;
 
-    const destinationBase = byPackage.get(pacote);
+    const destination = destinationFromShipment(byPackage.get(pacote) || []);
+    const destinationBase = destination.row;
     const encontradoRota = clean(stateRow.rotaInformada);
     const encontradoPlaca = clean(stateRow.placaInformada).toUpperCase();
     const routeRows = encontradoRota ? (byRoute.get(routeKey(encontradoRota)) || []) : [];
@@ -321,6 +346,8 @@ export function enrichExpedicao(store: ExpedicaoStore): EnrichedExpedicaoRow[] {
       encontradoDoca,
       localizacaoConfirmada,
       motivoLocalizacao,
+      destinoConfirmado: destination.confirmed,
+      motivoDestino: destination.reason,
       destinoRota: destinationBase?.rotaOtimizada || '',
       destinoDoca: destinationBase?.doca || '',
       destinoOnda: destinationBase?.onda || '',
@@ -328,9 +355,7 @@ export function enrichExpedicao(store: ExpedicaoStore): EnrichedExpedicaoRow[] {
       onda: destinationBase?.onda || '',
       rotaOtimizada: destinationBase?.rotaOtimizada || '',
       doca: destinationBase?.doca || '',
-      vagaOperacional: stateRow.origem === 'aduana'
-        ? (encontradoDoca || (classificacao === 'Faltante' ? destinationBase?.doca || '' : ''))
-        : '',
+      vagaOperacional: stateRow.origem === 'aduana' && localizacaoConfirmada ? encontradoDoca : '',
     });
   });
 
