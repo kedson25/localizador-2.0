@@ -76,4 +76,26 @@ describe('Expedição', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ rotaOtimizada: 'B1_AM1', doca: '2', placa: 'ABC1D23', vagaOperacional: '2' });
   });
+
+  it('identifica erro de atrelamento quando Auditoria e Despacho apontam a mesma rota', () => {
+    const base = parseBaseDespacho('Shipment ID,Onda,Rota otimizada,Rota original,Doca,Placa\n48038961782,Onda 1,B1_AM1,AM1_1,2,ABC1D23');
+    const auditoria = parseExpedicaoRows('Shipment ID,Contenedor,Estado\n48038961782,B1_AM1,A mais', 'auditoria');
+    const [row] = enrichExpedicao({ base, aduana: [], auditoria });
+
+    expect(row).toMatchObject({
+      encontradoDoca: '2',
+      destinoDoca: '2',
+      erroAtrelamentoGaiola: true,
+      diagnostico: 'Erro de atrelamento de gaiola',
+    });
+  });
+
+  it('mantém Aduana e Auditoria visíveis para o mesmo ID', () => {
+    const base = parseBaseDespacho('Shipment ID,Rota otimizada,Doca\n1,R1,4');
+    const aduana = parseExpedicaoRows('Shipment ID,ID da rota,Estado\n1,R1,Faltante', 'aduana');
+    const auditoria = parseExpedicaoRows('Shipment ID,Contenedor,Estado\n1,R1,A mais', 'auditoria');
+    const rows = enrichExpedicao({ base, aduana, auditoria });
+
+    expect(rows.map(row => row.origem)).toEqual(['aduana', 'auditoria']);
+  });
 });

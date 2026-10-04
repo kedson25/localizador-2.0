@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
-import { CheckCircle2, Clock, MapPin, PackageCheck, Search, Trash2, UploadCloud } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Clock, MapPin, PackageCheck, Search, Trash2, UploadCloud } from 'lucide-react';
 import { ExpedicaoSkeleton } from './ExpedicaoSkeleton';
 import { getLocalValue, setLocalValue } from '../lib/localPersistence';
 import {
@@ -175,7 +175,7 @@ export function ExpedicaoPanel() {
   const filteredRows = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return currentRows.filter(row => {
-      const text = [row.pacote, row.classificacao, row.encontradoRota, row.encontradoPlaca, row.encontradoDoca, row.destinoRota, row.destinoDoca, row.destinoOnda].join(' ').toLowerCase();
+      const text = [row.pacote, row.classificacao, row.encontradoRota, row.encontradoPlaca, row.encontradoDoca, row.destinoRota, row.destinoDoca, row.destinoOnda, row.diagnostico].join(' ').toLowerCase();
       return (filter === 'todos' || row.classificacao === filter)
         && (!selectedDoca || tab !== 'aduana' || row.vagaOperacional === selectedDoca)
         && text.includes(needle);
@@ -185,14 +185,16 @@ export function ExpedicaoPanel() {
   const heatmap = useMemo(() => Array.from({ length: 20 }, (_, index) => {
     const doca = String(index + 1);
     const rows = aduanaRows.filter(row => row.vagaOperacional === doca);
+    const localizados = rows.filter(row => store.localizados?.[row.pacote]).length;
     return {
       doca,
       amais: rows.filter(row => row.classificacao === 'A mais').length,
       faltantes: rows.filter(row => row.classificacao === 'Faltante').length,
       total: rows.length,
-      confirmados: rows.filter(row => row.localizacaoConfirmada).length,
+      localizados,
+      concluida: rows.length > 0 && localizados === rows.length,
     };
-  }), [aduanaRows]);
+  }), [aduanaRows, store.localizados]);
 
   const unconfirmedAduana = useMemo(() => aduanaRows.filter(row => !row.localizacaoConfirmada).length, [aduanaRows]);
   const selectedDockRows = useMemo(() => selectedDoca ? aduanaRows.filter(row => row.vagaOperacional === selectedDoca) : [], [aduanaRows, selectedDoca]);
@@ -242,13 +244,17 @@ export function ExpedicaoPanel() {
       {tab === 'aduana' ? (
         <section className="border border-slate-300 bg-white p-3 shadow-sm">
           <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
-            <div><h2 className="text-lg font-black">Aduana — 20 vagas</h2><p className="text-xs text-slate-500">Encontrado e destino são cálculos separados. A vaga encontrada só aparece quando o cruzamento é único.</p></div>
+            <div><h2 className="text-lg font-black">Aduana — 20 vagas</h2><p className="text-xs text-slate-500">Marque cada ID encontrado. A vaga fica cinza quando o check list estiver completo.</p></div>
             {unconfirmedAduana > 0 && <span className="border border-amber-300 bg-amber-50 px-3 py-1.5 text-[10px] font-black text-amber-800">{unconfirmedAduana} localização(ões) não confirmada(s)</span>}
           </div>
 
           <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_390px] xl:items-start">
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-5">
-              {heatmap.map(item => <button key={item.doca} type="button" onClick={() => setSelectedDoca(selectedDoca === item.doca ? null : item.doca)} className={`min-h-[105px] border p-3 text-left ${selectedDoca === item.doca ? 'border-slate-900 ring-2 ring-slate-900' : 'border-slate-300'}`}><div className="font-black">VAGA {item.doca}</div><div className="mt-2 grid grid-cols-2 gap-2 text-xs"><span>A+ <b className="text-red-600">{item.amais}</b></span><span>Falt. <b className="text-amber-700">{item.faltantes}</b></span></div><div className="mt-2 text-[10px] text-slate-500">{item.confirmados}/{item.total} confirmados</div></button>)}
+              {heatmap.map(item => <button key={item.doca} type="button" onClick={() => setSelectedDoca(selectedDoca === item.doca ? null : item.doca)} className={`min-h-[105px] border p-3 text-left transition ${item.concluida ? 'border-slate-400 bg-slate-300 text-slate-700' : 'border-slate-300 bg-white'} ${selectedDoca === item.doca ? 'ring-2 ring-slate-900' : ''}`}>
+                <div className="flex items-center justify-between gap-2"><span className="font-black">VAGA {item.doca}</span>{item.concluida && <CheckCircle2 className="h-4 w-4" />}</div>
+                <div className="mt-2 grid grid-cols-2 gap-2 text-xs"><span>A+ <b className="text-red-600">{item.amais}</b></span><span>Falt. <b className="text-amber-700">{item.faltantes}</b></span></div>
+                <div className={`mt-2 text-[10px] font-bold ${item.concluida ? 'text-slate-700' : 'text-slate-500'}`}>{item.localizados}/{item.total} encontrados</div>
+              </button>)}
             </div>
 
             <aside className="h-[560px] overflow-y-auto border border-slate-300 bg-slate-50 xl:sticky xl:top-20">
@@ -266,8 +272,8 @@ export function ExpedicaoPanel() {
                         <input type="checkbox" checked={checked} onChange={() => toggleLocated(row.pacote)} className="mt-1 h-5 w-5 shrink-0 accent-slate-800" />
                         <span className="min-w-0 flex-1">
                           <span className="flex items-start justify-between gap-2"><b className="font-mono text-sm">{row.pacote}</b><span className={`text-[9px] font-black uppercase ${row.classificacao === 'A mais' ? 'text-red-600' : 'text-amber-700'}`}>{row.classificacao}</span></span>
-                          <span className="mt-1 block text-[10px] text-slate-600"><b>Encontrado:</b> VAGA {row.encontradoDoca}{routeLabel(row.encontradoRota) ? ` • ${routeLabel(row.encontradoRota)}` : ''}</span>
-                          <span className="mt-1 block text-[10px] text-slate-600"><b>Destino:</b> {row.destinoConfirmado ? `VAGA ${row.destinoDoca}${row.destinoRota ? ` • ${row.destinoRota}` : ''}${row.destinoOnda ? ` • ${row.destinoOnda}` : ''}` : row.motivoDestino}</span>
+                          <span className="mt-1 block text-[10px] text-slate-600"><b>Aqui:</b> VAGA {row.encontradoDoca}{routeLabel(row.encontradoRota) ? ` • ${routeLabel(row.encontradoRota)}` : ''}</span>
+                          <span className="mt-1 block text-[10px] text-slate-600"><b>Deveria:</b> {row.destinoConfirmado ? `VAGA ${row.destinoDoca}${row.destinoRota ? ` • ${row.destinoRota}` : ''}` : 'sem destino no Despacho'}</span>
                           {row.classificacao === 'Faltante' && backlog.length > 0 && <span className="mt-1 block text-[10px] font-bold text-emerald-700"><CheckCircle2 className="mr-1 inline h-3 w-3" />{occurrenceLabel(backlog[0])}</span>}
                         </span>
                       </span>
@@ -280,9 +286,9 @@ export function ExpedicaoPanel() {
         </section>
       ) : (
         <section className="border border-slate-300 bg-white p-3 shadow-sm">
-          <div className="mb-3"><h2 className="text-lg font-black">Auditoria — ruas / Contenedores</h2><p className="text-xs text-slate-500">Aqui o local físico é o Contenedor informado pela Auditoria. Não transformamos rua em vaga.</p></div>
+          <div className="mb-3"><h2 className="text-lg font-black">Auditoria — rotas encontradas</h2><p className="text-xs text-slate-500">A rota da Auditoria localiza a vaga; o ID no Despacho informa onde o pacote deveria estar.</p></div>
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-            {auditGroups.slice(0, 100).map(([group, rows]) => <div key={group} className="border border-slate-300 p-3"><div className="flex items-center gap-2 font-black"><MapPin className="h-4 w-4 text-blue-700" />{group}</div><div className="mt-2 text-xs text-slate-600">{rows.length} pacote(s) • {rows.filter(row => row.classificacao === 'A mais').length} A+ • {rows.filter(row => row.classificacao === 'Faltante').length} falt.</div></div>)}
+            {auditGroups.slice(0, 100).map(([group, rows]) => <div key={group} className="border border-slate-300 p-3"><div className="flex items-center gap-2 font-black"><MapPin className="h-4 w-4 text-blue-700" />{group}</div><div className="mt-2 text-xs text-slate-600">{rows.length} IDs • {rows.filter(row => row.erroAtrelamentoGaiola).length} atrelamento(s)</div></div>)}
           </div>
         </section>
       )}
@@ -293,21 +299,20 @@ export function ExpedicaoPanel() {
           <label className="relative w-full sm:w-[320px]"><Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="ID, rota, placa ou vaga" className="h-9 w-full border border-slate-300 pl-9 pr-3 text-xs" /></label>
         </div>
         <div className="max-h-[650px] overflow-auto">
-          <table className="w-full min-w-[1150px] border-collapse text-xs">
-            <thead className="sticky top-0 bg-slate-50"><tr>{['ID', 'Tipo', tab === 'aduana' ? 'Encontrado' : 'Rua / Contenedor', 'Destino correto', 'Precisão local', 'Precisão destino', 'OK'].map(head => <th key={head} className="border-b border-r border-slate-200 px-3 py-2 text-left font-black">{head}</th>)}</tr></thead>
+          <table className="w-full min-w-[920px] border-collapse text-xs">
+            <thead className="sticky top-0 z-10 bg-slate-100"><tr>{['ID', 'Tipo', tab === 'auditoria' ? 'Auditoria / encontrado' : 'Encontrado', 'Deveria estar', 'Diagnóstico', 'OK'].map(head => <th key={head} className="border-b border-r border-slate-200 px-3 py-2.5 text-left font-black">{head}</th>)}</tr></thead>
             <tbody>
               {filteredRows.map(row => {
-                return <tr key={row.pacote} className="hover:bg-slate-50">
+                return <tr key={`${row.origem}-${row.pacote}`} className={store.localizados?.[row.pacote] ? 'bg-slate-100 text-slate-500' : 'hover:bg-slate-50'}>
                   <td className="border-b border-r border-slate-200 px-3 py-2 font-mono font-black">{row.pacote}<div className="font-sans text-[9px] text-slate-400">{formatDateTime(row.dataRegistro)}</div></td>
                   <td className="border-b border-r border-slate-200 px-3 py-2 font-black">{row.classificacao}</td>
-                  <td className="border-b border-r border-slate-200 px-3 py-2">{tab === 'aduana' ? <><b>{row.encontradoDoca ? `VAGA ${row.encontradoDoca}` : 'VAGA NÃO CONFIRMADA'}</b><div className="text-[10px] text-slate-500">{routeLabel(row.encontradoRota) || 'sem rota'}{row.encontradoPlaca ? ` • ${row.encontradoPlaca}` : ''}</div></> : <><b>{routeLabel(row.encontradoRota) || 'SEM CONTENEDOR'}</b><div className="text-[10px] text-slate-500">local informado pela Auditoria</div></>}</td>
-                  <td className="border-b border-r border-slate-200 px-3 py-2">{row.destinoConfirmado ? <b>VAGA {row.destinoDoca}{row.destinoRota ? ` • ${row.destinoRota}` : ''}{row.destinoOnda ? ` • ${row.destinoOnda}` : ''}</b> : <span className="text-slate-500">{row.motivoDestino}</span>}</td>
-                  <td className="border-b border-r border-slate-200 px-3 py-2"><span className={`font-black ${row.localizacaoConfirmada ? 'text-emerald-700' : 'text-amber-700'}`}>{row.localizacaoConfirmada ? 'CONFIRMADO' : 'NÃO CONFIRMADO'}</span><div className="max-w-[250px] text-[10px] text-slate-500">{row.motivoLocalizacao}</div></td>
-                  <td className="border-b border-r border-slate-200 px-3 py-2"><span className={`font-black ${row.destinoConfirmado ? 'text-emerald-700' : 'text-amber-700'}`}>{row.destinoConfirmado ? 'CONFIRMADO' : 'NÃO CONFIRMADO'}</span><div className="max-w-[250px] text-[10px] text-slate-500">{row.motivoDestino}</div></td>
+                  <td className="border-b border-r border-slate-200 px-3 py-2"><b>{row.encontradoDoca ? `VAGA ${row.encontradoDoca}` : 'VAGA NÃO LOCALIZADA'}</b><div className="text-[10px] text-slate-500">{routeLabel(row.encontradoRota) || 'sem rota'}{row.encontradoPlaca ? ` • ${row.encontradoPlaca}` : ''}</div></td>
+                  <td className="border-b border-r border-slate-200 px-3 py-2">{row.destinoConfirmado ? <><b>VAGA {row.destinoDoca}</b><div className="text-[10px] text-slate-500">{row.destinoRota || 'sem rota'}{row.destinoOnda ? ` • ${row.destinoOnda}` : ''}</div></> : <b className="text-amber-700">SEM DESTINO</b>}</td>
+                  <td className="border-b border-r border-slate-200 px-3 py-2">{row.erroAtrelamentoGaiola ? <span className="inline-flex items-center gap-1.5 bg-red-50 px-2 py-1 font-black text-red-700"><AlertTriangle className="h-3.5 w-3.5" />ERRO DE ATRELAMENTO DE GAIOLA</span> : <span className={`font-black ${row.diagnostico === 'Rota divergente' ? 'text-amber-700' : 'text-slate-500'}`}>{row.diagnostico.toUpperCase()}</span>}</td>
                   <td className="border-b border-slate-200 px-3 py-2 text-center"><input type="checkbox" checked={Boolean(store.localizados?.[row.pacote])} onChange={() => toggleLocated(row.pacote)} className="h-4 w-4 accent-slate-700" /></td>
                 </tr>;
               })}
-              {!filteredRows.length && <tr><td colSpan={7} className="px-4 py-10 text-center text-slate-500">Nenhum item.</td></tr>}
+              {!filteredRows.length && <tr><td colSpan={6} className="px-4 py-10 text-center text-slate-500">Nenhum item.</td></tr>}
             </tbody>
           </table>
         </div>

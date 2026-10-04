@@ -103,6 +103,8 @@ export interface EnrichedExpedicaoRow extends ExpedicaoRow {
   motivoLocalizacao: string;
   destinoConfirmado: boolean;
   motivoDestino: string;
+  erroAtrelamentoGaiola: boolean;
+  diagnostico: 'Erro de atrelamento de gaiola' | 'Rota divergente' | 'Sem destino no despacho' | 'Local não confirmado';
 }
 
 const clean = (value: unknown) => String(value ?? '').replace(/^\uFEFF/, '').trim();
@@ -277,11 +279,11 @@ function dockForPlateAtTime(store: ExpedicaoStore, plate: string, eventDate: str
 
 /**
  * Precisão primeiro:
- * - estado ativo = evento mais recente entre Aduana e Auditoria;
+ * - cada fonte mantém sua própria leitura, sem a carga mais recente esconder a outra;
  * - destino = EXCLUSIVAMENTE Shipment ID na Base Despacho;
  * - nenhuma placa/rota é usada como fallback de destino;
  * - localização encontrada e destino são independentes;
- * - Aduana só entra numa VAGA quando a localização encontrada foi confirmada.
+ * - uma ocorrência só entra numa VAGA quando a localização encontrada foi confirmada.
  */
 export function enrichExpedicao(store: ExpedicaoStore): EnrichedExpedicaoRow[] {
   const byPackage = new Map<string, BaseDespachoRow[]>();
@@ -302,18 +304,10 @@ export function enrichExpedicao(store: ExpedicaoStore): EnrichedExpedicaoRow[] {
     });
   });
 
-  const aduanaById = new Map(store.aduana.map(row => [row.pacote, row]));
-  const auditoriaById = new Map(store.auditoria.map(row => [row.pacote, row]));
-  const allIds = new Set([...aduanaById.keys(), ...auditoriaById.keys()]);
   const result: EnrichedExpedicaoRow[] = [];
 
-  allIds.forEach(pacote => {
-    const aduana = aduanaById.get(pacote);
-    const auditoria = auditoriaById.get(pacote);
-    const candidates = [aduana, auditoria].filter(Boolean) as ExpedicaoRow[];
-    if (!candidates.length) return;
-
-    const stateRow = [...candidates].sort((a, b) => dateScore(b.dataRegistro) - dateScore(a.dataRegistro))[0];
+  [...store.aduana, ...store.auditoria].forEach(stateRow => {
+    const pacote = stateRow.pacote;
     const classificacao = classificationFromEstado(stateRow.estado);
     if (!classificacao) return;
 
@@ -323,20 +317,41 @@ export function enrichExpedicao(store: ExpedicaoStore): EnrichedExpedicaoRow[] {
     const encontradoPlaca = clean(stateRow.placaInformada).toUpperCase();
     const routeRows = encontradoRota ? (byRoute.get(routeKey(encontradoRota)) || []) : [];
     const routeDock = uniqueDock(routeRows);
+    const locationBase = destinationBase || (routeDock ? routeRows[0] : undefined);
     const temporalDock = stateRow.origem === 'aduana'
       ? dockForPlateAtTime(store, encontradoPlaca, stateRow.dataRegistro)
       : '';
-    const encontradoDoca = stateRow.origem === 'aduana' ? (temporalDock || routeDock) : '';
+    const encontradoDoca = temporalDock || routeDock;
     const localizacaoConfirmada = stateRow.origem === 'auditoria'
-      ? Boolean(encontradoRota)
+      ? Boolean(encontradoRota && routeDock)
       : Boolean(temporalDock || routeDock);
     const motivoLocalizacao = stateRow.origem === 'auditoria'
-      ? (encontradoRota ? 'Contenedor informado pela Auditoria' : 'Auditoria sem Contenedor')
+      ? routeDock
+        ? 'Vaga localizada pela rota informada na Auditoria'
+        : encontradoRota
+          ? 'Rota da Auditoria não localizada no Despacho'
+          : 'Auditoria sem rota/Contenedor'
       : temporalDock
         ? 'Vaga confirmada pela placa no horário do evento'
         : routeDock
           ? 'Vaga confirmada por rota única no Despacho'
           : 'Vaga não confirmada: cruzamento ambíguo ou sem dados suficientes';
+    const destinationRoutes = destinationBase
+      ? [destinationBase.rotaOtimizada, destinationBase.rotaOriginal].map(routeKey).filter(Boolean)
+      : [];
+    const erroAtrelamentoGaiola = Boolean(
+      stateRow.origem === 'auditoria'
+      && destination.confirmed
+      && encontradoRota
+      && destinationRoutes.includes(routeKey(encontradoRota)),
+    );
+    const diagnostico: EnrichedExpedicaoRow['diagnostico'] = erroAtrelamentoGaiola
+      ? 'Erro de atrelamento de gaiola'
+      : !destination.confirmed
+        ? 'Sem destino no despacho'
+        : !localizacaoConfirmada
+          ? 'Local não confirmado'
+          : 'Rota divergente';
 
     result.push({
       ...stateRow,
@@ -348,14 +363,16 @@ export function enrichExpedicao(store: ExpedicaoStore): EnrichedExpedicaoRow[] {
       motivoLocalizacao,
       destinoConfirmado: destination.confirmed,
       motivoDestino: destination.reason,
+      erroAtrelamentoGaiola,
+      diagnostico,
       destinoRota: destinationBase?.rotaOtimizada || '',
       destinoDoca: destinationBase?.doca || '',
       destinoOnda: destinationBase?.onda || '',
-      placa: destinationBase?.placa || encontradoPlaca,
-      onda: destinationBase?.onda || '',
-      rotaOtimizada: destinationBase?.rotaOtimizada || '',
-      doca: destinationBase?.doca || '',
-      vagaOperacional: stateRow.origem === 'aduana' && localizacaoConfirmada ? encontradoDoca : '',
+      placa: locationBase?.placa || encontradoPlaca,
+      onda: locationBase?.onda || '',
+      rotaOtimizada: locationBase?.rotaOtimizada || '',
+      doca: locationBase?.doca || '',
+      vagaOperacional: localizacaoConfirmada ? encontradoDoca : '',
     });
   });
 
@@ -400,11 +417,12 @@ export function getBaseDockChanges(previous: BaseDespachoRow[], next: BaseDespac
 }
 
 export function getExpedicaoDockChanges(previous: EnrichedExpedicaoRow[], next: EnrichedExpedicaoRow[], fonte: FonteImportacaoExpedicao, registradoEm = new Date().toISOString()): ExpedicaoDocaChange[] {
-  const before = new Map(previous.map(row => [row.pacote, row]));
-  const after = new Map(next.map(row => [row.pacote, row]));
+  const rowKey = (row: EnrichedExpedicaoRow) => `${row.origem}:${row.pacote}`;
+  const before = new Map(previous.map(row => [rowKey(row), row]));
+  const after = new Map(next.map(row => [rowKey(row), row]));
   const changes: ExpedicaoDocaChange[] = [];
   after.forEach(row => {
-    const old = before.get(row.pacote);
+    const old = before.get(rowKey(row));
     const rowDoca = row.vagaOperacional || row.doca;
     const oldDoca = old ? (old.vagaOperacional || old.doca) : '';
     if (!old) {
@@ -423,7 +441,7 @@ export function getExpedicaoDockChanges(previous: EnrichedExpedicaoRow[], next: 
   });
   before.forEach(row => {
     const rowDoca = row.vagaOperacional || row.doca;
-    if (after.has(row.pacote) || !rowDoca) return;
+    if (after.has(rowKey(row)) || !rowDoca) return;
     changes.push({ id: makeChangeId('erro-removido', registradoEm, `${row.pacote}-${rowDoca}`), tipo: 'erro_removido', fonte, doca: rowDoca, pacote: row.pacote, placaAnterior: row.placa, classificacaoAnterior: row.classificacao, mensagem: `${row.classificacao} removido: ${row.pacote}`, registradoEm });
   });
   return changes;
