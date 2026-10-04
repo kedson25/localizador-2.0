@@ -178,7 +178,6 @@ export function ExpedicaoPanel() {
   const aduanaRows = useMemo(() => enriched.filter(row => row.origem === 'aduana'), [enriched]);
   const auditoriaRows = useMemo(() => enriched.filter(row => row.origem === 'auditoria'), [enriched]);
 
-  // Na Aduana, buscamos TODOS os pacotes nas listas do dia, não apenas os Faltantes.
   const aduanaIdsKey = useMemo(() => aduanaRows.map(row => row.pacote).sort().join('|'), [aduanaRows]);
   useEffect(() => {
     let active = true;
@@ -237,7 +236,7 @@ export function ExpedicaoPanel() {
       encontrados,
       emLista,
       percentual,
-      concluida: rows.length > 0 && encontrados === rows.length,
+      concluida: rows.length === 0 || encontrados === rows.length,
     };
   }), [aduanaRows, backlogById, store.localizados]);
 
