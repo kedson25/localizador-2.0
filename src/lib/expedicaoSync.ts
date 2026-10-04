@@ -167,6 +167,10 @@ export async function syncExpedicaoImport(store: ExpedicaoStore, source: SourceN
     updatedAtIso: store.updatedAt || new Date().toISOString(),
   };
 
+  if (current.localizados === undefined) {
+    updates.localizados = safeJson(store.localizados || {});
+  }
+
   for (const currentSource of SOURCES) {
     const revisionField = `${currentSource}Revision` as keyof SharedMeta;
     const existingRevision = current[revisionField];
@@ -186,7 +190,15 @@ export async function syncExpedicaoImport(store: ExpedicaoStore, source: SourceN
 }
 
 export async function syncExpedicaoMeta(store: ExpedicaoStore): Promise<void> {
-  await setDoc(metaRef, sharedMetaPayload(store), { merge: true });
+  const currentSnapshot = await getDoc(metaRef);
+  const current = currentSnapshot.exists() ? currentSnapshot.data() as SharedMeta : {};
+  const updates: Record<string, unknown> = sharedMetaPayload(store);
+
+  if (current.localizados === undefined) {
+    updates.localizados = safeJson(store.localizados || {});
+  }
+
+  await setDoc(metaRef, updates, { merge: true });
 }
 
 export async function setExpedicaoSharedLocated(pacote: string, value: boolean): Promise<void> {
