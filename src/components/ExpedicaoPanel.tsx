@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
-import { CheckCircle2, Clock, PackageCheck, Search, Trash2, UploadCloud } from 'lucide-react';
+import { CheckCircle2, Clock, PackageCheck, Search, Trash2, UploadCloud, X } from 'lucide-react';
 import { ExpedicaoSkeleton } from './ExpedicaoSkeleton';
 import { getLocalValue, setLocalValue } from '../lib/localPersistence';
 import {
@@ -70,6 +70,7 @@ export function ExpedicaoPanel() {
   const [listaFilter, setListaFilter] = useState<ListaFilter>('todos');
   const [query, setQuery] = useState('');
   const [selectedDoca, setSelectedDoca] = useState<string | null>(null);
+  const [selectedStreet, setSelectedStreet] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [syncState, setSyncState] = useState<SyncState>('connecting');
   const [backlogById, setBacklogById] = useState<Record<string, TodayListOccurrence[]>>({});
@@ -156,6 +157,7 @@ export function ExpedicaoPanel() {
     try {
       await resetExpedicaoShared();
       setSelectedDoca(null);
+      setSelectedStreet(null);
       setQuery('');
       setFilter('todos');
       setListaFilter('todos');
@@ -225,9 +227,10 @@ export function ExpedicaoPanel() {
     const needle = query.trim().toLowerCase();
     return auditoriaRows.filter(row => {
       const text = [row.pacote, row.classificacao, row.encontradoRota, row.encontradoPlaca].join(' ').toLowerCase();
-      return text.includes(needle);
+      const streetMatch = !selectedStreet || streetLabel(row.encontradoRota) === selectedStreet;
+      return streetMatch && text.includes(needle);
     });
-  }, [auditoriaRows, query]);
+  }, [auditoriaRows, query, selectedStreet]);
 
   const auditStreetStats = useMemo(() => {
     const stats = new Map<string, { rua: string; total: number; amais: number; faltantes: number; ok: number }>();
@@ -275,6 +278,14 @@ export function ExpedicaoPanel() {
     </button>
   );
 
+  const searchBox = (placeholder: string, extraClass = '') => (
+    <label className={`relative w-full sm:w-[320px] ${extraClass}`}>
+      <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+      <input value={query} onChange={event => setQuery(event.target.value)} placeholder={placeholder} className="h-9 w-full border border-slate-300 pl-9 pr-9 text-xs" />
+      {query && <button type="button" onClick={() => setQuery('')} title="Limpar pesquisa" className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-900"><X className="h-4 w-4" /></button>}
+    </label>
+  );
+
   return (
     <div className="w-full space-y-3">
       <input ref={baseInput} className="hidden" type="file" accept=".csv,text/csv" onChange={event => event.target.files?.[0] && importFile(event.target.files[0], 'base')} />
@@ -290,8 +301,8 @@ export function ExpedicaoPanel() {
           <div className="flex flex-wrap gap-2">{upload('Despacho', baseInput)}{upload('Aduana', aduanaInput)}{upload('Auditoria', auditInput)}<button type="button" disabled={syncState !== 'synced'} onClick={reset} className="inline-flex h-9 items-center gap-2 border border-slate-300 bg-white px-3 text-xs font-black text-red-700 disabled:cursor-not-allowed disabled:opacity-50"><Trash2 className="h-4 w-4" />Zerar</button></div>
         </div>
         <div className="mt-3 flex gap-2 border-t border-slate-200 pt-3">
-          <button type="button" onClick={() => { setTab('aduana'); setSelectedDoca(null); setFilter('todos'); setListaFilter('todos'); }} className={`px-4 py-2 text-sm font-black ${tab === 'aduana' ? 'bg-slate-900 text-white' : 'border border-slate-300 bg-white'}`}>Aduana • vagas</button>
-          <button type="button" onClick={() => { setTab('auditoria'); setSelectedDoca(null); setFilter('todos'); setListaFilter('todos'); }} className={`px-4 py-2 text-sm font-black ${tab === 'auditoria' ? 'bg-slate-900 text-white' : 'border border-slate-300 bg-white'}`}>Auditoria • pacotes</button>
+          <button type="button" onClick={() => { setTab('aduana'); setSelectedDoca(null); setSelectedStreet(null); setQuery(''); setFilter('todos'); setListaFilter('todos'); }} className={`px-4 py-2 text-sm font-black ${tab === 'aduana' ? 'bg-slate-900 text-white' : 'border border-slate-300 bg-white'}`}>Aduana • vagas</button>
+          <button type="button" onClick={() => { setTab('auditoria'); setSelectedDoca(null); setSelectedStreet(null); setQuery(''); setFilter('todos'); setListaFilter('todos'); }} className={`px-4 py-2 text-sm font-black ${tab === 'auditoria' ? 'bg-slate-900 text-white' : 'border border-slate-300 bg-white'}`}>Auditoria • pacotes</button>
         </div>
       </section>
 
@@ -362,7 +373,7 @@ export function ExpedicaoPanel() {
                   <option value="pendentes">Pendentes</option>
                 </select>
                 {selectedDoca && <button type="button" onClick={() => setSelectedDoca(null)} className="h-9 border border-slate-300 bg-white px-3 text-xs font-black text-slate-600">Todas as vagas</button>}
-                <label className="relative ml-auto w-full sm:w-[320px]"><Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="ID, rota, placa ou vaga" className="h-9 w-full border border-slate-300 pl-9 pr-3 text-xs" /></label>
+                {searchBox('ID, rota, placa ou vaga', 'ml-auto')}
               </div>
               <div className="mt-2 text-[10px] font-bold text-slate-500">{filteredAduanaRows.length} resultado(s)</div>
             </div>
@@ -394,17 +405,22 @@ export function ExpedicaoPanel() {
         <div className="space-y-3">
           <section className="border border-slate-300 bg-white p-3 shadow-sm">
             <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
-              <div><h2 className="text-lg font-black">Auditoria — pacotes por rua</h2><p className="text-xs text-slate-500">Ranking das ruas onde a Auditoria mais encontrou pacotes.</p></div>
+              <div><h2 className="text-lg font-black">Auditoria — pacotes por rua</h2><p className="text-xs text-slate-500">Clique numa rua para filtrar. Clique novamente para desselecionar.</p></div>
               {auditStreetStats[0] && <div className="border border-slate-300 bg-slate-900 px-4 py-2 text-white"><div className="text-[9px] font-black uppercase tracking-wider text-slate-300">Rua com mais achados</div><div className="text-xl font-black">{auditStreetStats[0].rua} • {auditStreetStats[0].total}</div></div>}
             </div>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-6">
               {auditStreetStats.map((item, index) => {
                 const percentual = auditoriaRows.length ? Math.round((item.total / auditoriaRows.length) * 100) : 0;
-                return <button key={item.rua} type="button" onClick={() => setQuery(item.rua === 'SEM RUA' ? '' : item.rua)} className={`min-h-[112px] border p-3 text-left transition hover:bg-slate-50 ${index === 0 ? 'border-slate-800 ring-1 ring-slate-800' : 'border-slate-300'}`}>
-                  <div className="flex items-start justify-between gap-2"><div><div className="text-[9px] font-black uppercase text-slate-400">#{index + 1}</div><div className="text-xl font-black text-slate-900">RUA {item.rua}</div></div><div className="text-lg font-black">{item.total}</div></div>
-                  <div className="mt-2 flex gap-3 text-[10px] font-bold"><span>A+ {item.amais}</span><span>Falt. {item.faltantes}</span><span>OK {item.ok}</span></div>
-                  <div className="mt-2 h-1.5 overflow-hidden bg-slate-200"><div className="h-full bg-slate-700" style={{ width: `${percentual}%` }} /></div>
-                  <div className="mt-1 text-[9px] font-bold text-slate-400">{percentual}% dos achados</div>
+                const selected = selectedStreet === item.rua;
+                return <button key={item.rua} type="button" onClick={() => setSelectedStreet(selected ? null : item.rua)} className={`min-h-[116px] border p-3 text-left transition ${selected ? 'border-slate-900 bg-slate-900 text-white ring-2 ring-slate-900 ring-offset-1' : index === 0 ? 'border-slate-500 bg-slate-50' : 'border-slate-300 bg-white hover:bg-slate-50'}`}>
+                  <div className="flex items-start justify-between gap-2"><div><div className={`text-[9px] font-black uppercase ${selected ? 'text-slate-300' : 'text-slate-400'}`}>#{index + 1}</div><div className={`text-xl font-black ${selected ? 'text-white' : 'text-slate-900'}`}>RUA {item.rua}</div></div><div className="text-lg font-black">{item.total}</div></div>
+                  <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] font-black">
+                    <span className="border border-red-200 bg-red-50 px-1.5 py-0.5 text-red-700">A+ {item.amais}</span>
+                    <span className="border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-amber-800">FALT. {item.faltantes}</span>
+                    <span className={`border px-1.5 py-0.5 ${selected ? 'border-slate-500 bg-slate-800 text-white' : 'border-slate-200 bg-slate-50 text-slate-600'}`}>OK {item.ok}</span>
+                  </div>
+                  <div className={`mt-2 h-1.5 overflow-hidden ${selected ? 'bg-slate-700' : 'bg-slate-200'}`}><div className={`h-full ${selected ? 'bg-white' : 'bg-slate-700'}`} style={{ width: `${percentual}%` }} /></div>
+                  <div className={`mt-1 text-[9px] font-bold ${selected ? 'text-slate-300' : 'text-slate-400'}`}>{percentual}% dos achados{selected ? ' • selecionada' : ''}</div>
                 </button>;
               })}
               {!auditStreetStats.length && <div className="col-span-full py-8 text-center text-sm text-slate-500">Sem dados de rua na Auditoria.</div>}
@@ -413,8 +429,11 @@ export function ExpedicaoPanel() {
 
           <section className="overflow-hidden border border-slate-300 bg-white shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 p-2.5">
-              <div><h2 className="text-lg font-black">Auditoria — lista de pacotes</h2><p className="text-xs text-slate-500">Pacotes e check list.</p></div>
-              <label className="relative w-full sm:w-[320px]"><Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Buscar ID, rua ou Contenedor" className="h-9 w-full border border-slate-300 pl-9 pr-3 text-xs" /></label>
+              <div><h2 className="text-lg font-black">Auditoria — lista de pacotes</h2><p className="text-xs text-slate-500">{selectedStreet ? `Filtrando RUA ${selectedStreet} • ${filteredAuditoriaRows.length} pacote(s)` : 'Pacotes e check list.'}</p></div>
+              <div className="flex w-full items-center gap-2 sm:w-auto">
+                {selectedStreet && <button type="button" onClick={() => setSelectedStreet(null)} className="h-9 shrink-0 border border-slate-300 bg-white px-3 text-xs font-black text-slate-600 hover:bg-slate-50">Todas as ruas</button>}
+                {searchBox('Buscar ID, rua ou Contenedor')}
+              </div>
             </div>
             <div className="max-h-[700px] overflow-auto">
               <table className="w-full min-w-[640px] border-collapse text-xs">
@@ -425,7 +444,7 @@ export function ExpedicaoPanel() {
                     return <tr key={`auditoria-${row.pacote}`} className={checked ? 'bg-slate-100 text-slate-500' : 'hover:bg-slate-50'}>
                       <td className="border-b border-r border-slate-200 px-3 py-2 font-mono font-black">{row.pacote}<div className="font-sans text-[9px] text-slate-400">{formatDateTime(row.dataRegistro)}</div></td>
                       <td className="border-b border-r border-slate-200 px-3 py-2 font-black"><span className="mr-2 text-slate-400">RUA {streetLabel(row.encontradoRota)}</span>{routeLabel(row.encontradoRota) || 'SEM CONTENEDOR'}</td>
-                      <td className="border-b border-r border-slate-200 px-3 py-2"><span className={`font-black ${row.classificacao === 'A mais' ? 'text-red-600' : 'text-amber-700'}`}>{row.classificacao}</span></td>
+                      <td className="border-b border-r border-slate-200 px-3 py-2"><span className={`inline-block border px-2 py-1 font-black ${row.classificacao === 'A mais' ? 'border-red-200 bg-red-50 text-red-700' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>{row.classificacao}</span></td>
                       <td className="border-b border-slate-200 px-3 py-2"><label className="inline-flex cursor-pointer items-center gap-2 font-black"><input type="checkbox" disabled={syncState !== 'synced'} checked={checked} onChange={() => toggleLocated(row.pacote)} className="h-5 w-5 accent-slate-700 disabled:cursor-not-allowed" />{checked ? 'OK' : 'PENDENTE'}</label></td>
                     </tr>;
                   })}
