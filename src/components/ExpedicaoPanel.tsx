@@ -382,6 +382,7 @@ export function ExpedicaoPanel() {
         row.origem,
         row.encontradoPlaca,
         gaiolaFromRoute(row.encontradoRota),
+        row.encontradoDoca,
         row.vagaOperacional,
         row.destinoRota,
         row.destinoDoca,
@@ -595,7 +596,12 @@ export function ExpedicaoPanel() {
                             <span><b className={`block font-mono text-sm ${muted ? 'text-slate-600' : 'text-slate-950'}`}>{row.pacote}</b><span className="mt-0.5 block text-[9px] font-bold uppercase tracking-wide text-slate-500">Origem: {originLabel(row.origem)}</span></span>
                             <strong className={`text-[9px] font-black uppercase ${typeTextClass(row.classificacao, muted)}`}>{row.classificacao}</strong>
                           </span>
-                          <div className="mt-2 border-t border-slate-200 pt-2 text-[10px] font-bold text-slate-600">Gaiola {gaiolaFromRoute(row.encontradoRota) || 'não informada'} - placa: {row.encontradoPlaca || 'não informada'}</div>
+                          <div className="mt-2 border-t border-slate-200 pt-2 text-[10px] font-bold text-slate-600">
+                            <b>Encontrado:</b>{' '}
+                            {row.encontradoDoca ? `VAGA ${row.encontradoDoca}` : 'VAGA não localizada'}
+                            {gaiolaFromRoute(row.encontradoRota) ? ` • ${gaiolaFromRoute(row.encontradoRota)}` : ''}
+                            {row.encontradoPlaca ? ` • placa ${row.encontradoPlaca}` : ''}
+                          </div>
                           {row.classificacao === 'A mais' ? (
                             <div className="mt-1 text-[10px] font-bold text-slate-600"><b>Destino:</b>{' '}{row.destinoDoca && row.destinoRota ? `VAGA ${row.destinoDoca} - ${row.destinoRota}${row.destinoOnda ? ` - ${row.destinoOnda}` : ''}` : 'não localizado na Base Despacho'}</div>
                           ) : (
@@ -629,7 +635,7 @@ export function ExpedicaoPanel() {
             </div>
             <label className="relative w-full xl:w-[300px]">
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-              <input value={query} onChange={event => setQuery(event.target.value)} placeholder="ID, origem, gaiola, placa ou lista" className="h-9 w-full border border-slate-300 bg-white pl-9 pr-3 text-xs outline-none focus:border-blue-500" />
+              <input value={query} onChange={event => setQuery(event.target.value)} placeholder="ID, vaga, origem, gaiola, placa ou lista" className="h-9 w-full border border-slate-300 bg-white pl-9 pr-3 text-xs outline-none focus:border-blue-500" />
             </label>
           </div>
           <div className="mt-2 text-[10px] font-bold text-slate-500">{rows.length} resultado(s)</div>
@@ -646,7 +652,13 @@ export function ExpedicaoPanel() {
                   <tr key={row.pacote} className="bg-white hover:bg-slate-50">
                     <td className="border-b border-r border-slate-200 px-3 py-2"><div className="font-mono font-black text-slate-900">{row.pacote}</div><div className="mt-0.5 text-[9px] font-bold uppercase tracking-wide text-slate-500">Origem: {originLabel(row.origem)}</div></td>
                     <td className="border-b border-r border-slate-200 px-3 py-2"><span className={`font-black uppercase ${typeTextClass(row.classificacao)}`}>{row.classificacao}</span></td>
-                    <td className="border-b border-r border-slate-200 px-3 py-2 font-bold text-slate-700">Gaiola {gaiolaFromRoute(row.encontradoRota) || '—'} - placa: {row.encontradoPlaca || '—'}</td>
+                    <td className="border-b border-r border-slate-200 px-3 py-2 font-bold text-slate-700">
+                      <div className="font-black text-slate-900">{row.encontradoDoca ? `VAGA ${row.encontradoDoca}` : 'VAGA não localizada'}</div>
+                      <div className="mt-0.5 text-[10px] text-slate-500">
+                        {gaiolaFromRoute(row.encontradoRota) || 'Gaiola não informada'}
+                        {row.encontradoPlaca ? ` • placa ${row.encontradoPlaca}` : ''}
+                      </div>
+                    </td>
                     <td className="border-b border-r border-slate-200 px-3 py-2 text-slate-700">
                       {row.classificacao === 'A mais'
                         ? row.destinoDoca && row.destinoRota
