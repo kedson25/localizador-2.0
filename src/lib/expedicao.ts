@@ -251,6 +251,7 @@ export interface EnrichedExpedicaoRow extends ExpedicaoRow {
   doca: string;
   placa: string;
   classificacao: 'A mais' | 'Faltante';
+  vagaOperacional: string;
   encontradoRota: string;
   encontradoPlaca: string;
   encontradoDoca: string;
@@ -264,16 +265,23 @@ export interface EnrichedExpedicaoRow extends ExpedicaoRow {
  * - Auditoria representa ONDE o pacote foi encontrado (placa + ID da rota).
  * - A rota informada da Auditoria é cruzada com a Base Despacho para descobrir
  *   a VAGA física em que o pacote foi encontrado.
- * - A placa da Auditoria é cruzada com a Base Despacho para descobrir ONDE o
- *   pacote DEVERIA estar (vaga + rota otimizada + onda).
+ * - O destino esperado prioriza o Shipment ID na Base Despacho; quando o ID não
+ *   existe na base, a placa informada é usada como fallback.
+ * - A mais fica na vaga física onde foi encontrado; Faltante fica na vaga onde
+ *   deveria estar. Destino e posição física permanecem campos separados.
  * - Quando não existe Auditoria para o ID, Aduana é usada como fallback.
  * - Cada Shipment ID aparece uma única vez.
  */
 export function enrichExpedicao(store: ExpedicaoStore): EnrichedExpedicaoRow[] {
+  const byPackage = new Map<string, BaseDespachoRow>();
   const byPlate = new Map<string, BaseDespachoRow>();
   const byRoute = new Map<string, BaseDespachoRow>();
 
   store.base.forEach(row => {
+    if (row.pacote && !byPackage.has(row.pacote)) {
+      byPackage.set(row.pacote, row);
+    }
+
     const normalizedPlate = plateKey(row.placa);
     if (normalizedPlate && !byPlate.has(normalizedPlate)) {
       byPlate.set(normalizedPlate, row);
@@ -307,7 +315,12 @@ export function enrichExpedicao(store: ExpedicaoStore): EnrichedExpedicaoRow[] {
     const encontradoPlaca = clean(foundRow.placaInformada || stateRow.placaInformada).toUpperCase();
     const encontradoRota = clean(foundRow.rotaInformada || stateRow.rotaInformada);
     const foundBase = encontradoRota ? byRoute.get(routeKey(encontradoRota)) : undefined;
-    const destinationBase = encontradoPlaca ? byPlate.get(plateKey(encontradoPlaca)) : undefined;
+    const destinationBase = byPackage.get(pacote)
+      || (encontradoPlaca ? byPlate.get(plateKey(encontradoPlaca)) : undefined);
+    const legacyBase = destinationBase || foundBase;
+    const vagaOperacional = classificacao === 'A mais'
+      ? (foundBase?.doca || destinationBase?.doca || '')
+      : (destinationBase?.doca || foundBase?.doca || '');
     const origem: FonteExpedicao = auditoria ? 'auditoria' : 'aduana';
 
     result.push({
@@ -318,11 +331,12 @@ export function enrichExpedicao(store: ExpedicaoStore): EnrichedExpedicaoRow[] {
       placaInformada: encontradoPlaca,
       detalhe: foundRow.detalhe || stateRow.detalhe,
       dataRegistro: foundRow.dataRegistro || stateRow.dataRegistro,
-      placa: encontradoPlaca,
-      onda: destinationBase?.onda || '',
-      rotaOtimizada: destinationBase?.rotaOtimizada || '',
-      doca: destinationBase?.doca || '',
+      placa: legacyBase?.placa || encontradoPlaca,
+      onda: legacyBase?.onda || '',
+      rotaOtimizada: legacyBase?.rotaOtimizada || '',
+      doca: legacyBase?.doca || '',
       classificacao,
+      vagaOperacional,
       encontradoRota,
       encontradoPlaca,
       encontradoDoca: foundBase?.doca || '',
@@ -421,16 +435,21 @@ export function getExpedicaoDockChanges(
 
   after.forEach(row => {
     const old = before.get(row.pacote);
+    const rowDoca = row.vagaOperacional || row.doca;
+    const oldDoca = old ? (old.vagaOperacional || old.doca) : '';
 
     if (!old) {
-      if (!row.doca) return;
+      if (!rowDoca) return;
       const found = row.encontradoRota || row.encontradoPlaca || 'local não informado';
-      const destination = `D${row.doca}${row.rotaOtimizada ? ` ${row.rotaOtimizada}` : ''}`;
+      const destinationDock = row.destinoDoca || row.doca;
+      const destination = destinationDock
+        ? `D${destinationDock}${row.rotaOtimizada ? ` ${row.rotaOtimizada}` : ''}`
+        : 'sem destino';
       changes.push({
-        id: makeChangeId('novo-erro', registradoEm, `${row.pacote}-${row.doca}`),
+        id: makeChangeId('novo-erro', registradoEm, `${row.pacote}-${rowDoca}`),
         tipo: 'novo_erro',
         fonte,
-        doca: row.doca,
+        doca: rowDoca,
         pacote: row.pacote,
         placa: row.placa,
         classificacao: row.classificacao,
@@ -442,27 +461,27 @@ export function getExpedicaoDockChanges(
       return;
     }
 
-    if (old.doca !== row.doca && (old.doca || row.doca)) {
+    if (oldDoca !== rowDoca && (oldDoca || rowDoca)) {
       changes.push({
-        id: makeChangeId('mudou-doca', registradoEm, `${row.pacote}-${old.doca}-${row.doca}`),
+        id: makeChangeId('mudou-doca', registradoEm, `${row.pacote}-${oldDoca}-${rowDoca}`),
         tipo: 'mudou_doca',
         fonte,
-        doca: row.doca || old.doca,
-        docaAnterior: old.doca || undefined,
+        doca: rowDoca || oldDoca,
+        docaAnterior: oldDoca || undefined,
         pacote: row.pacote,
         placa: row.placa,
         placaAnterior: old.placa,
         classificacao: row.classificacao,
         classificacaoAnterior: old.classificacao,
-        mensagem: row.doca
-          ? `Pacote ${row.pacote} mudou ${old.doca ? `da doca ${old.doca}` : 'de sem doca'} para ${row.doca}`
+        mensagem: rowDoca
+          ? `Pacote ${row.pacote} mudou ${oldDoca ? `da doca ${oldDoca}` : 'de sem doca'} para ${rowDoca}`
           : `Pacote ${row.pacote} ficou sem doca`,
         registradoEm,
       });
     }
 
     if (old.classificacao !== row.classificacao) {
-      const doca = row.doca || old.doca;
+      const doca = rowDoca || oldDoca;
       if (!doca) return;
       changes.push({
         id: makeChangeId('erro-alterado', registradoEm, `${row.pacote}-${doca}-${row.classificacao}`),
@@ -480,12 +499,13 @@ export function getExpedicaoDockChanges(
   });
 
   before.forEach(row => {
-    if (after.has(row.pacote) || !row.doca) return;
+    const rowDoca = row.vagaOperacional || row.doca;
+    if (after.has(row.pacote) || !rowDoca) return;
     changes.push({
-      id: makeChangeId('erro-removido', registradoEm, `${row.pacote}-${row.doca}`),
+      id: makeChangeId('erro-removido', registradoEm, `${row.pacote}-${rowDoca}`),
       tipo: 'erro_removido',
       fonte,
-      doca: row.doca,
+      doca: rowDoca,
       pacote: row.pacote,
       placaAnterior: row.placa,
       classificacaoAnterior: row.classificacao,

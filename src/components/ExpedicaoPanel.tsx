@@ -288,7 +288,7 @@ export function ExpedicaoPanel() {
 
   const heatmap = useMemo(() => Array.from({ length: 20 }, (_, index) => {
     const doca = String(index + 1);
-    const records = enriched.filter(row => row.destinoDoca === doca);
+    const records = enriched.filter(row => row.vagaOperacional === doca);
     const changes = latestDockChanges.filter(change => affectsDock(change, doca));
     const latest = changes[changes.length - 1];
     const total = records.length;
@@ -325,6 +325,7 @@ export function ExpedicaoPanel() {
         row.origem,
         row.encontradoPlaca,
         gaiolaFromRoute(row.encontradoRota),
+        row.vagaOperacional,
         row.destinoRota,
         row.destinoDoca,
         row.destinoOnda,
@@ -341,7 +342,7 @@ export function ExpedicaoPanel() {
         (filter === 'todos' || row.classificacao === filter)
         && (originFilter === 'todas' || row.origem === originFilter)
         && matchDestination
-        && (!selectedDoca || row.destinoDoca === selectedDoca)
+        && (!selectedDoca || row.vagaOperacional === selectedDoca)
         && searchable.includes(needle)
       );
     });
@@ -349,7 +350,7 @@ export function ExpedicaoPanel() {
 
   const selectedDockItems = useMemo(
     () => selectedDoca
-      ? enriched.filter(row => row.destinoDoca === selectedDoca)
+      ? enriched.filter(row => row.vagaOperacional === selectedDoca)
       : [],
     [enriched, selectedDoca],
   );

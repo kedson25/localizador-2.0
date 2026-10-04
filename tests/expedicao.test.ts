@@ -9,7 +9,7 @@ describe('Expedição', () => {
     expect(rows[0]).toMatchObject({ rotaOtimizada: 'VJ11_AM1', doca: '1', onda: 'Onda 4', placa: 'SDQ3J67', classificacao: 'A mais' });
   });
 
-  it('prioriza o ID do pacote para achar a doca e placa corretas de um A mais', () => {
+  it('prioriza o ID do pacote para achar o destino correto de um A mais', () => {
     const base = parseBaseDespacho([
       'Shipment ID,Onda,Rota otimizada,Rota original,Doca,Placa',
       '47774449934,Onda 4,VJ11_AM1,AM1_113,1,SDQ3J67',
@@ -26,7 +26,30 @@ describe('Expedição', () => {
       doca: '1',
       onda: 'Onda 4',
       placa: 'SDQ3J67',
+      encontradoDoca: '9',
+      destinoDoca: '1',
       classificacao: 'A mais',
+    });
+  });
+
+  it('posiciona A mais na vaga física onde foi encontrado e mantém o destino separado', () => {
+    const base = parseBaseDespacho([
+      'Shipment ID,Onda,Rota otimizada,Rota original,Doca,Placa',
+      '48129865734,Onda 2,B6_AM1,AM1_6,6,DEST6',
+      '49999999999,Onda 3,H5_AM1,AM1_8,8,FOUND8',
+    ].join('\n'));
+    const auditoria = parseExpedicaoRows(
+      'Shipment ID,Contenedor,Estado\n48129865734,H5_AM1,A mais',
+      'auditoria',
+    );
+    const rows = enrichExpedicao({ base, aduana: [], auditoria });
+
+    expect(rows[0]).toMatchObject({
+      pacote: '48129865734',
+      classificacao: 'A mais',
+      encontradoDoca: '8',
+      destinoDoca: '6',
+      vagaOperacional: '8',
     });
   });
 
@@ -51,6 +74,6 @@ describe('Expedição', () => {
     const auditoria = parseExpedicaoRows('Shipment ID,Contenedor,Estado\n48038961782,B1_AM1,A mais\n9,B1_AM1,Correto', 'auditoria');
     const rows = enrichExpedicao({ base, aduana: [], auditoria });
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ rotaOtimizada: 'B1_AM1', doca: '2', placa: 'ABC1D23' });
+    expect(rows[0]).toMatchObject({ rotaOtimizada: 'B1_AM1', doca: '2', placa: 'ABC1D23', vagaOperacional: '2' });
   });
 });
