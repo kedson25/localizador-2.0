@@ -35,6 +35,13 @@ function routeLabel(route: string) {
   return String(route || '').split('|')[0].trim();
 }
 
+function streetLabel(route: string) {
+  const routeName = routeLabel(route).toUpperCase();
+  if (!routeName) return 'SEM RUA';
+  const match = routeName.match(/^([A-Z]+)/);
+  return match?.[1] || 'SEM RUA';
+}
+
 function formatDateTime(value?: string) {
   if (!value) return '';
   const br = value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
@@ -222,6 +229,20 @@ export function ExpedicaoPanel() {
     });
   }, [auditoriaRows, query]);
 
+  const auditStreetStats = useMemo(() => {
+    const stats = new Map<string, { rua: string; total: number; amais: number; faltantes: number; ok: number }>();
+    auditoriaRows.forEach(row => {
+      const rua = streetLabel(row.encontradoRota);
+      const current = stats.get(rua) || { rua, total: 0, amais: 0, faltantes: 0, ok: 0 };
+      current.total += 1;
+      if (row.classificacao === 'A mais') current.amais += 1;
+      if (row.classificacao === 'Faltante') current.faltantes += 1;
+      if (store.localizados?.[row.pacote]) current.ok += 1;
+      stats.set(rua, current);
+    });
+    return [...stats.values()].sort((a, b) => b.total - a.total || a.rua.localeCompare(b.rua, 'pt-BR'));
+  }, [auditoriaRows, store.localizados]);
+
   const heatmap = useMemo(() => Array.from({ length: 20 }, (_, index) => {
     const doca = String(index + 1);
     const rows = aduanaRows.filter(row => row.vagaOperacional === doca);
@@ -370,29 +391,50 @@ export function ExpedicaoPanel() {
           </section>
         </>
       ) : (
-        <section className="overflow-hidden border border-slate-300 bg-white shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 p-2.5">
-            <div><h2 className="text-lg font-black">Auditoria — lista de pacotes</h2><p className="text-xs text-slate-500">Somente pacotes e check list.</p></div>
-            <label className="relative w-full sm:w-[320px]"><Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Buscar ID ou Contenedor" className="h-9 w-full border border-slate-300 pl-9 pr-3 text-xs" /></label>
-          </div>
-          <div className="max-h-[700px] overflow-auto">
-            <table className="w-full min-w-[640px] border-collapse text-xs">
-              <thead className="sticky top-0 z-10 bg-slate-100"><tr>{['Pacote', 'Encontrado em', 'Tipo', 'Check list'].map(head => <th key={head} className="border-b border-r border-slate-200 px-3 py-2.5 text-left font-black">{head}</th>)}</tr></thead>
-              <tbody>
-                {filteredAuditoriaRows.map(row => {
-                  const checked = Boolean(store.localizados?.[row.pacote]);
-                  return <tr key={`auditoria-${row.pacote}`} className={checked ? 'bg-slate-100 text-slate-500' : 'hover:bg-slate-50'}>
-                    <td className="border-b border-r border-slate-200 px-3 py-2 font-mono font-black">{row.pacote}<div className="font-sans text-[9px] text-slate-400">{formatDateTime(row.dataRegistro)}</div></td>
-                    <td className="border-b border-r border-slate-200 px-3 py-2 font-black">{routeLabel(row.encontradoRota) || 'SEM CONTENEDOR'}</td>
-                    <td className="border-b border-r border-slate-200 px-3 py-2"><span className={`font-black ${row.classificacao === 'A mais' ? 'text-red-600' : 'text-amber-700'}`}>{row.classificacao}</span></td>
-                    <td className="border-b border-slate-200 px-3 py-2"><label className="inline-flex cursor-pointer items-center gap-2 font-black"><input type="checkbox" disabled={syncState !== 'synced'} checked={checked} onChange={() => toggleLocated(row.pacote)} className="h-5 w-5 accent-slate-700 disabled:cursor-not-allowed" />{checked ? 'OK' : 'PENDENTE'}</label></td>
-                  </tr>;
-                })}
-                {!filteredAuditoriaRows.length && <tr><td colSpan={4} className="px-4 py-10 text-center text-slate-500">Nenhum pacote.</td></tr>}
-              </tbody>
-            </table>
-          </div>
-        </section>
+        <div className="space-y-3">
+          <section className="border border-slate-300 bg-white p-3 shadow-sm">
+            <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+              <div><h2 className="text-lg font-black">Auditoria — pacotes por rua</h2><p className="text-xs text-slate-500">Ranking das ruas onde a Auditoria mais encontrou pacotes.</p></div>
+              {auditStreetStats[0] && <div className="border border-slate-300 bg-slate-900 px-4 py-2 text-white"><div className="text-[9px] font-black uppercase tracking-wider text-slate-300">Rua com mais achados</div><div className="text-xl font-black">{auditStreetStats[0].rua} • {auditStreetStats[0].total}</div></div>}
+            </div>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-6">
+              {auditStreetStats.map((item, index) => {
+                const percentual = auditoriaRows.length ? Math.round((item.total / auditoriaRows.length) * 100) : 0;
+                return <button key={item.rua} type="button" onClick={() => setQuery(item.rua === 'SEM RUA' ? '' : item.rua)} className={`min-h-[112px] border p-3 text-left transition hover:bg-slate-50 ${index === 0 ? 'border-slate-800 ring-1 ring-slate-800' : 'border-slate-300'}`}>
+                  <div className="flex items-start justify-between gap-2"><div><div className="text-[9px] font-black uppercase text-slate-400">#{index + 1}</div><div className="text-xl font-black text-slate-900">RUA {item.rua}</div></div><div className="text-lg font-black">{item.total}</div></div>
+                  <div className="mt-2 flex gap-3 text-[10px] font-bold"><span>A+ {item.amais}</span><span>Falt. {item.faltantes}</span><span>OK {item.ok}</span></div>
+                  <div className="mt-2 h-1.5 overflow-hidden bg-slate-200"><div className="h-full bg-slate-700" style={{ width: `${percentual}%` }} /></div>
+                  <div className="mt-1 text-[9px] font-bold text-slate-400">{percentual}% dos achados</div>
+                </button>;
+              })}
+              {!auditStreetStats.length && <div className="col-span-full py-8 text-center text-sm text-slate-500">Sem dados de rua na Auditoria.</div>}
+            </div>
+          </section>
+
+          <section className="overflow-hidden border border-slate-300 bg-white shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 p-2.5">
+              <div><h2 className="text-lg font-black">Auditoria — lista de pacotes</h2><p className="text-xs text-slate-500">Pacotes e check list.</p></div>
+              <label className="relative w-full sm:w-[320px]"><Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Buscar ID, rua ou Contenedor" className="h-9 w-full border border-slate-300 pl-9 pr-3 text-xs" /></label>
+            </div>
+            <div className="max-h-[700px] overflow-auto">
+              <table className="w-full min-w-[640px] border-collapse text-xs">
+                <thead className="sticky top-0 z-10 bg-slate-100"><tr>{['Pacote', 'Encontrado em', 'Tipo', 'Check list'].map(head => <th key={head} className="border-b border-r border-slate-200 px-3 py-2.5 text-left font-black">{head}</th>)}</tr></thead>
+                <tbody>
+                  {filteredAuditoriaRows.map(row => {
+                    const checked = Boolean(store.localizados?.[row.pacote]);
+                    return <tr key={`auditoria-${row.pacote}`} className={checked ? 'bg-slate-100 text-slate-500' : 'hover:bg-slate-50'}>
+                      <td className="border-b border-r border-slate-200 px-3 py-2 font-mono font-black">{row.pacote}<div className="font-sans text-[9px] text-slate-400">{formatDateTime(row.dataRegistro)}</div></td>
+                      <td className="border-b border-r border-slate-200 px-3 py-2 font-black"><span className="mr-2 text-slate-400">RUA {streetLabel(row.encontradoRota)}</span>{routeLabel(row.encontradoRota) || 'SEM CONTENEDOR'}</td>
+                      <td className="border-b border-r border-slate-200 px-3 py-2"><span className={`font-black ${row.classificacao === 'A mais' ? 'text-red-600' : 'text-amber-700'}`}>{row.classificacao}</span></td>
+                      <td className="border-b border-slate-200 px-3 py-2"><label className="inline-flex cursor-pointer items-center gap-2 font-black"><input type="checkbox" disabled={syncState !== 'synced'} checked={checked} onChange={() => toggleLocated(row.pacote)} className="h-5 w-5 accent-slate-700 disabled:cursor-not-allowed" />{checked ? 'OK' : 'PENDENTE'}</label></td>
+                    </tr>;
+                  })}
+                  {!filteredAuditoriaRows.length && <tr><td colSpan={4} className="px-4 py-10 text-center text-slate-500">Nenhum pacote.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
       )}
     </div>
   );
