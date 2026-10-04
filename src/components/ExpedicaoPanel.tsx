@@ -35,6 +35,12 @@ function routeLabel(route: string) {
   return String(route || '').split('|')[0].trim();
 }
 
+function sameRoute(left: string, right: string) {
+  const a = routeLabel(left).toUpperCase();
+  const b = routeLabel(right).toUpperCase();
+  return Boolean(a && b && a === b);
+}
+
 function streetLabel(route: string) {
   const routeName = routeLabel(route).toUpperCase();
   if (!routeName) return 'SEM RUA';
@@ -385,13 +391,18 @@ export function ExpedicaoPanel() {
                     const backlog = backlogById[row.pacote] || [];
                     const checked = Boolean(store.localizados?.[row.pacote]);
                     const found = checked || backlog.length > 0;
-                    return <tr key={`aduana-${row.pacote}`} className={found ? 'bg-slate-50' : 'hover:bg-slate-50'}>
+                    const allocationError = row.classificacao === 'Faltante'
+                      && row.destinoConfirmado
+                      && sameRoute(row.encontradoRota, row.destinoRota);
+                    const statusLabel = allocationError ? 'ERRO DE ALOCAÇÃO' : found ? 'ENCONTRADO' : 'PENDENTE';
+                    const statusClass = allocationError ? 'text-red-700' : found ? 'text-emerald-700' : 'text-amber-700';
+                    return <tr key={`aduana-${row.pacote}`} className={allocationError ? 'bg-red-50/60' : found ? 'bg-slate-50' : 'hover:bg-slate-50'}>
                       <td className="border-b border-r border-slate-200 px-3 py-2 font-mono font-black">{row.pacote}<div className="font-sans text-[9px] text-slate-400">{formatDateTime(row.dataRegistro)}</div></td>
                       <td className="border-b border-r border-slate-200 px-3 py-2 font-black">{row.classificacao}</td>
                       <td className="border-b border-r border-slate-200 px-3 py-2"><b>{row.encontradoDoca ? `VAGA ${row.encontradoDoca}` : 'VAGA NÃO LOCALIZADA'}</b><div className="text-[10px] text-slate-500">{routeLabel(row.encontradoRota) || 'sem rota'}{row.encontradoPlaca ? ` • ${row.encontradoPlaca}` : ''}</div></td>
-                      <td className="border-b border-r border-slate-200 px-3 py-2">{row.destinoConfirmado ? <><b>VAGA {row.destinoDoca}</b><div className="text-[10px] text-slate-500">{row.destinoRota || 'sem rota'}{row.destinoOnda ? ` • ${row.destinoOnda}` : ''}</div></> : <b className="text-amber-700">SEM DESTINO</b>}</td>
+                      <td className="border-b border-r border-slate-200 px-3 py-2">{row.destinoConfirmado ? <><b>VAGA {row.destinoDoca}</b><div className="text-[10px] text-slate-500">{row.destinoRota || 'sem rota'}{row.destinoOnda ? ` • ${row.destinoOnda}` : ''}</div>{allocationError && <div className="mt-1 text-[9px] font-black uppercase text-red-700">Mesma rota do encontrado</div>}</> : <b className="text-amber-700">SEM DESTINO</b>}</td>
                       <td className="border-b border-r border-slate-200 px-3 py-2">{backlog.length ? <><b className="text-emerald-700">EM LISTA</b><div className="text-[10px] text-slate-500">{occurrenceLabel(backlog[0])}{backlog.length > 1 ? ` • +${backlog.length - 1}` : ''}</div></> : <span className="text-slate-400">Não encontrado hoje</span>}</td>
-                      <td className="border-b border-r border-slate-200 px-3 py-2"><span className={`font-black ${found ? 'text-emerald-700' : 'text-amber-700'}`}>{found ? 'ENCONTRADO' : 'PENDENTE'}</span></td>
+                      <td className="border-b border-r border-slate-200 px-3 py-2"><span className={`font-black ${statusClass}`}>{statusLabel}</span>{allocationError && <div className="mt-1 max-w-[180px] text-[9px] font-bold leading-tight text-red-600">Faltante encontrado exatamente na rota onde deveria estar: pacote não foi alocado corretamente.</div>}</td>
                       <td className="border-b border-slate-200 px-3 py-2 text-center"><input type="checkbox" disabled={syncState !== 'synced'} checked={checked} onChange={() => toggleLocated(row.pacote)} className="h-4 w-4 accent-slate-700 disabled:cursor-not-allowed" /></td>
                     </tr>;
                   })}
