@@ -2,6 +2,13 @@ import React, { useEffect, useMemo, useRef, useState, type RefObject } from 'rea
 import { Clock, PackageCheck, Search, Trash2, UploadCloud } from 'lucide-react';
 import { ExpedicaoSkeleton } from './ExpedicaoSkeleton';
 import { getLocalValue, setLocalValue } from '../lib/localPersistence';
+import {
+  listenExpedicaoShared,
+  resetExpedicaoShared,
+  setExpedicaoSharedLocated,
+  syncExpedicaoImport,
+  syncExpedicaoMeta,
+} from '../lib/expedicaoSync';
 import { searchTodayListOccurrences, type TodayListOccurrence } from '../lib/listaMultiSearch';
 import {
   enrichExpedicao,
@@ -126,6 +133,29 @@ export function ExpedicaoPanel() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!hydrated) return undefined;
+
+    return listenExpedicaoShared(remote => {
+      if (!remote) return;
+
+      setStore(current => {
+        const merged: ExpedicaoStore = {
+          ...current,
+          ...remote,
+          historico: current.historico || [],
+          historicoDoca: current.historicoDoca || [],
+        };
+
+        void setLocalValue(STORAGE_KEY, merged);
+        return merged;
+      });
+    }, error => {
+      console.error('[Expedição] Sincronização em tempo real indisponível:', error);
+      setBacklogError(current => current || 'Sincronização com os outros usuários indisponível.');
+    });
+  }, [hydrated]);
+
   const save = async (next: ExpedicaoStore) => {
     setStore(next);
     await setLocalValue(STORAGE_KEY, next);
@@ -182,6 +212,13 @@ export function ExpedicaoPanel() {
       };
 
       await save(next);
+
+      try {
+        await syncExpedicaoImport(next, source);
+      } catch (syncError) {
+        console.error('[Expedição] Arquivo processado, mas falhou ao sincronizar:', syncError);
+        setBacklogError('Arquivo carregado, mas não foi possível sincronizar com os outros usuários.');
+      }
     } catch (error) {
       console.error('[Expedição] Falha ao importar CSV:', error);
       setBacklogError('Falha ao processar o arquivo.');
@@ -189,13 +226,25 @@ export function ExpedicaoPanel() {
     }
   };
 
-  const toggleLocated = (pacote: string) => save({
-    ...store,
-    localizados: {
-      ...store.localizados,
-      [pacote]: !store.localizados?.[pacote],
-    },
-  });
+  const toggleLocated = async (pacote: string) => {
+    const nextValue = !store.localizados?.[pacote];
+    const next: ExpedicaoStore = {
+      ...store,
+      localizados: {
+        ...store.localizados,
+        [pacote]: nextValue,
+      },
+    };
+
+    await save(next);
+
+    try {
+      await setExpedicaoSharedLocated(pacote, nextValue);
+    } catch (error) {
+      console.error('[Expedição] Falha ao sincronizar marcação OK:', error);
+      setBacklogError('Marcação salva neste dispositivo, mas ainda não sincronizou com os outros usuários.');
+    }
+  };
 
   const resetFilters = () => {
     setFilter('todos');
@@ -205,14 +254,22 @@ export function ExpedicaoPanel() {
   };
 
   const resetExpedicao = async () => {
-    if (!window.confirm('Zerar a Expedição e apagar as bases e históricos salvos neste navegador?')) return;
+    if (!window.confirm('Zerar a Expedição para todos os usuários e apagar as bases e históricos compartilhados?')) return;
 
     setScreenReady(false);
-    await save({ ...empty, updatedAt: new Date().toISOString() });
+    const next = { ...empty, updatedAt: new Date().toISOString() };
+    await save(next);
+
+    try {
+      await resetExpedicaoShared();
+    } catch (error) {
+      console.error('[Expedição] Falha ao zerar estado compartilhado:', error);
+      setBacklogError('A Expedição foi zerada neste dispositivo, mas não foi possível zerar para os outros usuários.');
+    }
+
     resetFilters();
     setSelectedDoca(null);
     setBacklogById({});
-    setBacklogError('');
     setReport(false);
   };
 
@@ -386,10 +443,20 @@ export function ExpedicaoPanel() {
       porDoca: heatmap.map(({ doca, amais, faltantes }) => ({ doca, amais, faltantes })),
     };
 
-    await save({
+    const next: ExpedicaoStore = {
       ...store,
       encerramentos: [closing, ...(store.encerramentos || [])],
-    });
+    };
+
+    await save(next);
+
+    try {
+      await syncExpedicaoMeta(next);
+    } catch (error) {
+      console.error('[Expedição] Falha ao sincronizar encerramento:', error);
+      setBacklogError('Encerramento salvo neste dispositivo, mas não sincronizou com os outros usuários.');
+    }
+
     setReport(true);
   };
 
