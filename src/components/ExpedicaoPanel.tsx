@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
-import { AlertTriangle, CheckCircle2, Clock, MapPin, PackageCheck, Search, Trash2, UploadCloud } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Clock, LoaderCircle, MapPin, PackageCheck, Search, Trash2, UploadCloud, Wifi, WifiOff } from 'lucide-react';
 import { ExpedicaoSkeleton } from './ExpedicaoSkeleton';
 import { getLocalValue, setLocalValue } from '../lib/localPersistence';
 import {
@@ -24,6 +24,7 @@ import {
 const STORAGE_KEY = 'expedicao-daily-v1';
 type ViewTab = 'aduana' | 'auditoria';
 type TipoFilter = 'todos' | 'A mais' | 'Faltante';
+type SyncState = 'connecting' | 'syncing' | 'synced' | 'error';
 
 const empty: ExpedicaoStore = {
   base: [], aduana: [], auditoria: [], localizados: {}, historico: [], historicoDoca: [], ultimaComparacao: [], encerramentos: [],
@@ -54,12 +55,14 @@ function occurrenceLabel(item: TodayListOccurrence) {
 export function ExpedicaoPanel() {
   const [store, setStore] = useState<ExpedicaoStore>(empty);
   const [hydrated, setHydrated] = useState(false);
+  const [remoteReady, setRemoteReady] = useState(false);
   const [screenReady, setScreenReady] = useState(false);
   const [tab, setTab] = useState<ViewTab>('aduana');
   const [filter, setFilter] = useState<TipoFilter>('todos');
   const [query, setQuery] = useState('');
   const [selectedDoca, setSelectedDoca] = useState<string | null>(null);
   const [error, setError] = useState('');
+  const [syncState, setSyncState] = useState<SyncState>('connecting');
   const [backlogById, setBacklogById] = useState<Record<string, TodayListOccurrence[]>>({});
 
   const baseInput = useRef<HTMLInputElement>(null);
@@ -86,19 +89,20 @@ export function ExpedicaoPanel() {
         void setLocalValue(STORAGE_KEY, merged);
         return merged;
       });
+      setSyncState(current => current === 'syncing' ? current : 'synced');
+      setRemoteReady(true);
+      setError('');
     }, syncError => {
       console.error(syncError);
-      setError('Sincronização em tempo real indisponível.');
+      setSyncState('error');
+      setRemoteReady(true);
+      setError('Sincronização em tempo real indisponível. Nenhuma alteração local será considerada compartilhada.');
     });
   }, [hydrated]);
 
-  const save = async (next: ExpedicaoStore) => {
-    setStore(next);
-    await setLocalValue(STORAGE_KEY, next);
-  };
-
   const importFile = async (file: File, source: FonteImportacaoExpedicao) => {
     setScreenReady(false);
+    setSyncState('syncing');
     setError('');
     try {
       const text = await file.text();
@@ -125,11 +129,12 @@ export function ExpedicaoPanel() {
       next.ultimaComparacao = changes;
       next.historicoDoca = [...(next.historicoDoca || []), ...errorChanges].slice(-20000);
       next.ultimaImportacao = { fonte: source, arquivo: file.name, registradoEm, alteracoes: changes.length };
-      await save(next);
       await syncExpedicaoImport(next, source);
+      setSyncState('synced');
     } catch (cause) {
       console.error('[Expedição] falha:', cause);
-      setError('Falha ao processar ou sincronizar o arquivo.');
+      setSyncState('error');
+      setError('O arquivo não foi compartilhado. Verifique a conexão e tente novamente.');
     } finally {
       setScreenReady(true);
     }
@@ -137,19 +142,35 @@ export function ExpedicaoPanel() {
 
   const reset = async () => {
     if (!window.confirm('Zerar a Expedição para todos os usuários?')) return;
-    const next = { ...empty, updatedAt: new Date().toISOString() };
-    await save(next);
-    await resetExpedicaoShared();
-    setSelectedDoca(null);
-    setQuery('');
-    setFilter('todos');
+    setSyncState('syncing');
+    setError('');
+    try {
+      await resetExpedicaoShared();
+      setSelectedDoca(null);
+      setQuery('');
+      setFilter('todos');
+      setSyncState('synced');
+    } catch (cause) {
+      console.error('[Expedição] falha ao zerar:', cause);
+      setSyncState('error');
+      setError('Não foi possível zerar para todos. O estado compartilhado foi mantido.');
+    }
   };
 
   const toggleLocated = async (pacote: string) => {
     const value = !store.localizados?.[pacote];
-    const next = { ...store, localizados: { ...store.localizados, [pacote]: value } };
-    await save(next);
-    await setExpedicaoSharedLocated(pacote, value);
+    setSyncState('syncing');
+    setError('');
+    try {
+      // O listener aplica a confirmação do Firestore neste navegador e
+      // em todas as outras telas conectadas.
+      await setExpedicaoSharedLocated(pacote, value);
+      setSyncState('synced');
+    } catch (cause) {
+      console.error('[Expedição] falha ao marcar ID:', cause);
+      setSyncState('error');
+      setError(`Não foi possível sincronizar o ID ${pacote}. Tente novamente.`);
+    }
   };
 
   const enriched = useMemo(() => enrichExpedicao(store), [store]);
@@ -210,10 +231,10 @@ export function ExpedicaoPanel() {
     return [...grouped.entries()].sort((a, b) => a[0].localeCompare(b[0], 'pt-BR'));
   }, [auditoriaRows]);
 
-  if (!hydrated || !screenReady) return <ExpedicaoSkeleton />;
+  if (!hydrated || !remoteReady || !screenReady) return <ExpedicaoSkeleton />;
 
   const upload = (label: string, ref: RefObject<HTMLInputElement | null>) => (
-    <button type="button" onClick={() => ref.current?.click()} className="inline-flex h-9 items-center gap-2 border border-slate-300 bg-white px-3 text-xs font-black hover:bg-slate-50">
+    <button type="button" disabled={syncState !== 'synced'} onClick={() => ref.current?.click()} className="inline-flex h-9 items-center gap-2 border border-slate-300 bg-white px-3 text-xs font-black hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50">
       <UploadCloud className="h-4 w-4" />{label}
     </button>
   );
@@ -230,7 +251,7 @@ export function ExpedicaoPanel() {
             <PackageCheck className="h-6 w-6 text-blue-700" />
             <div><p className="text-[10px] font-black uppercase text-blue-700">Expedição</p><h1 className="text-2xl font-black text-[#102a67]">Cruzamento operacional</h1></div>
           </div>
-          <div className="flex flex-wrap gap-2">{upload('Despacho', baseInput)}{upload('Aduana', aduanaInput)}{upload('Auditoria', auditInput)}<button type="button" onClick={reset} className="inline-flex h-9 items-center gap-2 border border-slate-300 bg-white px-3 text-xs font-black text-red-700"><Trash2 className="h-4 w-4" />Zerar</button></div>
+          <div className="flex flex-wrap gap-2">{upload('Despacho', baseInput)}{upload('Aduana', aduanaInput)}{upload('Auditoria', auditInput)}<button type="button" disabled={syncState !== 'synced'} onClick={reset} className="inline-flex h-9 items-center gap-2 border border-slate-300 bg-white px-3 text-xs font-black text-red-700 disabled:cursor-not-allowed disabled:opacity-50"><Trash2 className="h-4 w-4" />Zerar</button></div>
         </div>
         <div className="mt-3 flex gap-2 border-t border-slate-200 pt-3">
           <button type="button" onClick={() => { setTab('aduana'); setSelectedDoca(null); }} className={`px-4 py-2 text-sm font-black ${tab === 'aduana' ? 'bg-slate-900 text-white' : 'border border-slate-300 bg-white'}`}>Aduana • vagas</button>
@@ -238,7 +259,13 @@ export function ExpedicaoPanel() {
         </div>
       </section>
 
-      {store.ultimaImportacao && <div className="flex items-center gap-2 border border-slate-300 bg-white px-3 py-2 text-xs font-bold"><Clock className="h-4 w-4 text-blue-700" />{store.ultimaImportacao.arquivo} • {formatDateTime(store.ultimaImportacao.registradoEm)}</div>}
+      <div className="flex flex-wrap items-center justify-between gap-2 border border-slate-300 bg-white px-3 py-2 text-xs font-bold">
+        <span className="flex items-center gap-2 text-slate-600">{store.ultimaImportacao ? <><Clock className="h-4 w-4 text-blue-700" />{store.ultimaImportacao.arquivo} • {formatDateTime(store.ultimaImportacao.registradoEm)}</> : 'Aguardando primeira importação'}</span>
+        <span className={`inline-flex items-center gap-1.5 font-black ${syncState === 'error' ? 'text-red-700' : syncState === 'synced' ? 'text-emerald-700' : 'text-blue-700'}`}>
+          {syncState === 'error' ? <WifiOff className="h-4 w-4" /> : syncState === 'synced' ? <Wifi className="h-4 w-4" /> : <LoaderCircle className="h-4 w-4 animate-spin" />}
+          {syncState === 'error' ? 'SEM SINCRONIZAÇÃO' : syncState === 'synced' ? 'TEMPO REAL ATIVO' : 'SINCRONIZANDO'}
+        </span>
+      </div>
       {error && <div className="border border-amber-300 bg-white px-3 py-2 text-xs font-bold text-amber-900">{error}</div>}
 
       {tab === 'aduana' ? (
@@ -269,7 +296,7 @@ export function ExpedicaoPanel() {
                     const backlog = backlogById[row.pacote] || [];
                     return <label key={row.pacote} className={`block cursor-pointer p-3 ${checked ? 'bg-slate-200' : 'bg-white'}`}>
                       <span className="flex items-start gap-3">
-                        <input type="checkbox" checked={checked} onChange={() => toggleLocated(row.pacote)} className="mt-1 h-5 w-5 shrink-0 accent-slate-800" />
+                        <input type="checkbox" disabled={syncState !== 'synced'} checked={checked} onChange={() => toggleLocated(row.pacote)} className="mt-1 h-5 w-5 shrink-0 accent-slate-800 disabled:cursor-not-allowed" />
                         <span className="min-w-0 flex-1">
                           <span className="flex items-start justify-between gap-2"><b className="font-mono text-sm">{row.pacote}</b><span className={`text-[9px] font-black uppercase ${row.classificacao === 'A mais' ? 'text-red-600' : 'text-amber-700'}`}>{row.classificacao}</span></span>
                           <span className="mt-1 block text-[10px] text-slate-600"><b>Aqui:</b> VAGA {row.encontradoDoca}{routeLabel(row.encontradoRota) ? ` • ${routeLabel(row.encontradoRota)}` : ''}</span>
@@ -309,7 +336,7 @@ export function ExpedicaoPanel() {
                   <td className="border-b border-r border-slate-200 px-3 py-2"><b>{row.encontradoDoca ? `VAGA ${row.encontradoDoca}` : 'VAGA NÃO LOCALIZADA'}</b><div className="text-[10px] text-slate-500">{routeLabel(row.encontradoRota) || 'sem rota'}{row.encontradoPlaca ? ` • ${row.encontradoPlaca}` : ''}</div></td>
                   <td className="border-b border-r border-slate-200 px-3 py-2">{row.destinoConfirmado ? <><b>VAGA {row.destinoDoca}</b><div className="text-[10px] text-slate-500">{row.destinoRota || 'sem rota'}{row.destinoOnda ? ` • ${row.destinoOnda}` : ''}</div></> : <b className="text-amber-700">SEM DESTINO</b>}</td>
                   <td className="border-b border-r border-slate-200 px-3 py-2">{row.erroAtrelamentoGaiola ? <span className="inline-flex items-center gap-1.5 bg-red-50 px-2 py-1 font-black text-red-700"><AlertTriangle className="h-3.5 w-3.5" />ERRO DE ATRELAMENTO DE GAIOLA</span> : <span className={`font-black ${row.diagnostico === 'Rota divergente' ? 'text-amber-700' : 'text-slate-500'}`}>{row.diagnostico.toUpperCase()}</span>}</td>
-                  <td className="border-b border-slate-200 px-3 py-2 text-center"><input type="checkbox" checked={Boolean(store.localizados?.[row.pacote])} onChange={() => toggleLocated(row.pacote)} className="h-4 w-4 accent-slate-700" /></td>
+                  <td className="border-b border-slate-200 px-3 py-2 text-center"><input type="checkbox" disabled={syncState !== 'synced'} checked={Boolean(store.localizados?.[row.pacote])} onChange={() => toggleLocated(row.pacote)} className="h-4 w-4 accent-slate-700 disabled:cursor-not-allowed" /></td>
                 </tr>;
               })}
               {!filteredRows.length && <tr><td colSpan={6} className="px-4 py-10 text-center text-slate-500">Nenhum item.</td></tr>}

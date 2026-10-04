@@ -127,8 +127,10 @@ async function readSource(source: SourceName, revision: string): Promise<SourceR
 function sharedMetaPayload(store: ExpedicaoStore) {
   const payload: Record<string, unknown> = {
     version: 2,
-    historicoDoca: safeJson((store.historicoDoca || []).slice(-5000)),
-    ultimaComparacao: safeJson((store.ultimaComparacao || []).slice(-500)),
+    // Mantém o documento principal bem abaixo do limite do Firestore.
+    // As bases grandes continuam separadas em chunks versionados.
+    historicoDoca: safeJson((store.historicoDoca || []).slice(-1000)),
+    ultimaComparacao: safeJson((store.ultimaComparacao || []).slice(-200)),
     encerramentos: safeJson((store.encerramentos || []).slice(0, 20)),
     filenames: safeJson(store.filenames || {}),
     modifiedAt: serverTimestamp(),
@@ -202,23 +204,42 @@ export function listenExpedicaoShared(
     base: [], aduana: [], auditoria: [],
   };
 
+  const emptyRemote = (): ExpedicaoSharedStore => ({
+    base: [],
+    aduana: [],
+    auditoria: [],
+    localizados: {},
+    historicoDoca: [],
+    ultimaComparacao: [],
+    ultimaImportacao: undefined,
+    filenames: {},
+    encerramentos: [],
+    updatedAt: '',
+  });
+
   const unsubscribe = onSnapshot(metaRef, async snapshot => {
     const currentGeneration = ++generation;
-    if (!snapshot.exists()) { callback(null); return; }
+    if (!snapshot.exists()) {
+      cache.base = [];
+      cache.aduana = [];
+      cache.auditoria = [];
+      SOURCES.forEach(source => { revisions[source] = null; });
+      callback(emptyRemote());
+      return;
+    }
     const data = snapshot.data() as SharedMeta;
     try {
-      const remote: ExpedicaoSharedStore = {};
-      if (Object.prototype.hasOwnProperty.call(data, 'localizados')) remote.localizados = data.localizados || {};
-      if (Object.prototype.hasOwnProperty.call(data, 'historicoDoca')) remote.historicoDoca = data.historicoDoca || [];
-      if (Object.prototype.hasOwnProperty.call(data, 'ultimaComparacao')) remote.ultimaComparacao = data.ultimaComparacao || [];
-      if (Object.prototype.hasOwnProperty.call(data, 'ultimaImportacao')) remote.ultimaImportacao = data.ultimaImportacao || undefined;
-      if (Object.prototype.hasOwnProperty.call(data, 'filenames')) remote.filenames = data.filenames || {};
-      if (Object.prototype.hasOwnProperty.call(data, 'encerramentos')) remote.encerramentos = data.encerramentos || [];
-      if (Object.prototype.hasOwnProperty.call(data, 'updatedAtIso')) remote.updatedAt = data.updatedAtIso || '';
+      const remote = emptyRemote();
+      remote.localizados = data.localizados || {};
+      remote.historicoDoca = data.historicoDoca || [];
+      remote.ultimaComparacao = data.ultimaComparacao || [];
+      remote.ultimaImportacao = data.ultimaImportacao || undefined;
+      remote.filenames = data.filenames || {};
+      remote.encerramentos = data.encerramentos || [];
+      remote.updatedAt = data.updatedAtIso || '';
 
       for (const source of SOURCES) {
         const revisionField = `${source}Revision` as keyof SharedMeta;
-        if (!Object.prototype.hasOwnProperty.call(data, revisionField)) continue;
         const revision = data[revisionField] as string | null | undefined;
         const normalizedRevision = revision || null;
         if (!normalizedRevision) {
@@ -234,9 +255,9 @@ export function listenExpedicaoShared(
           if (source === 'auditoria') cache.auditoria = rows as ExpedicaoRow[];
           revisions[source] = normalizedRevision;
         }
-        if (source === 'base') remote.base = cache.base;
-        if (source === 'aduana') remote.aduana = cache.aduana;
-        if (source === 'auditoria') remote.auditoria = cache.auditoria;
+        if (source === 'base') remote.base = [...cache.base];
+        if (source === 'aduana') remote.aduana = [...cache.aduana];
+        if (source === 'auditoria') remote.auditoria = [...cache.auditoria];
       }
       if (!active || currentGeneration !== generation) return;
       callback(remote);
