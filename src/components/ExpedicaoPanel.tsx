@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
-import { AlertTriangle, CheckCircle2, Clock, LoaderCircle, MapPin, PackageCheck, Search, Trash2, UploadCloud, Wifi, WifiOff } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Clock, MapPin, PackageCheck, Search, Trash2, UploadCloud } from 'lucide-react';
 import { ExpedicaoSkeleton } from './ExpedicaoSkeleton';
 import { getLocalValue, setLocalValue } from '../lib/localPersistence';
 import {
@@ -96,7 +96,7 @@ export function ExpedicaoPanel() {
       console.error(syncError);
       setSyncState('error');
       setRemoteReady(true);
-      setError('Sincronização em tempo real indisponível. Nenhuma alteração local será considerada compartilhada.');
+      setError('Sem conexão com a sincronização.');
     });
   }, [hydrated]);
 
@@ -134,7 +134,7 @@ export function ExpedicaoPanel() {
     } catch (cause) {
       console.error('[Expedição] falha:', cause);
       setSyncState('error');
-      setError('O arquivo não foi compartilhado. Verifique a conexão e tente novamente.');
+      setError('Arquivo não sincronizado. Tente novamente.');
     } finally {
       setScreenReady(true);
     }
@@ -153,7 +153,7 @@ export function ExpedicaoPanel() {
     } catch (cause) {
       console.error('[Expedição] falha ao zerar:', cause);
       setSyncState('error');
-      setError('Não foi possível zerar para todos. O estado compartilhado foi mantido.');
+      setError('Não foi possível zerar. Tente novamente.');
     }
   };
 
@@ -259,19 +259,13 @@ export function ExpedicaoPanel() {
         </div>
       </section>
 
-      <div className="flex flex-wrap items-center justify-between gap-2 border border-slate-300 bg-white px-3 py-2 text-xs font-bold">
-        <span className="flex items-center gap-2 text-slate-600">{store.ultimaImportacao ? <><Clock className="h-4 w-4 text-blue-700" />{store.ultimaImportacao.arquivo} • {formatDateTime(store.ultimaImportacao.registradoEm)}</> : 'Aguardando primeira importação'}</span>
-        <span className={`inline-flex items-center gap-1.5 font-black ${syncState === 'error' ? 'text-red-700' : syncState === 'synced' ? 'text-emerald-700' : 'text-blue-700'}`}>
-          {syncState === 'error' ? <WifiOff className="h-4 w-4" /> : syncState === 'synced' ? <Wifi className="h-4 w-4" /> : <LoaderCircle className="h-4 w-4 animate-spin" />}
-          {syncState === 'error' ? 'SEM SINCRONIZAÇÃO' : syncState === 'synced' ? 'TEMPO REAL ATIVO' : 'SINCRONIZANDO'}
-        </span>
-      </div>
+      {store.ultimaImportacao && <div className="flex items-center gap-2 border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-600"><Clock className="h-4 w-4 text-blue-700" />{store.ultimaImportacao.arquivo} • {formatDateTime(store.ultimaImportacao.registradoEm)}</div>}
       {error && <div className="border border-amber-300 bg-white px-3 py-2 text-xs font-bold text-amber-900">{error}</div>}
 
       {tab === 'aduana' ? (
         <section className="border border-slate-300 bg-white p-3 shadow-sm">
           <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
-            <div><h2 className="text-lg font-black">Aduana — 20 vagas</h2><p className="text-xs text-slate-500">Marque cada ID encontrado. A vaga fica cinza quando o check list estiver completo.</p></div>
+            <h2 className="text-lg font-black">Aduana — 20 vagas</h2>
             {unconfirmedAduana > 0 && <span className="border border-amber-300 bg-amber-50 px-3 py-1.5 text-[10px] font-black text-amber-800">{unconfirmedAduana} localização(ões) não confirmada(s)</span>}
           </div>
 
@@ -313,7 +307,7 @@ export function ExpedicaoPanel() {
         </section>
       ) : (
         <section className="border border-slate-300 bg-white p-3 shadow-sm">
-          <div className="mb-3"><h2 className="text-lg font-black">Auditoria — rotas encontradas</h2><p className="text-xs text-slate-500">A rota da Auditoria localiza a vaga; o ID no Despacho informa onde o pacote deveria estar.</p></div>
+          <h2 className="mb-3 text-lg font-black">Auditoria — rotas encontradas</h2>
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
             {auditGroups.slice(0, 100).map(([group, rows]) => <div key={group} className="border border-slate-300 p-3"><div className="flex items-center gap-2 font-black"><MapPin className="h-4 w-4 text-blue-700" />{group}</div><div className="mt-2 text-xs text-slate-600">{rows.length} IDs • {rows.filter(row => row.erroAtrelamentoGaiola).length} atrelamento(s)</div></div>)}
           </div>
