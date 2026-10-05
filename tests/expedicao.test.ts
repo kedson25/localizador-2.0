@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { enrichExpedicao, getChanges, parseBaseDespacho, parseExpedicaoRows } from '../src/lib/expedicao';
+import { enrichExpedicao, getChanges, getExpedicaoDockChanges, parseBaseDespacho, parseExpedicaoRows } from '../src/lib/expedicao';
 
 describe('Expedição', () => {
   it('completa rota, doca e placa usando a base despacho', () => {
@@ -9,7 +9,7 @@ describe('Expedição', () => {
     expect(rows[0]).toMatchObject({ rotaOtimizada: 'VJ11_AM1', doca: '1', onda: 'Onda 4', placa: 'SDQ3J67', classificacao: 'A mais' });
   });
 
-  it('prioriza o ID do pacote para achar o destino correto de um A mais', () => {
+  it('usa a placa para o destino da Aduana e a rota para o local encontrado', () => {
     const base = parseBaseDespacho([
       'Shipment ID,Onda,Rota otimizada,Rota original,Doca,Placa',
       '47774449934,Onda 4,VJ11_AM1,AM1_113,1,SDQ3J67',
@@ -22,12 +22,12 @@ describe('Expedição', () => {
     const rows = enrichExpedicao({ base, aduana, auditoria: [] });
     expect(rows[0]).toMatchObject({
       pacote: '47774449934',
-      rotaOtimizada: 'VJ11_AM1',
-      doca: '1',
-      onda: 'Onda 4',
-      placa: 'SDQ3J67',
+      rotaOtimizada: 'B2_AM1',
+      doca: '9',
+      onda: 'Onda 5',
+      placa: 'ABC1D23',
       encontradoDoca: '9',
-      destinoDoca: '1',
+      destinoDoca: '9',
       classificacao: 'A mais',
     });
   });
@@ -51,6 +51,24 @@ describe('Expedição', () => {
       destinoDoca: '6',
       vagaOperacional: '8',
     });
+  });
+
+  it('separa faltantes por local informado sem juntar a doca de destino', () => {
+    const base = parseBaseDespacho('Shipment ID,Onda,Rota otimizada,Doca,Placa\n1,Onda 1,R1,1,DEST1\n2,Onda 2,R2,2,FOUND2');
+    const aduana = parseExpedicaoRows('Shipment ID,ID da rota,Placa,Estado\n1,R2,DEST1,Faltante\n2,R1,FOUND2,Faltante', 'aduana');
+    const rows = enrichExpedicao({ base, aduana, auditoria: [] });
+    expect(rows[0]).toMatchObject({ doca: '2', vagaOperacional: '2', encontradoDoca: '2', destinoDoca: '1', rotaOtimizada: 'R2', onda: 'Onda 2', placa: 'DEST1' });
+    expect(rows[1]).toMatchObject({ doca: '1', vagaOperacional: '1', encontradoDoca: '1', destinoDoca: '2' });
+    expect(getExpedicaoDockChanges([], rows, 'aduana').map(row => [row.pacote, row.doca])).toEqual([['1', '2'], ['2', '1']]);
+  });
+
+  it('não atribui faltante sem local confirmado à doca de destino', () => {
+    const base = parseBaseDespacho('Shipment ID,Onda,Rota otimizada,Doca,Placa\n1,Onda 1,R1,1,DEST1');
+    const aduana = parseExpedicaoRows('Shipment ID,Placa,Estado\n1,DEST1,Faltante', 'aduana');
+    const rows = enrichExpedicao({ base, aduana, auditoria: [] });
+    expect(rows[0]).toMatchObject({ doca: '', vagaOperacional: '', encontradoDoca: '', destinoDoca: '1', localizacaoConfirmada: false, placa: 'DEST1', onda: '', rotaOtimizada: '' });
+    expect(getExpedicaoDockChanges([], rows, 'aduana')).toEqual([]);
+    expect(getExpedicaoDockChanges([], [{ ...rows[0], doca: '1' }], 'aduana')).toEqual([]);
   });
 
   it('usa o Estado da Aduana como classificação oficial', () => {

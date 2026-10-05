@@ -435,8 +435,8 @@ export function getExpedicaoDockChanges(previous: EnrichedExpedicaoRow[], next: 
   const changes: ExpedicaoDocaChange[] = [];
   after.forEach(row => {
     const old = before.get(rowKey(row));
-    const rowDoca = row.vagaOperacional || row.doca;
-    const oldDoca = old ? (old.vagaOperacional || old.doca) : '';
+    const rowDoca = row.vagaOperacional;
+    const oldDoca = old?.vagaOperacional || '';
     if (!old) {
       if (!rowDoca) return;
       changes.push({ id: makeChangeId('novo-erro', registradoEm, `${row.pacote}-${rowDoca}`), tipo: 'novo_erro', fonte, doca: rowDoca, pacote: row.pacote, placa: row.placa, classificacao: row.classificacao, mensagem: `Novo ${row.classificacao}: ${row.pacote}`, registradoEm });
@@ -452,7 +452,7 @@ export function getExpedicaoDockChanges(previous: EnrichedExpedicaoRow[], next: 
     }
   });
   before.forEach(row => {
-    const rowDoca = row.vagaOperacional || row.doca;
+    const rowDoca = row.vagaOperacional;
     if (after.has(rowKey(row)) || !rowDoca) return;
     changes.push({ id: makeChangeId('erro-removido', registradoEm, `${row.pacote}-${rowDoca}`), tipo: 'erro_removido', fonte, doca: rowDoca, pacote: row.pacote, placaAnterior: row.placa, classificacaoAnterior: row.classificacao, mensagem: `${row.classificacao} removido: ${row.pacote}`, registradoEm });
   });
