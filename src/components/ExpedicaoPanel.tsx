@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
-import { CheckCircle2, FileText, Search, Trash2, Trophy, UploadCloud, X } from 'lucide-react';
+import { CheckCircle2, FileText, Search, Trash2, UploadCloud, X } from 'lucide-react';
 import { ExpedicaoSkeleton } from './ExpedicaoSkeleton';
 import { getLocalValue, setLocalValue } from '../lib/localPersistence';
 import {
@@ -22,7 +22,7 @@ import {
 } from '../lib/expedicao';
 
 const STORAGE_KEY = 'expedicao-daily-v1';
-type ViewTab = 'aduana' | 'ranking' | 'auditoria';
+type ViewTab = 'aduana' | 'auditoria';
 type TipoFilter = 'todos' | 'A mais' | 'Faltante';
 type ListaFilter = 'todos' | 'em-lista' | 'fora-lista' | 'encontrados' | 'pendentes';
 type SyncState = 'connecting' | 'syncing' | 'synced' | 'error';
@@ -80,22 +80,6 @@ function occurrenceLabel(item: TodayListOccurrence) {
   return `${group} • bipado por ${user}`;
 }
 
-function auditDateKey(value?: string) {
-  const text = String(value || '').trim();
-  const match = text.match(/^(\d{1,2}\/\d{1,2}\/\d{4})/);
-  if (match) return match[1].split('/').map(part => part.padStart(2, '0')).join('/');
-  const timestamp = Date.parse(text);
-  if (Number.isNaN(timestamp)) return '';
-  return new Date(timestamp).toLocaleDateString('pt-BR');
-}
-
-function normalizeAuditStatus(value?: string) {
-  return String(value || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .trim()
-    .toLowerCase();
-}
 
 export function ExpedicaoPanel() {
   const [store, setStore] = useState<ExpedicaoStore>(empty);
@@ -314,90 +298,6 @@ export function ExpedicaoPanel() {
     return [...stats.values()].sort((a, b) => b.total - a.total || a.rua.localeCompare(b.rua, 'pt-BR'));
   }, [auditoriaRows, store.localizados]);
 
-  const rankingAuditDate = useMemo(() => {
-    const dates = store.aduana
-      .map(row => auditDateKey(row.dataRegistro))
-      .filter(Boolean);
-    if (!dates.length) return '';
-
-    return dates.sort((a, b) => {
-      const [da, ma, ya] = a.split('/').map(Number);
-      const [db, mb, yb] = b.split('/').map(Number);
-      return new Date(yb, mb - 1, db).getTime() - new Date(ya, ma - 1, da).getTime();
-    })[0];
-  }, [store.aduana]);
-
-  const auditorRanking = useMemo(() => {
-    const stats = new Map<string, {
-      auditor: string;
-      corretos: Set<string>;
-      amais: Set<string>;
-    }>();
-
-    store.aduana.forEach(row => {
-      if (rankingAuditDate && auditDateKey(row.dataRegistro) !== rankingAuditDate) return;
-
-      const status = normalizeAuditStatus(row.estado);
-      if (status !== 'correto' && status !== 'a mais' && status !== 'amais') return;
-
-      const auditor = String(row.detalhe || row.raw?.['Rep auditoria'] || row.raw?.['Rep Auditoria'] || 'Não informado').trim() || 'Não informado';
-      const current = stats.get(auditor) || {
-        auditor,
-        corretos: new Set<string>(),
-        amais: new Set<string>(),
-      };
-
-      if (status === 'correto') current.corretos.add(row.pacote);
-      if (status === 'a mais' || status === 'amais') current.amais.add(row.pacote);
-      stats.set(auditor, current);
-    });
-
-    return [...stats.values()]
-      .map(item => ({
-        auditor: item.auditor,
-        auditados: item.corretos.size,
-        encontrados: item.amais.size,
-        total: item.corretos.size + item.amais.size,
-      }))
-      .sort((a, b) => b.total - a.total || b.auditados - a.auditados || a.auditor.localeCompare(b.auditor, 'pt-BR'));
-  }, [rankingAuditDate, store.aduana]);
-
-  const rankingTotalAuditados = auditorRanking.reduce((total, item) => total + item.auditados, 0);
-  const rankingTotalEncontrados = auditorRanking.reduce((total, item) => total + item.encontrados, 0);
-  const rankingMaxAuditor = Math.max(1, ...auditorRanking.map(item => item.total));
-
-  const dockRanking = useMemo(() => {
-    const byDock = new Map<string, { doca: string; rotas: Set<string>; pacotes: Set<string> }>();
-
-    store.aduana.forEach(row => {
-      const doca = String(row.docaInformada || '').trim();
-      if (!doca) return;
-
-      const current = byDock.get(doca) || {
-        doca,
-        rotas: new Set<string>(),
-        pacotes: new Set<string>(),
-      };
-
-      const rota = routeLabel(row.rotaInformada).toUpperCase();
-      if (rota) current.rotas.add(rota);
-      if (row.pacote) current.pacotes.add(row.pacote);
-      byDock.set(doca, current);
-    });
-
-    return [...byDock.values()]
-      .map(item => ({
-        doca: item.doca,
-        rotas: [...item.rotas].sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true })),
-        totalRotas: item.rotas.size,
-        totalPacotes: item.pacotes.size,
-      }))
-      .sort((a, b) => b.totalRotas - a.totalRotas || Number(a.doca) - Number(b.doca) || a.doca.localeCompare(b.doca));
-  }, [store.aduana]);
-
-  const rankingMaxRotas = Math.max(1, ...dockRanking.map(item => item.totalRotas));
-  const rankingTotalRotas = dockRanking.reduce((total, item) => total + item.totalRotas, 0);
-
   const heatmap = useMemo(() => Array.from({ length: 20 }, (_, index) => {
     const doca = String(index + 1);
     const rows = aduanaRows.filter(row => row.vagaOperacional === doca);
@@ -511,20 +411,6 @@ export function ExpedicaoPanel() {
             <button
               type="button"
               onClick={() => {
-                setTab('ranking');
-                setSelectedDoca(null);
-                setSelectedStreet(null);
-                setQuery('');
-                setFilter('todos');
-                setListaFilter('todos');
-              }}
-              className={`px-4 py-2 text-sm font-black ${tab === 'ranking' ? 'bg-slate-900 text-white' : 'border border-slate-300 bg-white'}`}
-            >
-              <Trophy className="mr-1.5 inline h-4 w-4" />Ranking
-            </button>
-            <button
-              type="button"
-              onClick={() => {
                 setTab('auditoria');
                 setSelectedDoca(null);
                 setSelectedStreet(null);
@@ -540,7 +426,7 @@ export function ExpedicaoPanel() {
 
           <div className="flex flex-wrap gap-2">
             {store.base.length === 0 && upload('Despacho', baseInput)}
-            {(tab === 'aduana' || tab === 'ranking') && upload('Aduana', aduanaInput)}
+            {tab === 'aduana' && upload('Aduana', aduanaInput)}
             {tab === 'auditoria' && upload('Auditoria', auditInput)}
             <button
               type="button"
@@ -572,7 +458,7 @@ export function ExpedicaoPanel() {
               {unconfirmedAduana > 0 && <span className="border border-amber-300 bg-amber-50 px-3 py-1.5 text-amber-800">SEM VAGA: {unconfirmedAduana}</span>}
             </div>
 
-            <div className={selectedDoca ? 'grid gap-3 xl:grid-cols-[minmax(0,1fr)_390px] xl:items-start' : 'block'}>
+            <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_390px] xl:items-start">
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-5">
                 {heatmap.map(item => (
                   <button
@@ -603,17 +489,14 @@ export function ExpedicaoPanel() {
                 ))}
               </div>
 
-              {selectedDoca && <aside className="h-[610px] overflow-y-auto border border-slate-300 bg-slate-50 xl:sticky xl:top-20">
+              <aside className="h-[610px] overflow-y-auto border border-slate-300 bg-slate-50 xl:sticky xl:top-20">
                 <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-300 bg-white px-3 py-2.5">
-                  <h3 className="font-black text-slate-950">{`VAGA ${selectedDoca}`}</h3>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-black text-slate-500">{selectedDockRows.length} itens</span>
-                    <button type="button" onClick={() => setSelectedDoca(null)} className="flex h-7 w-7 items-center justify-center border border-slate-300 bg-white hover:bg-slate-100" title="Recolher">
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
+                  <h3 className="font-black text-slate-950">{selectedDoca ? `VAGA ${selectedDoca}` : 'IDs da vaga'}</h3>
+                  <span className="text-[10px] font-black text-slate-500">{selectedDoca ? `${selectedDockRows.length} itens` : 'selecione uma vaga'}</span>
                 </div>
-                {selectedDockRows.length ? (
+                {!selectedDoca ? (
+                  <p className="px-4 py-10 text-center text-sm text-slate-500">Selecione uma vaga para visualizar os IDs.</p>
+                ) : selectedDockRows.length ? (
                   <div className="divide-y divide-slate-200">
                     {selectedDockRows.map(row => {
                       const checked = Boolean(store.localizados?.[row.pacote]);
@@ -636,7 +519,7 @@ export function ExpedicaoPanel() {
                 ) : (
                   <p className="px-4 py-10 text-center text-sm text-slate-500">Nenhum pacote nesta vaga.</p>
                 )}
-              </aside>}
+              </aside>
             </div>
           </section>
 
@@ -694,141 +577,7 @@ export function ExpedicaoPanel() {
             </div>
           </section>
         </>
-      ) : tab === 'ranking' ? (
-        <div className="space-y-3">
-          <section className="border border-slate-300 bg-white p-4 shadow-sm">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Monitoramento diário</div>
-                <h2 className="mt-1 text-xl font-black text-slate-950">Ranking da Aduana</h2>
-                <p className="mt-1 text-xs text-slate-500">{rankingAuditDate ? `Dia ${rankingAuditDate} • Correto = auditado • A mais = encontrado` : 'Correto = auditado • A mais = encontrado'}</p>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="border border-slate-300 bg-slate-50 px-4 py-3 text-right">
-                  <div className="text-[9px] font-black uppercase text-slate-400">Auditados</div>
-                  <div className="text-2xl font-black text-slate-950">{rankingTotalAuditados}</div>
-                </div>
-                <div className="border border-slate-300 bg-slate-900 px-4 py-3 text-right text-white">
-                  <div className="text-[9px] font-black uppercase text-slate-300">Encontrados A+</div>
-                  <div className="text-2xl font-black">{rankingTotalEncontrados}</div>
-                </div>
-              </div>
-            </div>
-          </section>
 
-          {auditorRanking.length > 0 && (
-            <section className="overflow-hidden border border-slate-300 bg-white shadow-sm">
-              <div className="border-b border-slate-200 px-4 py-3">
-                <div className="text-xs font-black uppercase text-slate-500">Quantidade auditada por Rep auditoria</div>
-              </div>
-              <div className="divide-y divide-slate-200">
-                {auditorRanking.map((item, index) => (
-                  <div key={item.auditor} className="p-4">
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center border border-slate-300 bg-slate-50 text-sm font-black text-slate-700">#{index + 1}</div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-end justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="truncate text-sm font-black text-slate-950">{item.auditor}</div>
-                            <div className="mt-1 flex flex-wrap gap-2 text-[10px] font-black">
-                              <span className="border border-emerald-200 bg-emerald-50 px-2 py-1 text-emerald-700">CORRETO {item.auditados}</span>
-                              <span className="border border-blue-200 bg-blue-50 px-2 py-1 text-blue-700">A MAIS {item.encontrados}</span>
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <div className="text-2xl font-black text-slate-950">{item.total}</div>
-                            <div className="text-[9px] font-black uppercase text-slate-400">total tratado</div>
-                          </div>
-                        </div>
-                        <div className="mt-3 h-2 overflow-hidden bg-slate-200">
-                          <div className="h-full bg-slate-900" style={{ width: `${Math.round((item.total / rankingMaxAuditor) * 100)}%` }} />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
-
-          <section className="border border-slate-300 bg-white px-4 py-3 shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <div className="text-xs font-black uppercase text-slate-500">Rotas planejadas por vaga</div>
-                <div className="mt-1 text-[10px] text-slate-400">Rotas únicas identificadas pela doca/vaga da Aduana.</div>
-              </div>
-              <div className="flex gap-2 text-right">
-                <div className="border border-slate-300 bg-slate-50 px-3 py-2">
-                  <div className="text-[8px] font-black uppercase text-slate-400">Vagas</div>
-                  <div className="text-lg font-black text-slate-950">{dockRanking.length}</div>
-                </div>
-                <div className="border border-slate-300 bg-slate-50 px-3 py-2">
-                  <div className="text-[8px] font-black uppercase text-slate-400">Rotas</div>
-                  <div className="text-lg font-black text-slate-950">{rankingTotalRotas}</div>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          {dockRanking.length ? (
-            <section className="overflow-hidden border border-slate-300 bg-white shadow-sm">
-              <div className="grid gap-0 lg:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.8fr)]">
-                <div className="divide-y divide-slate-200">
-                  {dockRanking.map((item, index) => (
-                    <div key={item.doca} className="p-4">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center border border-slate-300 bg-slate-50 text-sm font-black text-slate-700">#{index + 1}</div>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-end justify-between gap-2">
-                            <div>
-                              <div className="text-lg font-black text-slate-950">VAGA {item.doca}</div>
-                              <div className="text-[10px] font-bold uppercase text-slate-400">{item.totalPacotes} pacote(s) no CSV</div>
-                            </div>
-                            <div className="text-right">
-                              <div className="text-2xl font-black text-slate-950">{item.totalRotas}</div>
-                              <div className="text-[9px] font-black uppercase text-slate-400">rotas planejadas</div>
-                            </div>
-                          </div>
-                          <div className="mt-3 h-2 overflow-hidden bg-slate-200">
-                            <div className="h-full bg-slate-900" style={{ width: `${Math.round((item.totalRotas / rankingMaxRotas) * 100)}%` }} />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="border-t border-slate-300 bg-slate-50 p-4 lg:border-l lg:border-t-0">
-                  <div className="text-xs font-black uppercase text-slate-500">Rotas por vaga</div>
-                  <div className="mt-3 max-h-[620px] space-y-2 overflow-y-auto">
-                    {dockRanking.map(item => (
-                      <details key={`rotas-${item.doca}`} className="border border-slate-300 bg-white">
-                        <summary className="cursor-pointer px-3 py-2.5 text-xs font-black text-slate-800">
-                          VAGA {item.doca} <span className="ml-1 text-slate-400">({item.totalRotas})</span>
-                        </summary>
-                        <div className="border-t border-slate-200 px-3 py-2">
-                          {item.rotas.length ? (
-                            <div className="flex flex-wrap gap-1.5">
-                              {item.rotas.map(rota => <span key={rota} className="border border-slate-200 bg-slate-50 px-2 py-1 font-mono text-[10px] font-bold text-slate-700">{rota}</span>)}
-                            </div>
-                          ) : (
-                            <span className="text-[10px] text-slate-400">Sem rota identificada.</span>
-                          )}
-                        </div>
-                      </details>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </section>
-          ) : (
-            <section className="border border-dashed border-slate-300 bg-white px-4 py-16 text-center shadow-sm">
-              <Trophy className="mx-auto h-8 w-8 text-slate-300" />
-              <div className="mt-3 text-sm font-black text-slate-700">Nenhuma doca encontrada no CSV da Aduana.</div>
-              <p className="mt-1 text-xs text-slate-500">Importe um CSV com coluna Doca, Dock, Vaga ou Vaga operacional.</p>
-            </section>
-          )}
-        </div>
       ) : (
         <div className="space-y-3">
           <section className="border border-slate-300 bg-white p-3 shadow-sm">
