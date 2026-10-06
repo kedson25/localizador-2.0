@@ -9,6 +9,7 @@ import { CorrelacaoIds } from './components/CorrelacaoIds';
 import { IdRemover } from './components/IdRemover';
 import { WhatsappReportEnhanced } from './components/WhatsappReportEnhanced';
 import { CsvUploader } from './components/CsvUploader';
+import { DynamicCsvPanel, SearchSession } from './components/DynamicCsvPanel';
 import { StatsSummary } from './components/StatsSummary';
 import { ControleRefugoClean } from './components/ControleRefugoClean';
 import { ListasColetaEnhanced } from './components/ListasColetaEnhanced';
@@ -28,6 +29,7 @@ export default function App() {
   const navigate = useNavigate();
 
   const [rawText, setRawText] = useState<string>('');
+  const [csvSession, setCsvSession] = useState<SearchSession>({ source: null, searchColumn: '', returnColumns: [] });
   const [rows, setRows] = useState<CsvRow[]>([]);
   const [groups, setGroups] = useState<GroupSummary[]>([]);
   const [headers, setHeaders] = useState<string[]>([]);
@@ -104,6 +106,7 @@ export default function App() {
   };
 
   const handleClear = async () => {
+    setCsvSession({ source: null, searchColumn: '', returnColumns: [] });
     setRawText('');
     setRows([]);
     setGroups([]);
@@ -189,6 +192,7 @@ export default function App() {
                   path="/consulta"
                   element={insideDashboard(
                     <div className="space-y-4">
+                      <DynamicCsvPanel session={csvSession} onSessionChange={setCsvSession} />
                       <StatsSummary totalRows={rows.length} groups={groups} />
                       <IdLookupEnhanced rows={rows} onNavigateToUpload={() => navigate('/upload')} />
                     </div>
@@ -208,7 +212,7 @@ export default function App() {
 
               <Route
                 path="/refugo"
-                element={dedicatedOperation(<ControleRefugoClean currentUser={currentUser} />)}
+                element={dedicatedOperation(<><DynamicCsvPanel mode="cross" /><ControleRefugoClean currentUser={currentUser} /></>)}
               />
 
               {(currentUser?.isAdmin || currentUser?.allowedGroups?.includes('remover')) && (
@@ -242,13 +246,13 @@ export default function App() {
                 <Route
                   path="/upload"
                   element={insideDashboard(
-                    <CsvUploader
+                    <div className="space-y-4"><DynamicCsvPanel session={csvSession} onSessionChange={setCsvSession} /><CsvUploader
                       onLoadText={(text) => {
                         handleParseAndSave(text);
                         navigate('/');
                       }}
                       currentTotalRows={rows.length}
-                    />
+                    /></div>
                   )}
                 />
               )}
