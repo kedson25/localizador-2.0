@@ -45,8 +45,6 @@ const QUICK_LINKS: QuickLink[] = [
   { label: 'Relatórios', path: '/admin', keywords: 'relatorios admin metricas', adminOnly: true },
 ];
 
-const SIDEBAR_STORAGE_KEY = 'ecooy_sidebar_collapsed';
-
 export const DashboardShell: React.FC<DashboardShellProps> = ({
   currentUser,
   title,
@@ -57,14 +55,7 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
   const location = useLocation();
   const [search, setSearch] = useState('');
   const [searchFocused, setSearchFocused] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
-    try {
-      const saved = localStorage.getItem(SIDEBAR_STORAGE_KEY);
-      return saved === null ? true : saved === '1';
-    } catch {
-      return true;
-    }
-  });
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
 
   const isAdminArea = location.pathname.startsWith('/admin');
   const isSettings = location.pathname.startsWith('/configuracoes');
@@ -88,13 +79,7 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
   };
 
   const toggleSidebar = () => {
-    setSidebarCollapsed(prev => {
-      const next = !prev;
-      try {
-        localStorage.setItem(SIDEBAR_STORAGE_KEY, next ? '1' : '0');
-      } catch {}
-      return next;
-    });
+    setSidebarCollapsed(prev => !prev);
   };
 
   const navClass = (active: boolean) =>
