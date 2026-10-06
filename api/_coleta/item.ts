@@ -1,13 +1,19 @@
 import { FieldValue } from 'firebase-admin/firestore';
 import { adminDb, isFirebaseAdminConfigured } from '../_lib/firebase-admin';
 import { updateItemRest, deleteItemRest } from '../_lib/firestore-rest';
-import { requireAuth } from '../_lib/auth';
+import { AuthError, requireGroup } from '../_lib/auth';
 import { UpdateItemSchema, DeleteItemSchema } from '../_lib/validation';
 import { sendSuccess, sendError } from '../_lib/response';
 import { logApi } from '../_lib/logger';
 
 export default async function handler(req: any, res: any) {
   const startTime = Date.now();
+  try {
+    await requireGroup(req, 'listas');
+  } catch (error: any) {
+    const status = error instanceof AuthError ? error.statusCode : 401;
+    return sendError(res, status, error?.code || 'UNAUTHORIZED', error?.message || 'Não autorizado.');
+  }
 
   if (req.method === 'PATCH') {
     try {

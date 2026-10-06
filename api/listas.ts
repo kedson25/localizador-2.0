@@ -2,8 +2,11 @@ import listasIndexHandler from './_listas/index';
 import listaIdHandler from './_listas/[id]';
 import reconcileHandler from './_listas/reconcile';
 import { sendError } from './_lib/response';
+import { authorizeAdmin, authorizeGroup } from './_lib/http-auth';
 
 export default async function handler(req: any, res: any) {
+  if (!(await authorizeGroup(req, res, 'listas'))) return;
+  if (req.method === 'DELETE' && !(await authorizeAdmin(req, res))) return;
   const { action, id } = req.query || {};
   if (!action || action === 'index') {
     return listasIndexHandler(req, res);

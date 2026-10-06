@@ -1,4 +1,5 @@
 import { ColetaItem, ColetaLista } from '../types';
+import { auth as firebaseAuth } from './firebase-core';
 
 export interface BipPayload {
   listaId: string;
@@ -43,24 +44,19 @@ export interface BatchSummary {
   failed: number;
 }
 
-// Obtém o token de autenticação atual do localStorage (ou Firebase Auth)
-function getAuthToken(): string | null {
-  try {
-    const savedUser = localStorage.getItem('app_current_user');
-    if (savedUser) {
-      const parsed = JSON.parse(savedUser);
-      if (parsed.token) return parsed.token;
-      if (parsed.id) return `user_${parsed.id}`;
-    }
-  } catch (_) {}
-  return null;
+// Obtém somente um ID token da sessão Firebase atual.
+async function getAuthToken(): Promise<string | null> {
+  await firebaseAuth.authStateReady();
+  return firebaseAuth.currentUser?.getIdToken() || null;
 }
 
 async function apiRequest<T>(
   endpoint: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  publicEndpoint = false
 ): Promise<T> {
-  const token = getAuthToken();
+  const token = publicEndpoint ? null : await getAuthToken();
+  if (!publicEndpoint && !token) throw new Error('Sessão expirada. Entre novamente.');
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(options.headers as Record<string, string> || {}),
@@ -240,7 +236,7 @@ export async function apiAuthLogin(emailOrUsername: string, password: string): P
   return apiRequest<any>('/api/auth?action=login', {
     method: 'POST',
     body: JSON.stringify({ emailOrUsername, password }),
-  });
+  }, true);
 }
 
 /**
@@ -250,7 +246,7 @@ export async function apiAuthSignup(username: string, email: string, password: s
   return apiRequest<any>('/api/auth?action=signup', {
     method: 'POST',
     body: JSON.stringify({ username, email, password }),
-  });
+  }, true);
 }
 
 /**

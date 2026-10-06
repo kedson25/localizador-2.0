@@ -58,8 +58,8 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
       return;
     }
     
-    if (password.length < 4) {
-      setErrorMsg('Senha deve ter pelo menos 4 caracteres.');
+    if (password.length < 8) {
+      setErrorMsg('Senha deve ter pelo menos 8 caracteres.');
       return;
     }
 

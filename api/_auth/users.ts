@@ -1,22 +1,27 @@
 import { FieldValue } from 'firebase-admin/firestore';
 import { adminDb, isFirebaseAdminConfigured } from '../_lib/firebase-admin';
-import { requireAuth } from '../_lib/auth';
+import { AuthError, requireAdmin } from '../_lib/auth';
 import { sendSuccess, sendError } from '../_lib/response';
 import { logApi } from '../_lib/logger';
 
 export default async function handler(req: any, res: any) {
-  // Se a service account do backend não estiver presente, delegar ao Firestore client-side
   if (!isFirebaseAdminConfigured()) {
     return sendError(
       res,
       503,
       'ADMIN_NOT_CONFIGURED',
-      'Firebase Admin Service Account não configurada no servidor. Usando operações diretas via Firebase Client.',
-      { fallbackRequired: true }
+      'Administração de usuários indisponível no servidor.'
     );
   }
 
-  const { db } = adminDb;
+  let currentUser;
+  try {
+    currentUser = await requireAdmin(req);
+  } catch (error: any) {
+    const status = error instanceof AuthError ? error.statusCode : 401;
+    return sendError(res, status, error?.code || 'UNAUTHORIZED', error?.message || 'Não autorizado.');
+  }
+  const { auth, db } = adminDb;
 
   if (req.method === 'GET') {
     try {
@@ -41,17 +46,18 @@ export default async function handler(req: any, res: any) {
 
   if (req.method === 'PATCH') {
     try {
-      let currentUser;
-      try {
-        currentUser = await requireAuth(req);
-      } catch (_) {}
-
       const { userId, updates } = req.body || {};
-      if (!userId || !updates) {
+      if (typeof userId !== 'string' || !userId || userId.includes('/') || !updates || typeof updates !== 'object' || Array.isArray(updates)) {
         return sendError(res, 400, 'INVALID_PAYLOAD', 'userId e updates são obrigatórios');
       }
 
       const allowedKeys = ['isAdmin', 'isApproved', 'allowedGroups'];
+      if (!Object.keys(updates).length || Object.keys(updates).some(key => !allowedKeys.includes(key)) ||
+          (updates.isAdmin !== undefined && typeof updates.isAdmin !== 'boolean') ||
+          (updates.isApproved !== undefined && typeof updates.isApproved !== 'boolean') ||
+          (updates.allowedGroups !== undefined && (!Array.isArray(updates.allowedGroups) || updates.allowedGroups.some((group: unknown) => typeof group !== 'string')))) {
+        return sendError(res, 400, 'INVALID_UPDATES', 'Use somente permissões válidas: isAdmin, isApproved e allowedGroups.');
+      }
       const safeUpdates: Record<string, any> = {
         updatedAt: FieldValue.serverTimestamp(),
       };
@@ -61,7 +67,9 @@ export default async function handler(req: any, res: any) {
         }
       }
 
-      await db.collection('users').doc(userId).set(safeUpdates, { merge: true });
+      const target = db.collection('users').doc(userId);
+      if (!(await target.get()).exists) return sendError(res, 404, 'USER_NOT_FOUND', 'Usuário não encontrado.');
+      await target.update(safeUpdates);
 
       logApi('info', 'Usuário atualizado por admin', {
         endpoint: '/api/auth/users',
@@ -77,17 +85,18 @@ export default async function handler(req: any, res: any) {
 
   if (req.method === 'DELETE') {
     try {
-      let currentUser;
-      try {
-        currentUser = await requireAuth(req);
-      } catch (_) {}
-
       const { userId } = req.body || {};
-      if (!userId) {
+      if (typeof userId !== 'string' || !userId || userId.includes('/')) {
         return sendError(res, 400, 'INVALID_PAYLOAD', 'userId é obrigatório');
       }
 
-      await db.collection('users').doc(userId).delete();
+      const target = db.collection('users').doc(userId);
+      const snapshot = await target.get();
+      if (!snapshot.exists) return sendError(res, 404, 'USER_NOT_FOUND', 'Usuário não encontrado.');
+      const authUid = snapshot.data()?.authUid || userId;
+      try { await auth.deleteUser(authUid); }
+      catch (error: any) { if (error?.code !== 'auth/user-not-found') throw error; }
+      await target.delete();
 
       logApi('info', 'Usuário excluído por admin', {
         endpoint: '/api/auth/users',

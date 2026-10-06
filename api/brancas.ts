@@ -5,6 +5,7 @@ import {
   buildLiveBrancasReport,
 } from './_lib/brancas-live';
 import { requireBrancasAuth } from './_lib/brancas-auth';
+import { authorizeAdmin } from './_lib/http-auth';
 
 function sendJson(res: any, status: number, payload: any) {
   res.setHeader?.('Cache-Control', 'no-store, no-cache, must-revalidate');
@@ -54,6 +55,7 @@ export default async function handler(req: any, res: any) {
     }
 
     if (urlPath.endsWith('/reset') || action === 'reset') {
+      if (!(await authorizeAdmin(req, res))) return;
       return sendJson(res, 200, {
         ok: true,
         data: {

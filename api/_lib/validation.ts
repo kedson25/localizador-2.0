@@ -3,11 +3,11 @@ import { z } from 'zod';
 export const BipRequestSchema = z.object({
   listaId: z.string().min(1, 'listaId é obrigatório'),
   codigo: z.string().min(1, 'codigo é obrigatório'),
-  saida: z.string().optional(),
-  motivo: z.string().optional(),
-  rota: z.string().optional(),
-  responsavel: z.string().optional(),
-  grupoId: z.string().optional(),
+  saida: z.string().trim().max(120).optional(),
+  motivo: z.string().trim().max(200).optional(),
+  rota: z.string().trim().max(120).optional(),
+  responsavel: z.string().trim().max(120).optional(),
+  grupoId: z.string().trim().max(160).optional(),
 });
 
 export type BipRequest = z.infer<typeof BipRequestSchema>;
@@ -47,7 +47,7 @@ export const BatchItemSchema = z.object({
 
 export const BatchImportSchema = z.object({
   listaId: z.string().min(1, 'listaId é obrigatório'),
-  items: z.array(BatchItemSchema).min(1, 'Lote deve conter pelo menos 1 item'),
+  items: z.array(BatchItemSchema).min(1, 'Lote deve conter pelo menos 1 item').max(500),
   overwrite: z.boolean().optional().default(false),
 });
 
@@ -88,12 +88,12 @@ export const SaveListaMetaSchema = z.object({
 });
 
 export const SignupSchema = z.object({
-  username: z.string().min(3, 'Username deve ter pelo menos 3 caracteres'),
-  email: z.string().email('E-mail inválido'),
-  password: z.string().min(4, 'Senha deve ter pelo menos 4 caracteres'),
+  username: z.string().trim().min(3, 'Username deve ter pelo menos 3 caracteres').max(60),
+  email: z.string().trim().toLowerCase().email('E-mail inválido').max(254),
+  password: z.string().min(8, 'Senha deve ter pelo menos 8 caracteres').max(128),
 });
 
 export const LoginSchema = z.object({
-  emailOrUsername: z.string().min(1, 'Email ou username obrigatório'),
-  password: z.string().min(1, 'Senha obrigatória'),
+  emailOrUsername: z.string().trim().min(1, 'Email ou username obrigatório').max(254),
+  password: z.string().min(1, 'Senha obrigatória').max(128),
 });

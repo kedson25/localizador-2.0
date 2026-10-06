@@ -9,14 +9,12 @@ export default async function handler(req: any, res: any) {
     return sendError(res, 405, 'METHOD_NOT_ALLOWED', 'Método não permitido');
   }
 
-  // Se a service account do backend não estiver presente, delegar ao Firestore client-side
   if (!isFirebaseAdminConfigured()) {
     return sendError(
       res,
       503,
       'ADMIN_NOT_CONFIGURED',
-      'Firebase Admin Service Account não configurada no servidor. Usando cadastro direto via Firebase Client.',
-      { fallbackRequired: true }
+      'Cadastro indisponível: Firebase Admin não configurado no servidor.'
     );
   }
 
@@ -53,8 +51,8 @@ export default async function handler(req: any, res: any) {
       });
       uid = userRecord.uid;
     } catch (authErr: any) {
-      // Se Firebase Auth não estiver habilitado ou em teste local, gera ID seguro
-      uid = `user_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const invalidInput = ['auth/email-already-exists', 'auth/invalid-email', 'auth/invalid-password'].includes(authErr?.code);
+      return sendError(res, invalidInput ? 400 : 503, 'AUTH_CREATE_FAILED', 'Não foi possível criar a conta no Firebase Authentication.');
     }
 
     // 3. Salvar perfil do usuário no Firestore SEM salvar a senha em texto puro!
@@ -68,7 +66,13 @@ export default async function handler(req: any, res: any) {
       createdAt: FieldValue.serverTimestamp(),
     };
 
-    await userCol.doc(uid).set(newUser);
+    try {
+      await userCol.doc(uid).create(newUser);
+    } catch (error) {
+      // Compensar apenas a conta criada nesta requisição; nunca apagar um perfil.
+      await auth.deleteUser(uid).catch(() => logApi('error', 'Conta sem perfil requer reconciliação', { uid }));
+      throw error;
+    }
 
     logApi('info', 'Novo usuário registrado', {
       endpoint: '/api/auth/signup',
@@ -88,6 +92,6 @@ export default async function handler(req: any, res: any) {
       },
     }, 201);
   } catch (err: any) {
-    return sendError(res, 500, 'SIGNUP_FAILED', 'Erro ao registrar usuário', err.message);
+    return sendError(res, 503, 'SIGNUP_FAILED', 'Não foi possível concluir o cadastro. Tente novamente.');
   }
 }

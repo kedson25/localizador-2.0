@@ -6,8 +6,11 @@ import batchHandler from './_coleta/batch';
 import statsHandler from './_coleta/stats';
 import normalizeSaidaHandler from './_coleta/normalize-saida';
 import { sendError } from './_lib/response';
+import { authorizeAdmin, authorizeGroup } from './_lib/http-auth';
 
 export default async function handler(req: any, res: any) {
+  if (!(await authorizeGroup(req, res, 'listas'))) return;
+  if (req.method === 'DELETE' && !(await authorizeAdmin(req, res))) return;
   const { action } = req.query;
   switch (action) {
     case 'bip': return bipHandler(req, res);

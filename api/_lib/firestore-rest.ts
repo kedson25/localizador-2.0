@@ -1,6 +1,19 @@
 import fs from 'fs';
 import path from 'path';
 import { cleanDigits, getDeterministicItemId, normalizeCodigo } from './id';
+import { adminDb, isFirebaseAdminConfigured } from './firebase-admin';
+import { AuthError } from './auth';
+
+// Os helpers REST internos usam credenciais do servidor, nunca uma API key pública.
+async function authenticatedFetch(url: string, options: RequestInit = {}) {
+  if (!isFirebaseAdminConfigured()) throw new AuthError('ADMIN_NOT_CONFIGURED', 'Backend indisponível.', 503);
+  const credential = adminDb.auth.app.options.credential;
+  if (!credential) throw new AuthError('ADMIN_NOT_CONFIGURED', 'Credenciais de servidor indisponíveis.', 503);
+  const access = await credential.getAccessToken();
+  const headers = new Headers(options.headers);
+  headers.set('Authorization', `Bearer ${access.access_token}`);
+  return fetch(url, { ...options, headers });
+}
 
 function getAppletConfig(): Record<string, any> | null {
   try {
@@ -24,8 +37,7 @@ export const FIREBASE_PROJECT_ID =
 
 export const FIRESTORE_DATABASE_ID =
   process.env.FIRESTORE_DATABASE_ID ||
-  appletConfig?.firestoreDatabaseId ||
-  'ai-studio-localizador20-a047a96e-6aee-4898-bd0c-4a2179a78d15';
+  (process.env.FIREBASE_PROJECT_ID ? '(default)' : appletConfig?.firestoreDatabaseId || '(default)');
 
 export const FIREBASE_API_KEY =
   process.env.FIREBASE_API_KEY ||
@@ -101,7 +113,7 @@ export async function getDocRest(docPath: string): Promise<Record<string, any> |
   try {
     const cleanPath = docPath.replace(/^\/+/, '');
     const url = `${BASE_URL}/${cleanPath}?key=${FIREBASE_API_KEY}`;
-    const res = await fetch(url);
+    const res = await authenticatedFetch(url);
     if (res.status === 404) return null;
     if (!res.ok) {
       const errText = await res.text();
@@ -137,7 +149,7 @@ export async function patchDocRest(
     fields: toFirestoreFields(fields),
   };
 
-  const res = await fetch(url, {
+  const res = await authenticatedFetch(url, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -165,7 +177,7 @@ export async function setDocRest(
 export async function deleteDocRest(docPath: string): Promise<boolean> {
   const cleanPath = docPath.replace(/^\/+/, '');
   const url = `${BASE_URL}/${cleanPath}?key=${FIREBASE_API_KEY}`;
-  const res = await fetch(url, { method: 'DELETE' });
+  const res = await authenticatedFetch(url, { method: 'DELETE' });
   return res.ok;
 }
 
@@ -181,7 +193,7 @@ export async function listDocsRest(
       url += `&pageToken=${encodeURIComponent(pageToken)}`;
     }
 
-    const res = await fetch(url);
+    const res = await authenticatedFetch(url);
     if (!res.ok) return { documents: [] };
     const data = await res.json();
 
@@ -259,7 +271,7 @@ export async function runQueryRest(
       }
     }
 
-    const res = await fetch(url, {
+    const res = await authenticatedFetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ structuredQuery }),
@@ -329,7 +341,7 @@ export async function batchCommitWritesRest(
   for (let i = 0; i < writePayloads.length; i += CHUNK_SIZE) {
     const chunk = writePayloads.slice(i, i + CHUNK_SIZE);
     try {
-      const res = await fetch(url, {
+      const res = await authenticatedFetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ writes: chunk }),

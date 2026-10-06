@@ -1,24 +1,13 @@
 import type { IncomingMessage, ServerResponse } from 'http';
 import { FieldValue } from 'firebase-admin/firestore';
 import { adminDb, isFirebaseAdminConfigured } from '../_lib/firebase-admin';
-import { getDocRest, processBipRest } from '../_lib/firestore-rest';
 import { getServerSupabase } from '../_lib/supabase';
-import { requireAuth, AuthError } from '../_lib/auth';
+import { requireGroup, AuthError } from '../_lib/auth';
 import { BipRequestSchema } from '../_lib/validation';
 import { normalizeCodigo, cleanDigits, getDeterministicItemId } from '../_lib/id';
 import { resolveCanonicalListaSaida } from '../_lib/lista-saida';
 import { sendSuccess, sendError } from '../_lib/response';
 import { logApi } from '../_lib/logger';
-
-async function resolveListaSaidaRest(listaId: string, fallback?: string): Promise<string> {
-  try {
-    const listaData = await getDocRest(`coleta_listas/${listaId}`);
-    if (listaData) return resolveCanonicalListaSaida(listaData, fallback);
-  } catch (error) {
-    console.warn('[Bip] Não foi possível ler a saída oficial da lista via REST:', error);
-  }
-  return resolveCanonicalListaSaida(null, fallback);
-}
 
 export default async function handler(req: any, res: any) {
   const startTime = Date.now();
@@ -30,16 +19,10 @@ export default async function handler(req: any, res: any) {
   try {
     let user;
     try {
-      user = await requireAuth(req);
+      user = await requireGroup(req, 'listas');
     } catch (authErr: any) {
-      const bodyUser = req.body?.responsavel || 'Operador';
-      user = {
-        uid: 'anon',
-        displayName: bodyUser,
-        isAdmin: false,
-        isApproved: true,
-        allowedGroups: ['listas'],
-      };
+      const status = authErr instanceof AuthError ? authErr.statusCode : 401;
+      return sendError(res, status, authErr?.code || 'UNAUTHORIZED', authErr?.message || 'Não autorizado.');
     }
 
     const parseResult = BipRequestSchema.safeParse(req.body);
@@ -67,16 +50,7 @@ export default async function handler(req: any, res: any) {
     let result: { item: any; isNew: boolean };
 
     if (!isFirebaseAdminConfigured()) {
-      const canonicalSaida = await resolveListaSaidaRest(listaId, saida);
-      result = await processBipRest({
-        listaId,
-        codigo: cleanCode,
-        saida: canonicalSaida,
-        motivo,
-        rota,
-        responsavel: operante,
-        grupoId,
-      });
+      return sendError(res, 503, 'ADMIN_NOT_CONFIGURED', 'Backend de coleta indisponível.');
     } else {
       try {
         const { db } = adminDb;
@@ -177,17 +151,7 @@ export default async function handler(req: any, res: any) {
         });
       } catch (adminErr: any) {
         if (adminErr.message === 'LISTA_NOT_FOUND') throw adminErr;
-        console.warn('[Bip] Falha no Admin SDK, tentando via Firestore REST:', adminErr.message);
-        const canonicalSaida = await resolveListaSaidaRest(listaId, saida);
-        result = await processBipRest({
-          listaId,
-          codigo: cleanCode,
-          saida: canonicalSaida,
-          motivo,
-          rota,
-          responsavel: operante,
-          grupoId,
-        });
+        return sendError(res, 503, 'BACKEND_UNAVAILABLE', 'Não foi possível confirmar o bip no servidor. Tente novamente.');
       }
     }
 

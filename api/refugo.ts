@@ -1,8 +1,11 @@
 import refugoScansHandler from './_refugo/scans';
 import refugoHistoricoHandler from './_refugo/historico';
 import { sendError } from './_lib/response';
+import { authorizeAdmin, authorizeGroup } from './_lib/http-auth';
 
 export default async function handler(req: any, res: any) {
+  if (!(await authorizeGroup(req, res, 'refugo'))) return;
+  if (req.method === 'DELETE' && !(await authorizeAdmin(req, res))) return;
   const { action } = req.query || {};
   switch (action) {
     case 'scans': return refugoScansHandler(req, res);

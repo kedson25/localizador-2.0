@@ -1,8 +1,32 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if true;
+    function signedIn() { return request.auth != null; }
+    function profileId() { return request.auth.token.get('profileId', request.auth.uid); }
+    function profile() { return get(/databases/$(database)/documents/users/$(profileId())).data; }
+    function linkedProfile() { return profile().get('authUid', request.auth.uid) == request.auth.uid; }
+    function approved() { return signedIn() && linkedProfile() && profile().isApproved == true; }
+    function admin() { return approved() && profile().isAdmin == true; }
+    function group(name) {
+      return approved() && (admin() || (profile().allowedGroups is list && name in profile().allowedGroups));
     }
+
+    match /users/{uid} {
+      allow read: if admin() || (signedIn() && linkedProfile() && profileId() == uid);
+      allow create: if false;
+      allow update, delete: if admin();
+    }
+
+    match /coletor/{document=**} { allow read, write: if group('upload'); }
+    match /coleta_listas/{document=**} { allow read, write: if group('listas'); }
+    match /refugo/{document=**} { allow read, write: if group('refugo'); }
+    match /refugo_scans_items/{document=**} { allow read, write: if group('refugo'); }
+    match /refugo_scans_items_zonas/{document=**} { allow read, write: if group('refugo'); }
+    match /refugo_historico_metricas/{document=**} { allow read, write: if group('refugo'); }
+    match /refugo_metricas_items/{document=**} { allow read, write: if group('refugo'); }
+    match /refugo_metricas_diarias/{document=**} { allow read, write: if group('refugo'); }
+    match /brancas/{document=**} { allow read, write: if group('brancas'); }
+
+    match /{document=**} { allow read, write: if false; }
   }
 }
