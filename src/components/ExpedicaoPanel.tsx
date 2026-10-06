@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
-import { CheckCircle2, FileText, Search, Trash2, UploadCloud, X } from 'lucide-react';
+import { CheckCircle2, Download, FileText, Search, Share2, Trash2, UploadCloud, X } from 'lucide-react';
 import { ExpedicaoSkeleton } from './ExpedicaoSkeleton';
 import { getLocalValue, setLocalValue } from '../lib/localPersistence';
 import {
@@ -81,6 +81,74 @@ function occurrenceLabel(item: TodayListOccurrence) {
 }
 
 
+async function elementToPngBlob(element: HTMLElement) {
+  const source = element;
+  const clone = source.cloneNode(true) as HTMLElement;
+
+  const copyStyles = (from: Element, to: Element) => {
+    const computed = window.getComputedStyle(from);
+    const target = to as HTMLElement;
+    for (const property of Array.from(computed)) {
+      target.style.setProperty(property, computed.getPropertyValue(property), computed.getPropertyPriority(property));
+    }
+
+    const fromChildren = Array.from(from.children);
+    const toChildren = Array.from(to.children);
+    fromChildren.forEach((child, index) => {
+      if (toChildren[index]) copyStyles(child, toChildren[index]);
+    });
+  };
+
+  copyStyles(source, clone);
+
+  const rect = source.getBoundingClientRect();
+  const width = Math.ceil(rect.width);
+  const height = Math.ceil(source.scrollHeight || rect.height);
+  clone.style.width = `${width}px`;
+  clone.style.height = 'auto';
+  clone.style.maxHeight = 'none';
+  clone.style.overflow = 'visible';
+
+  const serialized = new XMLSerializer().serializeToString(clone);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
+    <foreignObject width="100%" height="100%">
+      <div xmlns="http://www.w3.org/1999/xhtml">${serialized}</div>
+    </foreignObject>
+  </svg>`;
+
+  const svgBlob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
+  const url = URL.createObjectURL(svgBlob);
+
+  try {
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const next = new Image();
+      next.onload = () => resolve(next);
+      next.onerror = reject;
+      next.src = url;
+    });
+
+    const scale = 2;
+    const canvas = document.createElement('canvas');
+    canvas.width = width * scale;
+    canvas.height = height * scale;
+
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('Canvas indisponível');
+
+    context.scale(scale, scale);
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, width, height);
+    context.drawImage(image, 0, 0, width, height);
+
+    return await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Falha ao gerar PNG')), 'image/png', 1);
+    });
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+
 export function ExpedicaoPanel() {
   const [store, setStore] = useState<ExpedicaoStore>(empty);
   const [hydrated, setHydrated] = useState(false);
@@ -100,6 +168,7 @@ export function ExpedicaoPanel() {
   const baseInput = useRef<HTMLInputElement>(null);
   const aduanaInput = useRef<HTMLInputElement>(null);
   const auditInput = useRef<HTMLInputElement>(null);
+  const reportRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let active = true;
@@ -349,6 +418,59 @@ export function ExpedicaoPanel() {
   const auditoriaAmais = auditoriaRows.filter(row => row.classificacao === 'A mais').length;
   const auditoriaFaltantes = auditoriaRows.filter(row => row.classificacao === 'Faltante').length;
   const auditoriaOk = auditoriaRows.filter(row => Boolean(store.localizados?.[row.pacote])).length;
+  const totalAmais = aduanaAmais + auditoriaAmais;
+  const totalFaltantes = aduanaFaltantes + auditoriaFaltantes;
+  const reportGeneratedAt = new Date().toLocaleString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
+  const generateReportFile = async () => {
+    if (!reportRef.current) throw new Error('Reporte indisponível');
+    const blob = await elementToPngBlob(reportRef.current);
+    return new File([blob], `reporte-aduana-auditoria-${new Date().toISOString().slice(0, 10)}.png`, { type: 'image/png' });
+  };
+
+  const downloadReportPng = async () => {
+    try {
+      const file = await generateReportFile();
+      const url = URL.createObjectURL(file);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = file.name;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (cause) {
+      console.error('[Reporte] falha ao gerar PNG:', cause);
+      setError('Não foi possível gerar o PNG do reporte.');
+    }
+  };
+
+  const shareReport = async () => {
+    try {
+      const file = await generateReportFile();
+      if (navigator.share && (!navigator.canShare || navigator.canShare({ files: [file] }))) {
+        await navigator.share({
+          title: 'Reporte Aduana + Auditoria',
+          text: 'Resumo operacional de Aduana e Auditoria',
+          files: [file],
+        });
+        return;
+      }
+
+      const text = encodeURIComponent(
+        `Reporte Aduana + Auditoria\nAduana: ${totalEncontrados}/${aduanaRows.length} encontrados (${totalPercentual}%)\nAuditoria: ${auditoriaRows.length} registros\nA+ total: ${totalAmais}\nFaltantes: ${totalFaltantes}`,
+      );
+      window.open(`https://wa.me/?text=${text}`, '_blank', 'noopener,noreferrer');
+    } catch (cause) {
+      if ((cause as Error)?.name === 'AbortError') return;
+      console.error('[Reporte] falha ao compartilhar:', cause);
+      setError('Não foi possível compartilhar o reporte.');
+    }
+  };
 
   if (!hydrated || !remoteReady || !screenReady) return <ExpedicaoSkeleton />;
 
@@ -433,7 +555,7 @@ export function ExpedicaoPanel() {
               onClick={() => setReportOpen(true)}
               className="inline-flex h-9 items-center gap-2 bg-slate-900 px-3 text-xs font-black text-white hover:bg-slate-800"
             >
-              <FileText className="h-4 w-4" />Encerrar
+              <FileText className="h-4 w-4" />Reporte
             </button>
             <button
               type="button"
@@ -637,90 +759,137 @@ export function ExpedicaoPanel() {
       )}
 
       {reportOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-3" onMouseDown={() => setReportOpen(false)}>
-          <div className="max-h-[92vh] w-full max-w-5xl overflow-y-auto bg-white shadow-2xl" onMouseDown={event => event.stopPropagation()}>
-            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-300 bg-white px-4 py-3">
-              <h2 className="text-lg font-black text-slate-950">Relatório geral</h2>
-              <button type="button" onClick={() => setReportOpen(false)} className="flex h-8 w-8 items-center justify-center border border-slate-300 hover:bg-slate-100"><X className="h-4 w-4" /></button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-3" onMouseDown={() => setReportOpen(false)}>
+          <div className="max-h-[94vh] w-full max-w-4xl overflow-y-auto bg-slate-100 shadow-2xl" onMouseDown={event => event.stopPropagation()}>
+            <div className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-2 border-b border-slate-300 bg-white px-4 py-3">
+              <div>
+                <h2 className="text-lg font-black text-slate-950">Reporte para WhatsApp</h2>
+                <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Aduana + Auditoria • consolidado</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button type="button" onClick={downloadReportPng} className="inline-flex h-9 items-center gap-2 bg-slate-900 px-3 text-xs font-black text-white hover:bg-slate-800">
+                  <Download className="h-4 w-4" />Baixar PNG
+                </button>
+                <button type="button" onClick={shareReport} className="inline-flex h-9 items-center gap-2 border border-slate-300 bg-white px-3 text-xs font-black text-slate-700 hover:bg-slate-50">
+                  <Share2 className="h-4 w-4" />Compartilhar
+                </button>
+                <button type="button" onClick={() => setReportOpen(false)} className="flex h-9 w-9 items-center justify-center border border-slate-300 bg-white hover:bg-slate-100" title="Fechar">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
             </div>
 
-            <div className="space-y-4 p-4">
-              <section>
-                <div className="mb-2 text-xs font-black uppercase text-slate-500">Aduana</div>
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-8">
-                  {[
-                    ['Total', aduanaRows.length],
-                    ['A+', aduanaAmais],
-                    ['Faltantes', aduanaFaltantes],
-                    ['Encontrados', totalEncontrados],
-                    ['Pendentes', aduanaPendentes],
-                    ['Em lista', totalEmLista],
-                    ['Erros aloc.', errosAlocacao],
-                    ['Sem vaga', unconfirmedAduana],
-                  ].map(([label, value]) => (
-                    <div key={String(label)} className="border border-slate-300 p-3">
-                      <div className="text-[9px] font-black uppercase text-slate-400">{label}</div>
-                      <div className="mt-1 text-xl font-black text-slate-950">{value}</div>
+            <div className="overflow-x-auto p-4">
+              <div ref={reportRef} className="mx-auto w-full max-w-[760px] overflow-hidden bg-white text-slate-950 shadow-sm">
+                <div className="bg-[#FFE600] px-7 py-6">
+                  <div className="flex items-end justify-between gap-6">
+                    <div>
+                      <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-700">Controle operacional</div>
+                      <h1 className="mt-1 text-3xl font-black tracking-tight">Reporte Aduana + Auditoria</h1>
                     </div>
-                  ))}
-                </div>
-              </section>
-
-              <section>
-                <div className="mb-2 text-xs font-black uppercase text-slate-500">Vagas</div>
-                <div className="overflow-auto border border-slate-300">
-                  <table className="w-full min-w-[620px] text-xs">
-                    <thead className="bg-slate-100"><tr>{['Vaga', 'A+', 'Faltantes', 'Encontrados', '%', 'Em lista'].map(head => <th key={head} className="border-b border-r border-slate-200 px-3 py-2 text-left font-black">{head}</th>)}</tr></thead>
-                    <tbody>
-                      {heatmap.map(item => (
-                        <tr key={`relatorio-${item.doca}`}>
-                          <td className="border-b border-r border-slate-200 px-3 py-2 font-black">VAGA {item.doca}</td>
-                          <td className="border-b border-r border-slate-200 px-3 py-2">{item.amais}</td>
-                          <td className="border-b border-r border-slate-200 px-3 py-2">{item.faltantes}</td>
-                          <td className="border-b border-r border-slate-200 px-3 py-2">{item.encontrados}/{item.total}</td>
-                          <td className="border-b border-r border-slate-200 px-3 py-2 font-black">{item.percentual}%</td>
-                          <td className="border-b border-slate-200 px-3 py-2">{item.emLista}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </section>
-
-              <section>
-                <div className="mb-2 text-xs font-black uppercase text-slate-500">Auditoria</div>
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  {[
-                    ['Total', auditoriaRows.length],
-                    ['A+', auditoriaAmais],
-                    ['Faltantes', auditoriaFaltantes],
-                    ['OK', auditoriaOk],
-                  ].map(([label, value]) => (
-                    <div key={String(label)} className="border border-slate-300 p-3">
-                      <div className="text-[9px] font-black uppercase text-slate-400">{label}</div>
-                      <div className="mt-1 text-xl font-black text-slate-950">{value}</div>
+                    <div className="text-right">
+                      <div className="text-[10px] font-black uppercase text-slate-600">Atualizado</div>
+                      <div className="mt-1 text-sm font-black">{reportGeneratedAt}</div>
                     </div>
-                  ))}
-                </div>
-                {auditStreetStats.length > 0 && (
-                  <div className="mt-2 overflow-auto border border-slate-300">
-                    <table className="w-full min-w-[520px] text-xs">
-                      <thead className="bg-slate-100"><tr>{['Rua', 'Total', 'A+', 'Faltantes', 'OK'].map(head => <th key={head} className="border-b border-r border-slate-200 px-3 py-2 text-left font-black">{head}</th>)}</tr></thead>
-                      <tbody>
-                        {auditStreetStats.map(item => (
-                          <tr key={`relatorio-rua-${item.rua}`}>
-                            <td className="border-b border-r border-slate-200 px-3 py-2 font-black">RUA {item.rua}</td>
-                            <td className="border-b border-r border-slate-200 px-3 py-2">{item.total}</td>
-                            <td className="border-b border-r border-slate-200 px-3 py-2">{item.amais}</td>
-                            <td className="border-b border-r border-slate-200 px-3 py-2">{item.faltantes}</td>
-                            <td className="border-b border-slate-200 px-3 py-2">{item.ok}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
                   </div>
-                )}
-              </section>
+                </div>
+
+                <div className="space-y-6 p-7">
+                  <section>
+                    <div className="mb-3 flex items-center justify-between">
+                      <div>
+                        <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Localização</div>
+                        <h3 className="text-lg font-black">Aduana</h3>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-3xl font-black">{totalPercentual}%</div>
+                        <div className="text-[9px] font-black uppercase text-slate-400">taxa encontrada</div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-4 gap-2">
+                      {[
+                        ['Total', aduanaRows.length],
+                        ['Encontrados', totalEncontrados],
+                        ['Pendentes', aduanaPendentes],
+                        ['Em lista', totalEmLista],
+                        ['A mais', aduanaAmais],
+                        ['Faltantes', aduanaFaltantes],
+                        ['Erros aloc.', errosAlocacao],
+                        ['Sem vaga', unconfirmedAduana],
+                      ].map(([label, value]) => (
+                        <div key={String(label)} className="border border-slate-200 bg-slate-50 px-3 py-3">
+                          <div className="text-[8px] font-black uppercase tracking-wide text-slate-400">{label}</div>
+                          <div className="mt-1 text-2xl font-black text-slate-950">{value}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="mt-3 h-2 overflow-hidden bg-slate-100">
+                      <div className="h-full bg-slate-900" style={{ width: `${totalPercentual}%` }} />
+                    </div>
+                    <div className="mt-2 text-xs font-bold text-slate-500">{totalEncontrados} de {aduanaRows.length} pacotes encontrados no consolidado da Aduana.</div>
+                  </section>
+
+                  <section className="border-t border-slate-200 pt-6">
+                    <div className="mb-3">
+                      <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Conferência</div>
+                      <h3 className="text-lg font-black">Auditoria</h3>
+                    </div>
+
+                    <div className="grid grid-cols-4 gap-2">
+                      {[
+                        ['Total', auditoriaRows.length],
+                        ['OK', auditoriaOk],
+                        ['A mais', auditoriaAmais],
+                        ['Faltantes', auditoriaFaltantes],
+                      ].map(([label, value]) => (
+                        <div key={String(label)} className="border border-slate-200 bg-white px-3 py-3">
+                          <div className="text-[8px] font-black uppercase tracking-wide text-slate-400">{label}</div>
+                          <div className="mt-1 text-2xl font-black text-slate-950">{value}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+
+                  <section className="border-t border-slate-200 pt-6">
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="bg-slate-950 px-4 py-4 text-white">
+                        <div className="text-[9px] font-black uppercase tracking-wide text-slate-400">Encontrados Aduana</div>
+                        <div className="mt-1 text-3xl font-black">{totalEncontrados}</div>
+                      </div>
+                      <div className="border border-red-200 bg-red-50 px-4 py-4">
+                        <div className="text-[9px] font-black uppercase tracking-wide text-red-600">A mais total</div>
+                        <div className="mt-1 text-3xl font-black text-red-700">{totalAmais}</div>
+                      </div>
+                      <div className="border border-amber-200 bg-amber-50 px-4 py-4">
+                        <div className="text-[9px] font-black uppercase tracking-wide text-amber-700">Faltantes total</div>
+                        <div className="mt-1 text-3xl font-black text-amber-800">{totalFaltantes}</div>
+                      </div>
+                    </div>
+                  </section>
+
+                  <section className="border-t border-slate-200 pt-5">
+                    <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Resumo do dia</div>
+                    <div className="mt-3 grid gap-2 text-sm font-bold text-slate-700">
+                      <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span>Localização Aduana</span><b>{totalEncontrados}/{aduanaRows.length} • {totalPercentual}%</b>
+                      </div>
+                      <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span>Registros de Auditoria</span><b>{auditoriaRows.length}</b>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span>Ocorrências críticas</span><b>{totalAmais + totalFaltantes}</b>
+                      </div>
+                    </div>
+                  </section>
+
+                  <div className="flex items-center justify-between border-t border-slate-200 pt-4 text-[9px] font-black uppercase tracking-[0.12em] text-slate-400">
+                    <span>Reporte consolidado • sem separação por vagas</span>
+                    <span>Controle de Docas</span>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
