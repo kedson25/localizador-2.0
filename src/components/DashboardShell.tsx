@@ -31,6 +31,7 @@ type QuickLink = {
 };
 
 const QUICK_LINKS: QuickLink[] = [
+  { label: 'Monitoramento de docas', path: '/expedicao', keywords: 'monitoramento docas auditoria separacao hibridas' },
   { label: 'Módulos', path: '/', keywords: 'modulos ferramentas' },
   { label: 'Listas de Coleta', path: '/listas', keywords: 'lista coleta backlog' },
   { label: 'Buscar IDs', path: '/consulta', keywords: 'buscar ids consulta rota pacote' },

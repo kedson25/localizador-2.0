@@ -26,6 +26,8 @@ service cloud.firestore {
     match /refugo_metricas_items/{document=**} { allow read, write: if group('refugo'); }
     match /refugo_metricas_diarias/{document=**} { allow read, write: if group('refugo'); }
     match /brancas/{document=**} { allow read, write: if group('brancas'); }
+    match /expedicao_sync/{document=**} { allow read, write: if group('expedicao') || group('listas') || group('refugo'); }
+    match /expedicao_sync_sources/{document=**} { allow read, write: if group('expedicao') || group('listas') || group('refugo'); }
 
     match /{document=**} { allow read, write: if false; }
   }

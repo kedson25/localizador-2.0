@@ -176,6 +176,7 @@ export const ToolsHub: React.FC<ToolsHubProps> = ({
   // Sempre inicia fechado quando a página é carregada/recarregada.
   const [isBacklogOpen, setIsBacklogOpen] = useState(false);
   const [isRefugoOpen, setIsRefugoOpen] = useState(false);
+  const [isDocasOpen, setIsDocasOpen] = useState(false);
   const [isBrancasOpen, setIsBrancasOpen] = useState(false);
   const [isCorrelacaoOpen, setIsCorrelacaoOpen] = useState(false);
 
@@ -285,6 +286,7 @@ export const ToolsHub: React.FC<ToolsHubProps> = ({
     },
   ];
 
+  const docasTools: ToolItem[] = [{ id: 'expedicao', path: '/expedicao', name: 'Monitoramento de docas', description: 'Aduana, auditoria e cruzamento das rotas híbridas da separação.', tag: 'Auditoria', icon: Boxes, iconClass: 'text-blue-600', iconBoxClass: 'bg-blue-50', badgeClass: 'border-blue-200 bg-blue-50 text-blue-700' }];
   const matchesQuery = (tool: ToolItem) => {
     const normalized = query.trim().toLowerCase();
     if (!normalized) return true;
@@ -448,6 +450,7 @@ export const ToolsHub: React.FC<ToolsHubProps> = ({
               ) : undefined}
             />
 
+            <ModuleGroup title="Monitoramento de docas" count={docasTools.length} accent="blue" icon={Boxes} tools={docasTools.filter(matchesQuery)} isOpen={isDocasOpen} onToggle={() => setIsDocasOpen(value => !value)} onOpenTool={navigate} />
             <ModuleGroup
               title="Controle Refugo"
               count={refugoTools.length}

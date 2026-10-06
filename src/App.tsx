@@ -10,6 +10,7 @@ import { IdRemover } from './components/IdRemover';
 import { WhatsappReportEnhanced } from './components/WhatsappReportEnhanced';
 import { CsvUploader } from './components/CsvUploader';
 import { DynamicCsvPanel, SearchSession } from './components/DynamicCsvPanel';
+import { ExpedicaoPanel } from './components/ExpedicaoPanel';
 import { StatsSummary } from './components/StatsSummary';
 import { ControleRefugoClean } from './components/ControleRefugoClean';
 import { ListasColetaEnhanced } from './components/ListasColetaEnhanced';
@@ -209,6 +210,8 @@ export default function App() {
                 path="/baixas"
                 element={insideDashboard(<BaixasPanel />)}
               />
+
+              <Route path="/expedicao" element={insideDashboard(<ExpedicaoPanel />)} />
 
               <Route
                 path="/refugo"
