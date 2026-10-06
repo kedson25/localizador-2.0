@@ -174,7 +174,7 @@ export function ExpedicaoPanel() {
       await syncExpedicaoImport(next, source);
       setSyncState('synced');
     } catch (cause) {
-      console.error('[Expedição] falha:', cause);
+      console.error('[Controle de Docas] falha:', cause);
       setSyncState('error');
       setError('Arquivo não sincronizado. Tente novamente.');
     } finally {
@@ -183,7 +183,7 @@ export function ExpedicaoPanel() {
   };
 
   const reset = async () => {
-    if (!window.confirm('Zerar a Expedição para todos os usuários?')) return;
+    if (!window.confirm('Zerar o Controle de Docas para todos os usuários?')) return;
     setSyncState('syncing');
     setError('');
     try {
@@ -196,7 +196,7 @@ export function ExpedicaoPanel() {
       setReportOpen(false);
       setSyncState('synced');
     } catch (cause) {
-      console.error('[Expedição] falha ao zerar:', cause);
+      console.error('[Controle de Docas] falha ao zerar:', cause);
       setSyncState('error');
       setError('Não foi possível zerar. Tente novamente.');
     }
@@ -210,7 +210,7 @@ export function ExpedicaoPanel() {
       await setExpedicaoSharedLocated(pacote, value);
       setSyncState('synced');
     } catch (cause) {
-      console.error('[Expedição] falha ao marcar ID:', cause);
+      console.error('[Controle de Docas] falha ao marcar ID:', cause);
       setSyncState('error');
       setError(`Não foi possível sincronizar o ID ${pacote}. Tente novamente.`);
     }
@@ -488,7 +488,6 @@ export function ExpedicaoPanel() {
                             <span className="min-w-0 flex-1">
                               <span className="flex items-start justify-between gap-2"><b className="font-mono text-sm">{row.pacote}</b><span className={`text-[9px] font-black uppercase ${row.classificacao === 'A mais' ? 'text-red-600' : 'text-amber-700'}`}>{row.classificacao}</span></span>
                               <span className="mt-1 block text-[10px] text-slate-600"><b>Aqui:</b> VAGA {row.encontradoDoca}{routeLabel(row.encontradoRota) ? ` • ${routeLabel(row.encontradoRota)}` : ''}</span>
-                              <span className="mt-1 block text-[10px] text-slate-600"><b>Deveria:</b> {row.destinoConfirmado ? `VAGA ${row.destinoDoca}${row.destinoRota ? ` • ${row.destinoRota}` : ''}` : 'sem destino no Despacho'}</span>
                               {backlog.length > 0 && <span className="mt-1 block text-[10px] font-black text-emerald-700"><CheckCircle2 className="mr-1 inline h-3 w-3" />EM LISTA • {occurrenceLabel(backlog[0])}</span>}
                             </span>
                           </span>
@@ -526,9 +525,9 @@ export function ExpedicaoPanel() {
               <div className="mt-2 text-[10px] font-bold text-slate-500">{filteredAduanaRows.length} resultado(s)</div>
             </div>
             <div className="max-h-[650px] overflow-auto">
-              <table className="w-full min-w-[1050px] border-collapse text-xs">
+              <table className="w-full min-w-[900px] border-collapse text-xs">
                 <thead className="sticky top-0 z-10 bg-slate-100">
-                  <tr>{['ID', 'Tipo', 'Encontrado', 'Deveria estar', 'Lista do dia', 'Status', 'OK'].map(head => <th key={head} className="border-b border-r border-slate-200 px-3 py-2.5 text-left font-black">{head}</th>)}</tr>
+                  <tr>{['ID', 'Tipo', 'Encontrado', 'Lista do dia', 'Status', 'OK'].map(head => <th key={head} className="border-b border-r border-slate-200 px-3 py-2.5 text-left font-black">{head}</th>)}</tr>
                 </thead>
                 <tbody>
                   {filteredAduanaRows.map(row => {
@@ -545,14 +544,13 @@ export function ExpedicaoPanel() {
                         <td className="border-b border-r border-slate-200 px-3 py-2 font-mono font-black">{row.pacote}<div className="font-sans text-[9px] text-slate-400">{formatDateTime(row.dataRegistro)}</div></td>
                         <td className="border-b border-r border-slate-200 px-3 py-2 font-black">{row.classificacao}</td>
                         <td className="border-b border-r border-slate-200 px-3 py-2"><b>{row.encontradoDoca ? `VAGA ${row.encontradoDoca}` : 'VAGA NÃO LOCALIZADA'}</b><div className="text-[10px] text-slate-500">{routeLabel(row.encontradoRota) || 'sem rota'}{row.encontradoPlaca ? ` • ${row.encontradoPlaca}` : ''}</div></td>
-                        <td className="border-b border-r border-slate-200 px-3 py-2">{row.destinoConfirmado ? <><b>VAGA {row.destinoDoca}</b><div className="text-[10px] text-slate-500">{row.destinoRota || 'sem rota'}{row.destinoOnda ? ` • ${row.destinoOnda}` : ''}</div></> : <b className="text-amber-700">SEM DESTINO</b>}</td>
                         <td className="border-b border-r border-slate-200 px-3 py-2">{backlog.length ? <><b className="text-emerald-700">EM LISTA</b><div className="text-[10px] text-slate-500">{occurrenceLabel(backlog[0])}{backlog.length > 1 ? ` • +${backlog.length - 1}` : ''}</div></> : <span className="text-slate-400">Não encontrado hoje</span>}</td>
                         <td className="border-b border-r border-slate-200 px-3 py-2"><span className={`font-black ${statusClass}`}>{statusLabel}</span></td>
                         <td className="border-b border-slate-200 px-3 py-2 text-center"><input type="checkbox" disabled={syncState !== 'synced'} checked={checked} onChange={() => toggleLocated(row.pacote)} className="h-4 w-4 accent-slate-700 disabled:cursor-not-allowed" /></td>
                       </tr>
                     );
                   })}
-                  {!filteredAduanaRows.length && <tr><td colSpan={7} className="px-4 py-10 text-center text-slate-500">Nenhum item.</td></tr>}
+                  {!filteredAduanaRows.length && <tr><td colSpan={6} className="px-4 py-10 text-center text-slate-500">Nenhum item.</td></tr>}
                 </tbody>
               </table>
             </div>

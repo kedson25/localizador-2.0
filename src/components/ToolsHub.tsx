@@ -297,7 +297,7 @@ export const ToolsHub: React.FC<ToolsHubProps> = ({
   }];
 
   const expedicaoTools: ToolItem[] = [{
-    id: 'expedicao', path: '/expedicao', name: 'Expedição',
+    id: 'expedicao', path: '/expedicao', name: 'Controle de Docas',
     description: 'Cruza Base Despacho, Aduana e Auditoria com rota, doca e placa.',
     tag: 'Diário', icon: Truck, iconClass: 'text-indigo-600', iconBoxClass: 'bg-indigo-50',
     badgeClass: 'border-indigo-200 bg-indigo-50 text-indigo-700',
@@ -502,7 +502,7 @@ export const ToolsHub: React.FC<ToolsHubProps> = ({
               status={<span className="rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-[10px] font-black uppercase text-violet-700">Novo</span>}
             />
             <ModuleGroup
-              title="Expedição"
+              title="Controle de Docas"
               count={expedicaoTools.length}
               accent="blue"
               icon={Truck}

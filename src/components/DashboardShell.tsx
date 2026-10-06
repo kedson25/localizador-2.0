@@ -40,7 +40,7 @@ const QUICK_LINKS: QuickLink[] = [
   { label: 'Reporte WhatsApp', path: '/reporte', keywords: 'reporte whatsapp relatorio' },
   { label: 'Análise de Brancas', path: '/brancas', keywords: 'brancas auditoria rota' },
   { label: 'Avarias', path: '/avarias', keywords: 'avarias danos reporte diario csv ranking metricas' },
-  { label: 'Expedição', path: '/expedicao', keywords: 'expedicao doca amais faltante despacho auditoria' },
+  { label: 'Controle de Docas', path: '/expedicao', keywords: 'expedicao doca amais faltante despacho auditoria' },
   { label: 'Configurações', path: '/configuracoes', keywords: 'configuracoes preferencias' },
   { label: 'Relatórios', path: '/admin', keywords: 'relatorios admin metricas', adminOnly: true },
 ];

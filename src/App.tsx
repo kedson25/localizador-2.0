@@ -76,7 +76,7 @@ export default function App() {
         location.pathname.startsWith('/correlacao') ? 'Correlação' :
         location.pathname.startsWith('/remover') ? 'Remover' :
         location.pathname.startsWith('/reporte') ? 'Reporte' :
-        location.pathname.startsWith('/expedicao') ? 'Expedição' :
+        location.pathname.startsWith('/expedicao') ? 'Controle de Docas' :
         location.pathname.startsWith('/configuracoes') ? 'Configurações' :
         location.pathname.startsWith('/admin') ? 'Admin' : 'Módulos';
       try {
