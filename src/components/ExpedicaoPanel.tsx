@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
-import { CheckCircle2, FileText, Search, Trash2, UploadCloud, X } from 'lucide-react';
+import { CheckCircle2, FileText, Search, Trash2, Trophy, UploadCloud, X } from 'lucide-react';
 import { ExpedicaoSkeleton } from './ExpedicaoSkeleton';
 import { getLocalValue, setLocalValue } from '../lib/localPersistence';
 import {
@@ -22,7 +22,7 @@ import {
 } from '../lib/expedicao';
 
 const STORAGE_KEY = 'expedicao-daily-v1';
-type ViewTab = 'aduana' | 'auditoria';
+type ViewTab = 'aduana' | 'ranking' | 'auditoria';
 type TipoFilter = 'todos' | 'A mais' | 'Faltante';
 type ListaFilter = 'todos' | 'em-lista' | 'fora-lista' | 'encontrados' | 'pendentes';
 type SyncState = 'connecting' | 'syncing' | 'synced' | 'error';
@@ -297,6 +297,38 @@ export function ExpedicaoPanel() {
     return [...stats.values()].sort((a, b) => b.total - a.total || a.rua.localeCompare(b.rua, 'pt-BR'));
   }, [auditoriaRows, store.localizados]);
 
+  const dockRanking = useMemo(() => {
+    const byDock = new Map<string, { doca: string; rotas: Set<string>; pacotes: Set<string> }>();
+
+    store.aduana.forEach(row => {
+      const doca = String(row.docaInformada || '').trim();
+      if (!doca) return;
+
+      const current = byDock.get(doca) || {
+        doca,
+        rotas: new Set<string>(),
+        pacotes: new Set<string>(),
+      };
+
+      const rota = routeLabel(row.rotaInformada).toUpperCase();
+      if (rota) current.rotas.add(rota);
+      if (row.pacote) current.pacotes.add(row.pacote);
+      byDock.set(doca, current);
+    });
+
+    return [...byDock.values()]
+      .map(item => ({
+        doca: item.doca,
+        rotas: [...item.rotas].sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true })),
+        totalRotas: item.rotas.size,
+        totalPacotes: item.pacotes.size,
+      }))
+      .sort((a, b) => b.totalRotas - a.totalRotas || Number(a.doca) - Number(b.doca) || a.doca.localeCompare(b.doca));
+  }, [store.aduana]);
+
+  const rankingMaxRotas = Math.max(1, ...dockRanking.map(item => item.totalRotas));
+  const rankingTotalRotas = dockRanking.reduce((total, item) => total + item.totalRotas, 0);
+
   const heatmap = useMemo(() => Array.from({ length: 20 }, (_, index) => {
     const doca = String(index + 1);
     const rows = aduanaRows.filter(row => row.vagaOperacional === doca);
@@ -403,6 +435,20 @@ export function ExpedicaoPanel() {
             <button
               type="button"
               onClick={() => {
+                setTab('ranking');
+                setSelectedDoca(null);
+                setSelectedStreet(null);
+                setQuery('');
+                setFilter('todos');
+                setListaFilter('todos');
+              }}
+              className={`px-4 py-2 text-sm font-black ${tab === 'ranking' ? 'bg-slate-900 text-white' : 'border border-slate-300 bg-white'}`}
+            >
+              <Trophy className="mr-1.5 inline h-4 w-4" />Ranking
+            </button>
+            <button
+              type="button"
+              onClick={() => {
                 setTab('auditoria');
                 setSelectedDoca(null);
                 setSelectedStreet(null);
@@ -418,7 +464,7 @@ export function ExpedicaoPanel() {
 
           <div className="flex flex-wrap gap-2">
             {store.base.length === 0 && upload('Despacho', baseInput)}
-            {tab === 'aduana' && upload('Aduana', aduanaInput)}
+            {(tab === 'aduana' || tab === 'ranking') && upload('Aduana', aduanaInput)}
             {tab === 'auditoria' && upload('Auditoria', auditInput)}
             <button
               type="button"
@@ -450,7 +496,7 @@ export function ExpedicaoPanel() {
               {unconfirmedAduana > 0 && <span className="border border-amber-300 bg-amber-50 px-3 py-1.5 text-amber-800">SEM VAGA: {unconfirmedAduana}</span>}
             </div>
 
-            <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_390px] xl:items-start">
+            <div className={selectedDoca ? 'grid gap-3 xl:grid-cols-[minmax(0,1fr)_390px] xl:items-start' : 'block'}>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-5">
                 {heatmap.map(item => (
                   <button
@@ -468,14 +514,17 @@ export function ExpedicaoPanel() {
                 ))}
               </div>
 
-              <aside className="h-[610px] overflow-y-auto border border-slate-300 bg-slate-50 xl:sticky xl:top-20">
+              {selectedDoca && <aside className="h-[610px] overflow-y-auto border border-slate-300 bg-slate-50 xl:sticky xl:top-20">
                 <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-300 bg-white px-3 py-2.5">
-                  <h3 className="font-black text-slate-950">{selectedDoca ? `VAGA ${selectedDoca}` : 'Check list'}</h3>
-                  {selectedDoca && <span className="text-[10px] font-black text-slate-500">{selectedDockRows.length} itens</span>}
+                  <h3 className="font-black text-slate-950">{`VAGA ${selectedDoca}`}</h3>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-black text-slate-500">{selectedDockRows.length} itens</span>
+                    <button type="button" onClick={() => setSelectedDoca(null)} className="flex h-7 w-7 items-center justify-center border border-slate-300 bg-white hover:bg-slate-100" title="Recolher">
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                 </div>
-                {!selectedDoca ? (
-                  <p className="px-4 py-10 text-center text-sm text-slate-500">Selecione uma vaga.</p>
-                ) : selectedDockRows.length ? (
+                {selectedDockRows.length ? (
                   <div className="divide-y divide-slate-200">
                     {selectedDockRows.map(row => {
                       const checked = Boolean(store.localizados?.[row.pacote]);
@@ -498,7 +547,7 @@ export function ExpedicaoPanel() {
                 ) : (
                   <p className="px-4 py-10 text-center text-sm text-slate-500">Nenhum pacote nesta vaga.</p>
                 )}
-              </aside>
+              </aside>}
             </div>
           </section>
 
@@ -556,6 +605,87 @@ export function ExpedicaoPanel() {
             </div>
           </section>
         </>
+      ) : tab === 'ranking' ? (
+        <div className="space-y-3">
+          <section className="border border-slate-300 bg-white p-4 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Planejamento por vaga</div>
+                <h2 className="mt-1 text-xl font-black text-slate-950">Ranking de rotas planejadas</h2>
+                <p className="mt-1 text-xs text-slate-500">Conta rotas únicas pela coluna de doca/vaga do CSV da Aduana.</p>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="border border-slate-300 bg-slate-50 px-4 py-3 text-right">
+                  <div className="text-[9px] font-black uppercase text-slate-400">Vagas</div>
+                  <div className="text-2xl font-black text-slate-950">{dockRanking.length}</div>
+                </div>
+                <div className="border border-slate-300 bg-slate-900 px-4 py-3 text-right text-white">
+                  <div className="text-[9px] font-black uppercase text-slate-300">Rotas</div>
+                  <div className="text-2xl font-black">{rankingTotalRotas}</div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {dockRanking.length ? (
+            <section className="overflow-hidden border border-slate-300 bg-white shadow-sm">
+              <div className="grid gap-0 lg:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.8fr)]">
+                <div className="divide-y divide-slate-200">
+                  {dockRanking.map((item, index) => (
+                    <div key={item.doca} className="p-4">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center border border-slate-300 bg-slate-50 text-sm font-black text-slate-700">#{index + 1}</div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-end justify-between gap-2">
+                            <div>
+                              <div className="text-lg font-black text-slate-950">VAGA {item.doca}</div>
+                              <div className="text-[10px] font-bold uppercase text-slate-400">{item.totalPacotes} pacote(s) no CSV</div>
+                            </div>
+                            <div className="text-right">
+                              <div className="text-2xl font-black text-slate-950">{item.totalRotas}</div>
+                              <div className="text-[9px] font-black uppercase text-slate-400">rotas planejadas</div>
+                            </div>
+                          </div>
+                          <div className="mt-3 h-2 overflow-hidden bg-slate-200">
+                            <div className="h-full bg-slate-900" style={{ width: `${Math.round((item.totalRotas / rankingMaxRotas) * 100)}%` }} />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="border-t border-slate-300 bg-slate-50 p-4 lg:border-l lg:border-t-0">
+                  <div className="text-xs font-black uppercase text-slate-500">Rotas por vaga</div>
+                  <div className="mt-3 max-h-[620px] space-y-2 overflow-y-auto">
+                    {dockRanking.map(item => (
+                      <details key={`rotas-${item.doca}`} className="border border-slate-300 bg-white">
+                        <summary className="cursor-pointer px-3 py-2.5 text-xs font-black text-slate-800">
+                          VAGA {item.doca} <span className="ml-1 text-slate-400">({item.totalRotas})</span>
+                        </summary>
+                        <div className="border-t border-slate-200 px-3 py-2">
+                          {item.rotas.length ? (
+                            <div className="flex flex-wrap gap-1.5">
+                              {item.rotas.map(rota => <span key={rota} className="border border-slate-200 bg-slate-50 px-2 py-1 font-mono text-[10px] font-bold text-slate-700">{rota}</span>)}
+                            </div>
+                          ) : (
+                            <span className="text-[10px] text-slate-400">Sem rota identificada.</span>
+                          )}
+                        </div>
+                      </details>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </section>
+          ) : (
+            <section className="border border-dashed border-slate-300 bg-white px-4 py-16 text-center shadow-sm">
+              <Trophy className="mx-auto h-8 w-8 text-slate-300" />
+              <div className="mt-3 text-sm font-black text-slate-700">Nenhuma doca encontrada no CSV da Aduana.</div>
+              <p className="mt-1 text-xs text-slate-500">Importe um CSV com coluna Doca, Dock, Vaga ou Vaga operacional.</p>
+            </section>
+          )}
+        </div>
       ) : (
         <div className="space-y-3">
           <section className="border border-slate-300 bg-white p-3 shadow-sm">

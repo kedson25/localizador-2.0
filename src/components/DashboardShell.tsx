@@ -59,9 +59,10 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
   const [searchFocused, setSearchFocused] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try {
-      return localStorage.getItem(SIDEBAR_STORAGE_KEY) === '1';
+      const saved = localStorage.getItem(SIDEBAR_STORAGE_KEY);
+      return saved === null ? true : saved === '1';
     } catch {
-      return false;
+      return true;
     }
   });
 

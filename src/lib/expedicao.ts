@@ -15,6 +15,7 @@ export interface BaseDespachoRow {
 export interface ExpedicaoRow {
   pacote: string;
   rotaInformada: string;
+  docaInformada?: string;
   placaInformada: string;
   estado: string;
   detalhe: string;
@@ -184,6 +185,7 @@ export function parseExpedicaoRows(text: string, origem: FonteExpedicao): Expedi
   const rows = csv(text).map(raw => ({
     pacote: id(value(raw, 'Shipment ID', 'ID do pacote', 'ID do pacote,', 'Pacote', 'ID')),
     rotaInformada: value(raw, 'ID da rota', 'Rota', 'Rota sugerida', 'Contenedor'),
+    docaInformada: normalizeDock(value(raw, 'Doca', 'Dock', 'Vaga', 'Vaga operacional', 'Vaga Operacional')),
     placaInformada: clean(value(raw, 'Placa')).toUpperCase(),
     estado: value(raw, 'Estado', 'Status de resolução', 'Status'),
     dataRegistro: value(raw, 'Data auditoria', 'Data da auditoria', 'Data/Hora', 'Data hora', 'Timestamp', 'Data'),
