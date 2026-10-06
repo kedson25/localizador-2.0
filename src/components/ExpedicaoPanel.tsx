@@ -465,18 +465,34 @@ export function ExpedicaoPanel() {
                     key={item.doca}
                     type="button"
                     onClick={() => setSelectedDoca(selectedDoca === item.doca ? null : item.doca)}
-                    className={`min-h-[128px] border p-3 text-left transition ${item.concluida ? 'border-slate-400 bg-slate-200 text-slate-700' : 'border-slate-300 bg-white'} ${selectedDoca === item.doca ? 'ring-2 ring-slate-900' : ''}`}
+                    className={`min-h-[154px] border bg-white p-3 text-left transition hover:border-slate-500 hover:shadow-sm ${selectedDoca === item.doca ? 'border-slate-900 ring-2 ring-slate-900' : 'border-slate-300'}`}
                   >
-                    <div className="flex items-center justify-between gap-2"><span className="font-black">VAGA {item.doca}</span><span className="text-sm font-black">{item.percentual}%</span></div>
-                    <div className="mt-2 grid grid-cols-2 gap-2 text-xs"><span>A+ <b className="text-red-600">{item.amais}</b></span><span>Falt. <b className="text-amber-700">{item.faltantes}</b></span></div>
-                    <div className="mt-2 text-[10px] font-bold text-slate-600">{item.encontrados}/{item.total} encontrados</div>
-                    <div className="mt-0.5 text-[9px] font-bold text-slate-400">{item.emLista} em lista do dia</div>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-base font-black text-slate-950">VAGA {item.doca}</span>
+                      <span className={`text-base font-black ${item.percentual === 100 ? 'text-emerald-700' : item.percentual > 0 ? 'text-slate-900' : 'text-slate-500'}`}>{item.percentual}%</span>
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      <div className="border border-red-200 bg-red-50 px-2.5 py-2">
+                        <div className="text-[9px] font-black uppercase tracking-wide text-red-700">A mais</div>
+                        <div className="mt-0.5 text-2xl font-black leading-none text-red-700">{item.amais}</div>
+                      </div>
+                      <div className="border border-amber-200 bg-amber-50 px-2.5 py-2">
+                        <div className="text-[9px] font-black uppercase tracking-wide text-amber-800">Faltantes</div>
+                        <div className="mt-0.5 text-2xl font-black leading-none text-amber-800">{item.faltantes}</div>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 flex items-center justify-between gap-2 text-[10px] font-bold">
+                      <span className="text-slate-700">{item.encontrados}/{item.total} encontrados</span>
+                      <span className="text-slate-400">{item.emLista} em lista</span>
+                    </div>
+
                     {item.rotasEncontradas.length > 0 && (
-                      <div className="mt-2">
-                        <div className="text-[8px] font-black uppercase tracking-wide text-slate-400">Rotas encontradas</div>
-                        <div className="mt-1 flex flex-wrap gap-1">
+                      <div className="mt-2 border-t border-slate-100 pt-2">
+                        <div className="flex flex-wrap gap-1">
                           {item.rotasEncontradas.slice(0, 3).map(rota => (
-                            <span key={rota} className="border border-slate-300 bg-white px-1.5 py-0.5 font-mono text-[8px] font-bold text-slate-600">{rota}</span>
+                            <span key={rota} className="border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-mono text-[8px] font-bold text-slate-600">{rota}</span>
                           ))}
                           {item.rotasEncontradas.length > 3 && (
                             <span className="px-1 py-0.5 text-[8px] font-black text-slate-400">+{item.rotasEncontradas.length - 3}</span>
@@ -484,7 +500,10 @@ export function ExpedicaoPanel() {
                         </div>
                       </div>
                     )}
-                    <div className="mt-2 h-1.5 overflow-hidden bg-slate-200"><div className="h-full bg-slate-700 transition-all" style={{ width: `${item.percentual}%` }} /></div>
+
+                    <div className="mt-2 h-1 overflow-hidden bg-slate-100">
+                      <div className="h-full bg-slate-800 transition-all" style={{ width: `${item.percentual}%` }} />
+                    </div>
                   </button>
                 ))}
               </div>
