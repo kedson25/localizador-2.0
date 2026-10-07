@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { CheckCircle2, FileText, Search, Trash2, UploadCloud, X } from 'lucide-react';
 import { ExpedicaoSkeleton } from './ExpedicaoSkeleton';
+import { AuditRanking } from './AuditRanking';
 import { SeparacaoAudit } from './SeparacaoAudit';
 import { hybridRoutesFor } from '../lib/separacao';
 import { getLocalValue, setLocalValue } from '../lib/localPersistence';
@@ -448,6 +449,8 @@ export function ExpedicaoPanel() {
       </section>
 
       {error && <div className="border border-amber-300 bg-white px-3 py-2 text-xs font-bold text-amber-900">{error}</div>}
+
+      <AuditRanking aduana={store.aduana} auditoria={store.auditoria} />
 
       {tab === 'aduana' ? (
         <>
