@@ -110,6 +110,7 @@ export function RankingAuditores({ aduana, auditoria }: { aduana: ExpedicaoRow[]
   const [filter, setFilter] = useState('');
   const [topMode, setTopMode] = useState<'all' | 'top10'>('all');
   const [working, setWorking] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
   const [error, setError] = useState('');
   const calculated = saved !== null;
   const resetRanking = async () => {
@@ -160,6 +161,9 @@ export function RankingAuditores({ aduana, auditoria }: { aduana: ExpedicaoRow[]
   };
 
   const downloadReport = async () => {
+    if (isDownloading) return;
+    setIsDownloading(true);
+    try {
     const loadPng = (src: string) => new Promise<HTMLImageElement>((resolve, reject) => {
       const image = new Image();
       image.onload = () => resolve(image);
@@ -236,9 +240,20 @@ export function RankingAuditores({ aduana, auditoria }: { aduana: ExpedicaoRow[]
       const tableY = 124;
       const xs = [25, 125, 565, 735, 930, 1175];
       rect(25, tableY, 1150, 54, '#111820');
-      ['RANK', 'COLABORADOR', 'ROTAS', 'PACOTES', 'PACOTES / ROTA'].forEach((heading, i) => {
-        print(heading, xs[i] + 10, tableY + 35, 'bold 18px Arial', '#fff', xs[i+1] - xs[i] - 18);
-      });
+      print('RANK', xs[0] + 10, tableY + 35, 'bold 18px Arial', '#fff');
+      print('COLABORADOR', xs[1] + 10, tableY + 35, 'bold 18px Arial', '#fff');
+      const centerHeader = (label: string, index: number) => {
+        ctx.save();
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.font = 'bold 18px Arial';
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(label, (xs[index] + xs[index + 1]) / 2, tableY + 27);
+        ctx.restore();
+      };
+      centerHeader('ROTAS', 2);
+      centerHeader('PACOTES', 3);
+      centerHeader('PACOTES / ROTA', 4);
       const printCentered = (text: string, x: number, y: number, font: string) => {
         ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         ctx.fillStyle = '#111820'; ctx.font = font; ctx.fillText(text, x, y); ctx.restore();
@@ -263,6 +278,9 @@ export function RankingAuditores({ aduana, auditoria }: { aduana: ExpedicaoRow[]
       link.download = 'aduana-ranking-' + reportDate.replace(/\//g, '-') + '-parte-' + (Math.floor(offset / rowsPerImage) + 1) + '.png';
       link.href = canvas.toDataURL('image/png');
       link.click();
+    }
+    } finally {
+      setIsDownloading(false);
     }
   };
 
@@ -296,7 +314,7 @@ export function RankingAuditores({ aduana, auditoria }: { aduana: ExpedicaoRow[]
           {([['PACOTES AUDITADOS', summary.registros], ['ROTAS AUDITADAS', summary.rotas], ['CORRETOS', summary.corretos], ['AUDITORES', summary.auditores]] as const).map(([label, value]) => <div key={label} className="border border-slate-300 bg-white p-4"><div className="text-xs font-black uppercase text-slate-600">{label}</div><div className="mt-2 text-4xl font-black text-slate-950">{value.toLocaleString('pt-BR')}</div></div>)}
         </section>
         <section className="overflow-hidden border border-slate-300 bg-white">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 p-3"><div className="flex items-center gap-3"><h3 className="text-lg font-black">Ranking por pacotes auditados</h3><button type="button" onClick={() => void downloadReport()} className="inline-flex items-center gap-2 bg-slate-900 px-4 py-2 text-sm font-black text-white"><Download size={17} />Baixar reporte PNG</button><select aria-label="Exibir ranking" value={topMode} onChange={event => setTopMode(event.target.value as 'all' | 'top10')} className="border border-slate-300 bg-white px-3 py-2 text-sm font-semibold"><option value="all">Todos</option><option value="top10">Top 10</option></select></div><input className="w-full border border-slate-300 px-3 py-2 text-sm sm:w-64" value={filter} onChange={event => setFilter(event.target.value)} placeholder="Pesquisar auditor" /></div>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 p-3"><div className="flex items-center gap-3"><h3 className="text-lg font-black">Ranking por pacotes auditados</h3><button type="button" disabled={isDownloading} onClick={() => void downloadReport()} className="inline-flex items-center gap-2 bg-slate-900 px-4 py-2 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-60"><Download size={17} />{isDownloading ? "Baixando..." : "Baixar reporte PNG"}</button><select aria-label="Exibir ranking" value={topMode} onChange={event => setTopMode(event.target.value as 'all' | 'top10')} className="border border-slate-300 bg-white px-3 py-2 text-sm font-semibold"><option value="all">Todos</option><option value="top10">Top 10</option></select></div><input className="w-full border border-slate-300 px-3 py-2 text-sm sm:w-64" value={filter} onChange={event => setFilter(event.target.value)} placeholder="Pesquisar auditor" /></div>
           <div className="overflow-x-auto">
             <div className="bg-[#ffe600] px-5 py-4 text-[#111820]">
               <div className="text-sm font-black uppercase tracking-wide">Mercado Livre • SSP21 Mooca</div>
