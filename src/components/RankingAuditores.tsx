@@ -242,7 +242,7 @@ export function RankingAuditores({ aduana, auditoria }: { aduana: ExpedicaoRow[]
           <button type="button" disabled={working || !filesReady} onClick={calculate} className="bg-slate-900 px-6 py-2.5 text-sm font-black text-white disabled:opacity-50">{working ? 'Calculando...' : 'Calcular ranking'}</button>
           <button type="button" onClick={resetRanking} disabled={!calculated || working} className="inline-flex items-center gap-2 border border-red-300 bg-white px-4 py-2.5 text-sm font-black text-red-700 disabled:cursor-not-allowed disabled:opacity-40"><Trash2 size={16} />Zerar ranking</button>
           <span className="text-xs text-slate-500">Ranking e arquivos CSV salvos neste navegador até você zerar. Calcular substitui apenas o resultado anterior.</span>
-          {saved && <span className="text-xs font-semibold text-emerald-700">✓ Salvo em {new Date(saved.savedAt).toLocaleString('pt-BR')}</span>
+          {saved && <span className="text-xs font-semibold text-emerald-700">✓ Salvo em {new Date(saved.savedAt).toLocaleString('pt-BR')}</span>}
         </div>
         {error && <p role="alert" className="mt-3 text-sm font-bold text-red-700">{error}</p>}
       </section>
