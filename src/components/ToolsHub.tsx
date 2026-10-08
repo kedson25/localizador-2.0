@@ -240,7 +240,7 @@ export const ToolsHub: React.FC<ToolsHubProps> = ({
   ];
 
   const backlogTools = allBacklogTools.filter(
-    tool => tool.id === 'baixas' || currentUser?.isAdmin || currentUser?.allowedGroups?.includes(tool.id)
+    tool => currentUser?.isAdmin || currentUser?.allowedGroups?.includes(tool.id)
   );
 
   const canUpload = currentUser?.isAdmin || currentUser?.allowedGroups?.includes('upload');
@@ -301,10 +301,10 @@ export const ToolsHub: React.FC<ToolsHubProps> = ({
   };
 
   const filteredBacklog = useMemo(() => backlogTools.filter(matchesQuery), [backlogTools, query]);
-  const filteredRefugo = useMemo(() => refugoTools.filter(matchesQuery), [query]);
-  const filteredBrancas = useMemo(() => brancasTools.filter(matchesQuery), [query]);
-  const filteredCorrelacao = useMemo(() => correlacaoTools.filter(matchesQuery), [query]);
-  const filteredExpedicao = useMemo(() => expedicaoTools.filter(matchesQuery), [query]);
+  const filteredRefugo = useMemo(() => refugoTools.filter(tool => (currentUser?.isAdmin || currentUser?.allowedGroups?.includes(tool.id)) && matchesQuery(tool)), [query, currentUser?.isAdmin, currentUser?.allowedGroups]);
+  const filteredBrancas = useMemo(() => brancasTools.filter(tool => (currentUser?.isAdmin || currentUser?.allowedGroups?.includes(tool.id)) && matchesQuery(tool)), [query, currentUser?.isAdmin, currentUser?.allowedGroups]);
+  const filteredCorrelacao = useMemo(() => correlacaoTools.filter(tool => (currentUser?.isAdmin || currentUser?.allowedGroups?.includes(tool.id)) && matchesQuery(tool)), [query, currentUser?.isAdmin, currentUser?.allowedGroups]);
+  const filteredExpedicao = useMemo(() => expedicaoTools.filter(tool => (currentUser?.isAdmin || currentUser?.allowedGroups?.includes(tool.id)) && matchesQuery(tool)), [query, currentUser?.isAdmin, currentUser?.allowedGroups]);
 
   const logout = async () => {
     const auth = await import('../lib/auth');
