@@ -205,11 +205,23 @@ export function RankingAuditores({ aduana, auditoria }: { aduana: ExpedicaoRow[]
       };
       rect(0, 0, width, canvas.height, '#fff');
       ctx.drawImage(header, 0, 0, width, bannerHeight);
+      // Data gerada sobre o próprio cabeçalho, sem editar o PNG de origem.
+      ctx.save();
+      ctx.fillStyle = '#ffe600';
+      ctx.fillRect(1690, 327, 435, 187);
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#111820';
+      ctx.font = 'bold 37px Arial';
+      ctx.fillText('DATA:', 1907, 374);
+      ctx.font = 'bold 63px Arial';
+      ctx.fillText(reportDate, 1907, 453);
+      ctx.restore();
       ctx.save();
       ctx.translate(0, bannerHeight);
       ctx.scale(scale, scale);
       rect(0, 0, 1200, 124, '#ffe600');
-      print('DATA: ' + reportDate, 930, 12, 'bold 13px Arial', '#111820');
+
       const stats = [
         ['PACOTES AUDITADOS', summary.registros],
         ['ROTAS DISTINTAS', summary.rotas],
