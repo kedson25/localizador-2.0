@@ -204,9 +204,9 @@ export function RankingAuditores({ aduana, auditoria }: { aduana: ExpedicaoRow[]
         print(value, x + 15, 287, 'bold 38px Arial', '#0d1117');
       });
       const tableY = 325;
-      const xs = [25, 125, 565, 760, 970, 1175];
+      const xs = [25, 125, 565, 735, 930, 1175];
       rect(25, tableY, 1150, 54, '#111820');
-      ['RANK', 'COLABORADOR', 'ROTAS CONFERIDAS', 'PACOTES AUDITADOS', 'PACOTES / ROTA'].forEach((heading, i) => {
+      ['RANK', 'COLABORADOR', 'ROTAS', 'PACOTES', 'PACOTES / ROTA'].forEach((heading, i) => {
         print(heading, xs[i] + 10, tableY + 35, 'bold 18px Arial', '#fff', xs[i+1] - xs[i] - 18);
       });
       rows.forEach((row, i) => {
@@ -274,7 +274,7 @@ export function RankingAuditores({ aduana, auditoria }: { aduana: ExpedicaoRow[]
             <table className="w-full min-w-[920px] table-fixed text-sm">
               <colgroup><col style={{ width: '9%' }} /><col style={{ width: '37%' }} /><col style={{ width: '18%' }} /><col style={{ width: '19%' }} /><col style={{ width: '17%' }} /></colgroup>
               <thead className="bg-[#111820] text-white">
-                <tr>{['🏆 Ranking', 'Colaborador', 'Rotas conferidas', 'Pacotes auditados', 'Pacotes / rota'].map(label => <th key={label} className="border-r border-slate-500 px-3 py-4 text-center font-black last:border-r-0">{label}</th>)}</tr>
+                <tr>{['🏆 Ranking', 'Colaborador', 'Rotas', 'Pacotes', 'Pacotes / rota'].map(label => <th key={label} className="border-r border-slate-500 px-3 py-4 text-center font-black last:border-r-0">{label}</th>)}</tr>
               </thead>
               <tbody>
                 {visible.map(row => {
