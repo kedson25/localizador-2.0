@@ -626,7 +626,7 @@ export function ExpedicaoPanel() {
 
       {error && <div className="border border-amber-300 bg-white px-3 py-2 text-xs font-bold text-amber-900">{error}</div>}
 
-      {tab === 'ranking' ? <RankingAuditores aduana={cycleStore.aduana} auditoria={cycleStore.auditoria} /> : tab === 'aduana' ? (
+      {tab === 'ranking' ? <RankingAuditores aduana={cycleStore.aduana} auditoria={cycleStore.auditoria} cycle={cycle} /> : tab === 'aduana' ? (
         <>
           <section className="border border-slate-300 bg-white p-3 shadow-sm">
             <div className="mb-3 flex flex-wrap justify-end gap-2 text-[10px] font-black">
