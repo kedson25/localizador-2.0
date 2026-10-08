@@ -134,6 +134,7 @@ export function RankingAuditores({ aduana, auditoria }: { aduana: ExpedicaoRow[]
       cards.forEach(([label, value], index) => {
         const x = 45 + index * 260;
         ctx.fillStyle = '#f1f5f9'; ctx.fillRect(x, 175, 240, 115);
+        ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 2; ctx.strokeRect(x, 175, 240, 115);
         ctx.fillStyle = '#475569'; ctx.font = 'bold 16px Arial'; ctx.fillText(label, x + 14, 209);
         ctx.fillStyle = '#0f172a'; ctx.font = 'bold 44px Arial'; ctx.fillText(value.toLocaleString('pt-BR'), x + 14, 264);
       });
@@ -141,16 +142,25 @@ export function RankingAuditores({ aduana, auditoria }: { aduana: ExpedicaoRow[]
       ctx.fillStyle = '#475569'; ctx.font = 'bold 16px Arial';
       ctx.fillText('POS.', 55, 340); ctx.fillText('AUDITOR', 137, 340);
       ctx.fillText('PACOTES', 730, 340); ctx.fillText('ROTAS', 895, 340);
+      // Divisórias alinhadas aos cabeçalhos e às linhas do relatório.
+      ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 2;
+      ctx.strokeRect(45, 309, 1010, 50 + page.length * rowHeight);
       page.forEach((row, index) => {
         const y = 360 + index * rowHeight;
-        ctx.fillStyle = index % 2 ? '#ffffff' : '#f8fafc'; ctx.fillRect(45, y, 1010, rowHeight);
+        ctx.fillStyle = index % 2 ? '#ffffff' : '#f8fafc'; ctx.fillRect(46, y, 1008, rowHeight);
+        ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(45, y); ctx.lineTo(1055, y); ctx.stroke();
         ctx.fillStyle = '#0f172a'; ctx.font = 'bold 23px Arial';
         ctx.fillText(String(start + index + 1).padStart(2, '0'), 55, y + 42);
         drawText(ctx, row.auditor, 137, y + 33, 540);
         ctx.fillStyle = '#64748b'; ctx.font = '16px Arial';
         ctx.fillText('Corretos: ' + row.corretos + '  |  A mais: ' + row.amais + '  |  Outros: ' + row.pendentes, 137, y + 56);
         ctx.fillStyle = '#0f172a'; ctx.font = 'bold 30px Arial';
-        ctx.fillText(String(row.total), 745, y + 43); ctx.fillText(String(row.rotas), 912, y + 43);
+        ctx.fillText(row.total.toLocaleString('pt-BR'), 745, y + 43); ctx.fillText(row.rotas.toLocaleString('pt-BR'), 912, y + 43);
+      });
+      ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 2;
+      [115, 710, 875].forEach(x => {
+        ctx.beginPath(); ctx.moveTo(x, 309); ctx.lineTo(x, 359 + page.length * rowHeight); ctx.stroke();
       });
       ctx.fillStyle = '#64748b'; ctx.font = '16px Arial';
       ctx.fillText('Total = todos os estados • 1 registro final por Shipment ID em cada fonte', 45, canvas.height - 50);
@@ -189,8 +199,8 @@ export function RankingAuditores({ aduana, auditoria }: { aduana: ExpedicaoRow[]
         <section className="overflow-hidden border border-slate-300 bg-white">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 p-3"><div className="flex items-center gap-3"><h3 className="text-lg font-black">Ranking por pacotes auditados</h3><button type="button" onClick={downloadReport} className="inline-flex items-center gap-2 bg-slate-900 px-4 py-2 text-sm font-black text-white"><Download size={17} />Baixar reporte PNG</button></div><input className="w-full border border-slate-300 px-3 py-2 text-sm sm:w-64" value={filter} onChange={event => setFilter(event.target.value)} placeholder="Pesquisar auditor" /></div>
           <div className="overflow-x-auto"><table className="w-full min-w-[800px] text-left text-sm">
-            <thead className="bg-slate-100 text-slate-600"><tr>{['#', 'Rep auditoria', 'PACOTES AUDITADOS', 'Rotas auditadas', 'Corretos', 'A mais', 'Outros / pendentes'].map(label => <th key={label} className="px-3 py-3 font-black">{label}</th>)}</tr></thead>
-            <tbody>{visible.map(row => <tr key={normalize(row.auditor)} className="border-t border-slate-200 hover:bg-slate-50"><td className="px-3 py-3 font-bold">{ranking.indexOf(row) + 1}</td><td className="px-3 py-3 font-black">{row.auditor}</td><td className="px-3 py-3 text-2xl font-black text-slate-950">{row.total}</td><td className="px-3 py-3 text-xl font-black">{row.rotas}</td><td className="px-3 py-3 font-black text-emerald-700">{row.corretos}</td><td className="px-3 py-3">{row.amais}</td><td className="px-3 py-3">{row.pendentes}</td></tr>)}
+            <thead className="bg-slate-100 text-slate-600"><tr>{['#', 'Rep auditoria', 'PACOTES AUDITADOS', 'Rotas auditadas', 'Corretos', 'A mais', 'Outros / pendentes'].map(label => <th key={label} className="border-r border-b border-slate-300 px-3 py-3 font-black last:border-r-0">{label}</th>)}</tr></thead>
+            <tbody>{visible.map(row => <tr key={normalize(row.auditor)} className="border-t border-slate-300 hover:bg-slate-50 [&>td]:border-r [&>td]:border-slate-200 [&>td:last-child]:border-r-0"><td className="px-3 py-3 font-bold">{ranking.indexOf(row) + 1}</td><td className="px-3 py-3 font-black">{row.auditor}</td><td className="px-3 py-3 text-2xl font-black text-slate-950">{row.total}</td><td className="px-3 py-3 text-xl font-black">{row.rotas}</td><td className="px-3 py-3 font-black text-emerald-700">{row.corretos}</td><td className="px-3 py-3">{row.amais}</td><td className="px-3 py-3">{row.pendentes}</td></tr>)}
               {!visible.length && <tr><td colSpan={7} className="p-8 text-center text-slate-500">Nenhum auditor encontrado.</td></tr>}
             </tbody>
           </table></div>
