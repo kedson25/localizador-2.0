@@ -24,9 +24,9 @@ type SavedFiles = Partial<Record<Source, SavedFile>>;
 type RankingSummary = { registros: number; corretos: number; rotas: number; auditores: number; amais: number; pendentes: number };
 type SavedRanking = { version: 2; ranking: RankingRow[]; summary: RankingSummary; savedAt: string };
 const emptySummary = (): RankingSummary => ({ registros: 0, corretos: 0, rotas: 0, auditores: 0, amais: 0, pendentes: 0 });
-const readSavedRanking = (): SavedRanking | null => {
+const readSavedRanking = (cycle: 'todos' | 'AM' | 'PM' | 'SD' = 'todos'): SavedRanking | null => {
   try {
-    const json = window.localStorage.getItem(RANKING_STORAGE_KEY);
+    const json = window.localStorage.getItem(`${RANKING_STORAGE_KEY}:${cycle}`);
     if (!json) return null;
     const value = JSON.parse(json) as SavedRanking;
     if (value.version !== 2 || !Array.isArray(value.ranking) || !value.summary) return null;
@@ -79,7 +79,7 @@ function computeRanking(records: AuditRecord[]): RankingRow[] {
     .sort((a, b) => b.total - a.total || b.rotas - a.rotas || b.corretos - a.corretos || a.auditor.localeCompare(b.auditor, 'pt-BR'));
 }
 
-export function RankingAuditores({ aduana, auditoria }: { aduana: ExpedicaoRow[]; auditoria: ExpedicaoRow[] }) {
+export function RankingAuditores({ aduana, auditoria, cycle = 'todos' }: { aduana: ExpedicaoRow[]; auditoria: ExpedicaoRow[]; cycle?: 'todos' | 'AM' | 'PM' | 'SD' }) {
   const [files, setFiles] = useState<SavedFiles>({});
   const [filesReady, setFilesReady] = useState(false);
   useEffect(() => {
@@ -104,7 +104,8 @@ export function RankingAuditores({ aduana, auditoria }: { aduana: ExpedicaoRow[]
       setWorking(false);
     }
   };
-  const [saved, setSaved] = useState<SavedRanking | null>(readSavedRanking);
+  const [saved, setSaved] = useState<SavedRanking | null>(() => readSavedRanking(cycle));
+  useEffect(() => { setSaved(readSavedRanking(cycle)); }, [cycle]);
   const ranking = saved?.ranking || [];
   const summary = saved?.summary || emptySummary();
   const [filter, setFilter] = useState('');
@@ -117,7 +118,7 @@ export function RankingAuditores({ aduana, auditoria }: { aduana: ExpedicaoRow[]
   const resetRanking = async () => {
     if (!window.confirm('Zerar somente o ranking salvo? Os CSVs salvos no ranking serão apagados, mas o monitoramento de docas não será alterado.')) return;
     try {
-      window.localStorage.removeItem(RANKING_STORAGE_KEY);
+      window.localStorage.removeItem(`${RANKING_STORAGE_KEY}:${cycle}`);
       await deleteLocalValue(FILE_STORAGE_KEY);
       setSaved(null);
       setFiles({});
@@ -141,18 +142,165 @@ export function RankingAuditores({ aduana, auditoria }: { aduana: ExpedicaoRow[]
         if (files[source]) combined.push(...files[source]!.records);
         else combined.push(...fallback(source === 'aduana' ? aduana : auditoria, source));
       }
-      if (!combined.length) throw new Error('Carregue ao menos um CSV de Aduana ou Auditoria.');
-      const result = computeRanking(combined);
+      const cycleRecords = cycle === 'todos' ? combined : combined.filter(row =>
+        row.rota.toUpperCase().split(/[^A-Z0-9]+/).some(token => new RegExp(`^${cycle}\\d*import React, { useEffect, useMemo, useRef, useState } from 'react';
+import Papa from 'papaparse';
+import { BarChart3, CheckCircle2, Download, Trash2, UploadCloud } from 'lucide-react';
+import type { ExpedicaoRow } from '../lib/expedicao';
+import { dateScore } from '../lib/expedicao';
+import { deleteLocalValue, getLocalValue, setLocalValue } from '../lib/localPersistence';
+
+type Source = 'aduana' | 'auditoria';
+type AuditRecord = { id: string; auditor: string; status: string; rota: string; timestamp: string; source: Source };
+type RankingRow = { auditor: string; total: number; corretos: number; amais: number; pendentes: number; rotas: number; pacotes: number };
+
+const normalize = (value: unknown) => String(value ?? '').trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+const field = (row: Record<string, unknown>, ...names: string[]) => {
+  const key = Object.keys(row).find(name => names.some(expected => normalize(name) === normalize(expected)));
+  return key ? String(row[key] ?? '').trim() : '';
+};
+const route = (value: string) => value.split('|')[0].trim().toUpperCase();
+const status = (value: string) => normalize(value).replace(/\s+/g, ' ');
+const sourceName = (source: Source) => source === 'aduana' ? 'Aduana' : 'Auditoria';
+const RANKING_STORAGE_KEY = 'docas-ranking-auditores-v2';
+const FILE_STORAGE_KEY = 'docas-ranking-csvs-v1';
+type SavedFile = { name: string; records: AuditRecord[] };
+type SavedFiles = Partial<Record<Source, SavedFile>>;
+type RankingSummary = { registros: number; corretos: number; rotas: number; auditores: number; amais: number; pendentes: number };
+type SavedRanking = { version: 2; ranking: RankingRow[]; summary: RankingSummary; savedAt: string };
+const emptySummary = (): RankingSummary => ({ registros: 0, corretos: 0, rotas: 0, auditores: 0, amais: 0, pendentes: 0 });
+const readSavedRanking = (cycle: 'todos' | 'AM' | 'PM' | 'SD' = 'todos'): SavedRanking | null => {
+  try {
+    const json = window.localStorage.getItem(`${RANKING_STORAGE_KEY}:${cycle}`);
+    if (!json) return null;
+    const value = JSON.parse(json) as SavedRanking;
+    if (value.version !== 2 || !Array.isArray(value.ranking) || !value.summary) return null;
+    return value;
+  } catch { return null; }
+};
+
+function parseRankingCsv(text: string, source: Source): AuditRecord[] {
+  const result = Papa.parse<Record<string, unknown>>(text.replace(/^\uFEFF/, ''), { header: true, skipEmptyLines: 'greedy' });
+  if (result.errors.some(error => error.code === 'MissingQuotes')) throw new Error('CSV com aspas inválidas.');
+  const headers = result.meta.fields || [];
+  if (!headers.some(h => normalize(h) === 'shipment id') || !headers.some(h => normalize(h) === 'rep auditoria')) {
+    throw new Error(sourceName(source) + ': é necessário ter as colunas Shipment ID e Rep auditoria.');
+  }
+  return result.data.map(row => ({
+    id: field(row, 'Shipment ID', 'Shipment', 'ID'),
+    auditor: field(row, 'Rep auditoria', 'Responsável'),
+    status: field(row, 'Estado', 'Status'),
+    rota: route(field(row, 'ID da rota', 'Contenedor', 'Rota')),
+    timestamp: field(row, 'Data auditoria', 'Data da auditoria', 'Data'),
+    source,
+  })).filter(row => row.id && row.auditor);
+}
+
+function computeRanking(records: AuditRecord[]): RankingRow[] {
+  // Cada pacote tem apenas um estado final por fonte. Uma rota conta uma vez por auditor.
+  const latest = new Map<string, AuditRecord>();
+  records.forEach(record => {
+    const key = record.source + ':' + record.id;
+    const previous = latest.get(key);
+    if (!previous || dateScore(record.timestamp) >= dateScore(previous.timestamp)) latest.set(key, record);
+  });
+  const byAuditor = new Map<string, RankingRow & { routes: Set<string>; ids: Set<string> }>();
+  latest.forEach(record => {
+    const key = normalize(record.auditor).replace(/\s+/g, ' ');
+    let item = byAuditor.get(key);
+    if (!item) {
+      item = { auditor: record.auditor, total: 0, corretos: 0, amais: 0, pendentes: 0, rotas: 0, pacotes: 0, routes: new Set(), ids: new Set() };
+      byAuditor.set(key, item);
+    }
+    item.total++;
+    item.ids.add(record.id);
+    if (record.rota) item.routes.add(record.rota);
+    const estado = status(record.status);
+    if (estado === 'correto') item.corretos++;
+    else if (estado === 'a mais' || estado === 'amais') item.amais++;
+    else item.pendentes++;
+  });
+  return [...byAuditor.values()].map(({ routes, ids, ...item }) => ({ ...item, rotas: routes.size, pacotes: ids.size }))
+    .sort((a, b) => b.total - a.total || b.rotas - a.rotas || b.corretos - a.corretos || a.auditor.localeCompare(b.auditor, 'pt-BR'));
+}
+
+export function RankingAuditores({ aduana, auditoria, cycle = 'todos' }: { aduana: ExpedicaoRow[]; auditoria: ExpedicaoRow[]; cycle?: 'todos' | 'AM' | 'PM' | 'SD' }) {
+  const [files, setFiles] = useState<SavedFiles>({});
+  const [filesReady, setFilesReady] = useState(false);
+  useEffect(() => {
+    let mounted = true;
+    getLocalValue<SavedFiles>(FILE_STORAGE_KEY).then(savedFiles => {
+      if (mounted && savedFiles) setFiles(savedFiles);
+    }).finally(() => { if (mounted) setFilesReady(true); });
+    return () => { mounted = false; };
+  }, []);
+  const loadFile = async (source: Source, file: File) => {
+    setWorking(true);
+    setError('');
+    try {
+      const records = parseRankingCsv(await file.text(), source);
+      if (!records.length) throw new Error('Arquivo CSV sem registros válidos.');
+      const next = { ...files, [source]: { name: file.name, records } };
+      await setLocalValue(FILE_STORAGE_KEY, next);
+      setFiles(next);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Erro ao carregar arquivo.');
+    } finally {
+      setWorking(false);
+    }
+  };
+  const [saved, setSaved] = useState<SavedRanking | null>(() => readSavedRanking(cycle));
+  useEffect(() => { setSaved(readSavedRanking(cycle)); }, [cycle]);
+  const ranking = saved?.ranking || [];
+  const summary = saved?.summary || emptySummary();
+  const [filter, setFilter] = useState('');
+  const [topMode, setTopMode] = useState<'all' | 'top10'>('all');
+  const [working, setWorking] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const downloadLock = useRef(false);
+  const [error, setError] = useState('');
+  const calculated = saved !== null;
+  const resetRanking = async () => {
+    if (!window.confirm('Zerar somente o ranking salvo? Os CSVs salvos no ranking serão apagados, mas o monitoramento de docas não será alterado.')) return;
+    try {
+      window.localStorage.removeItem(`${RANKING_STORAGE_KEY}:${cycle}`);
+      await deleteLocalValue(FILE_STORAGE_KEY);
+      setSaved(null);
+      setFiles({});
+      setFilter('');
+      setError('');
+    } catch {
+      setError('Não foi possível zerar o ranking salvo neste navegador.');
+    }
+  };
+
+  const calculate = async () => {
+    setWorking(true);
+    setError('');
+    try {
+      const fallback = (rows: ExpedicaoRow[], source: Source): AuditRecord[] => rows.map(row => ({
+        id: row.pacote, auditor: field(row.raw || {}, 'Rep auditoria', 'Responsável') || row.detalhe,
+        status: row.estado, rota: route(row.rotaInformada), timestamp: row.dataRegistro, source,
+      })).filter(row => row.id && row.auditor);
+      const combined: AuditRecord[] = [];
+      for (const source of ['aduana', 'auditoria'] as const) {
+        if (files[source]) combined.push(...files[source]!.records);
+        else combined.push(...fallback(source === 'aduana' ? aduana : auditoria, source));
+      }
+).test(token))
+      );
+      if (!cycleRecords.length) throw new Error(`Nenhum registro do ciclo ${cycle} encontrado nos CSVs.`);
+      const result = computeRanking(cycleRecords);
       const nextSummary: RankingSummary = {
         registros: result.reduce((n, row) => n + row.total, 0),
         corretos: result.reduce((n, row) => n + row.corretos, 0),
-        rotas: new Set(combined.map(row => row.rota).filter(Boolean)).size,
+        rotas: new Set(cycleRecords.map(row => row.rota).filter(Boolean)).size,
         auditores: result.length,
         amais: result.reduce((n, row) => n + row.amais, 0),
         pendentes: result.reduce((n, row) => n + row.pendentes, 0),
       };
       const next: SavedRanking = { version: 2, ranking: result, summary: nextSummary, savedAt: new Date().toISOString() };
-      window.localStorage.setItem(RANKING_STORAGE_KEY, JSON.stringify(next));
+      window.localStorage.setItem(`${RANKING_STORAGE_KEY}:${cycle}`, JSON.stringify(next));
       setSaved(next);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Erro ao calcular e salvar ranking.');
