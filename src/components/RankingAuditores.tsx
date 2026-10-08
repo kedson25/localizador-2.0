@@ -1,8 +1,9 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Papa from 'papaparse';
 import { BarChart3, CheckCircle2, Download, Trash2, UploadCloud } from 'lucide-react';
 import type { ExpedicaoRow } from '../lib/expedicao';
 import { dateScore } from '../lib/expedicao';
+import { deleteLocalValue, getLocalValue, setLocalValue } from '../lib/localPersistence';
 
 type Source = 'aduana' | 'auditoria';
 type AuditRecord = { id: string; auditor: string; status: string; rota: string; timestamp: string; source: Source };
@@ -17,6 +18,9 @@ const route = (value: string) => value.split('|')[0].trim().toUpperCase();
 const status = (value: string) => normalize(value).replace(/\s+/g, ' ');
 const sourceName = (source: Source) => source === 'aduana' ? 'Aduana' : 'Auditoria';
 const RANKING_STORAGE_KEY = 'docas-ranking-auditores-v2';
+const FILE_STORAGE_KEY = 'docas-ranking-csvs-v1';
+type SavedFile = { name: string; records: AuditRecord[] };
+type SavedFiles = Partial<Record<Source, SavedFile>>;
 type RankingSummary = { registros: number; corretos: number; rotas: number; auditores: number; amais: number; pendentes: number };
 type SavedRanking = { version: 2; ranking: RankingRow[]; summary: RankingSummary; savedAt: string };
 const emptySummary = (): RankingSummary => ({ registros: 0, corretos: 0, rotas: 0, auditores: 0, amais: 0, pendentes: 0 });
@@ -76,7 +80,30 @@ function computeRanking(records: AuditRecord[]): RankingRow[] {
 }
 
 export function RankingAuditores({ aduana, auditoria }: { aduana: ExpedicaoRow[]; auditoria: ExpedicaoRow[] }) {
-  const [files, setFiles] = useState<Partial<Record<Source, File>>>({});
+  const [files, setFiles] = useState<SavedFiles>({});
+  const [filesReady, setFilesReady] = useState(false);
+  useEffect(() => {
+    let mounted = true;
+    getLocalValue<SavedFiles>(FILE_STORAGE_KEY).then(savedFiles => {
+      if (mounted && savedFiles) setFiles(savedFiles);
+    }).finally(() => { if (mounted) setFilesReady(true); });
+    return () => { mounted = false; };
+  }, []);
+  const loadFile = async (source: Source, file: File) => {
+    setWorking(true);
+    setError('');
+    try {
+      const records = parseRankingCsv(await file.text(), source);
+      if (!records.length) throw new Error('Arquivo CSV sem registros válidos.');
+      const next = { ...files, [source]: { name: file.name, records } };
+      await setLocalValue(FILE_STORAGE_KEY, next);
+      setFiles(next);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Erro ao carregar arquivo.');
+    } finally {
+      setWorking(false);
+    }
+  };
   const [saved, setSaved] = useState<SavedRanking | null>(readSavedRanking);
   const ranking = saved?.ranking || [];
   const summary = saved?.summary || emptySummary();
@@ -84,10 +111,11 @@ export function RankingAuditores({ aduana, auditoria }: { aduana: ExpedicaoRow[]
   const [working, setWorking] = useState(false);
   const [error, setError] = useState('');
   const calculated = saved !== null;
-  const resetRanking = () => {
-    if (!window.confirm('Zerar somente o ranking salvo? Os CSVs e o monitoramento de docas não serão apagados.')) return;
+  const resetRanking = async () => {
+    if (!window.confirm('Zerar somente o ranking salvo? Os CSVs salvos no ranking serão apagados, mas o monitoramento de docas não será alterado.')) return;
     try {
       window.localStorage.removeItem(RANKING_STORAGE_KEY);
+      await deleteLocalValue(FILE_STORAGE_KEY);
       setSaved(null);
       setFiles({});
       setFilter('');
@@ -107,7 +135,7 @@ export function RankingAuditores({ aduana, auditoria }: { aduana: ExpedicaoRow[]
       })).filter(row => row.id && row.auditor);
       const combined: AuditRecord[] = [];
       for (const source of ['aduana', 'auditoria'] as const) {
-        if (files[source]) combined.push(...parseRankingCsv(await files[source]!.text(), source));
+        if (files[source]) combined.push(...files[source]!.records);
         else combined.push(...fallback(source === 'aduana' ? aduana : auditoria, source));
       }
       if (!combined.length) throw new Error('Carregue ao menos um CSV de Aduana ou Auditoria.');
@@ -206,14 +234,14 @@ export function RankingAuditores({ aduana, auditoria }: { aduana: ExpedicaoRow[]
             <label key={source} className={`flex cursor-pointer items-center gap-3 border-2 border-dashed p-3 transition-colors ${files[source] ? 'border-emerald-500 bg-emerald-50 text-emerald-900' : 'border-slate-400 bg-slate-50 hover:bg-slate-100'}`}>
               {files[source] ? <CheckCircle2 size={22} className="shrink-0 text-emerald-700" /> : <UploadCloud size={20} className="shrink-0" />}
               <span className="min-w-0 flex-1 text-xs font-bold"><strong className="block text-sm">{sourceName(source)} CSV</strong><span className="block truncate text-slate-500">{files[source] ? `✓ Carregado: ${files[source].name}` : 'Selecionar arquivo CSV (ou usar o já importado)'}</span></span>
-              <input aria-label={'Importar CSV ' + sourceName(source)} className="sr-only" type="file" accept=".csv,text/csv" onChange={event => { const file = event.target.files?.[0]; if (file) { setFiles(old => ({ ...old, [source]: file })); setError(''); } }} />
+              <input aria-label={'Importar CSV ' + sourceName(source)} className="sr-only" type="file" accept=".csv,text/csv" disabled={!filesReady || working} onChange={event => { const file = event.target.files?.[0]; if (file) void loadFile(source, file); event.target.value = ''; }} />
             </label>
           ))}
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-3">
-          <button type="button" disabled={working} onClick={calculate} className="bg-slate-900 px-6 py-2.5 text-sm font-black text-white disabled:opacity-50">{working ? 'Calculando...' : 'Calcular ranking'}</button>
+          <button type="button" disabled={working || !filesReady} onClick={calculate} className="bg-slate-900 px-6 py-2.5 text-sm font-black text-white disabled:opacity-50">{working ? 'Calculando...' : 'Calcular ranking'}</button>
           <button type="button" onClick={resetRanking} disabled={!calculated || working} className="inline-flex items-center gap-2 border border-red-300 bg-white px-4 py-2.5 text-sm font-black text-red-700 disabled:cursor-not-allowed disabled:opacity-40"><Trash2 size={16} />Zerar ranking</button>
-          <span className="text-xs text-slate-500">Ranking salvo neste navegador até você zerar. Calcular substitui o ranking anterior, sem apagar o monitoramento.</span>
+          <span className="text-xs text-slate-500">Ranking e arquivos CSV salvos neste navegador até você zerar. Calcular substitui apenas o resultado anterior.</span>
           {saved && <span className="text-xs font-semibold text-emerald-700">✓ Salvo em {new Date(saved.savedAt).toLocaleString('pt-BR')}</span>
         </div>
         {error && <p role="alert" className="mt-3 text-sm font-bold text-red-700">{error}</p>}
