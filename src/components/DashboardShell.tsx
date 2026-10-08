@@ -32,6 +32,8 @@ const QUICK_LINKS: QuickLink[] = [
   { label: 'Módulos', path: '/', keywords: 'modulos ferramentas' },
   { label: 'Listas de Coleta', path: '/listas', keywords: 'lista coleta backlog' },
   { label: 'Buscar IDs', path: '/consulta', keywords: 'buscar ids consulta rota pacote' },
+  { label: 'Controle Refugo', path: '/refugo', keywords: 'refugo conferir csv pacotes' },
+  { label: 'Baixas', path: '/baixas', keywords: 'baixas entregue em rota' },
   { label: 'Correlação de IDs', path: '/correlacao', keywords: 'correlacao conciliar ids fos returns devolucao' },
   { label: 'Remover IDs', path: '/remover', keywords: 'remover ids baixa filtro' },
   { label: 'Reporte WhatsApp', path: '/reporte', keywords: 'reporte whatsapp relatorio' },
@@ -63,9 +65,11 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
     if (!term) return [];
     return QUICK_LINKS.filter(item => {
       if (item.adminOnly && !currentUser?.isAdmin) return false;
+      const group = item.path.split('/')[1];
+      if (group && !['admin', 'configuracoes'].includes(group) && !currentUser?.isAdmin && !currentUser?.allowedGroups?.includes(group)) return false;
       return `${item.label} ${item.keywords}`.toLowerCase().includes(term);
     }).slice(0, 6);
-  }, [search, currentUser?.isAdmin]);
+  }, [search, currentUser?.isAdmin, currentUser?.allowedGroups]);
 
   const logout = async () => {
     const auth = await import('../lib/auth');
