@@ -108,6 +108,7 @@ export function RankingAuditores({ aduana, auditoria }: { aduana: ExpedicaoRow[]
   const ranking = saved?.ranking || [];
   const summary = saved?.summary || emptySummary();
   const [filter, setFilter] = useState('');
+  const [topMode, setTopMode] = useState<'all' | 'top10'>('all');
   const [working, setWorking] = useState(false);
   const [error, setError] = useState('');
   const calculated = saved !== null;
@@ -173,18 +174,19 @@ export function RankingAuditores({ aduana, auditoria }: { aduana: ExpedicaoRow[]
       setError(error instanceof Error ? error.message : 'Falha nas imagens do reporte.');
       return;
     }
-    if (!ranking.length) return;
+    const exportRows = ranking.filter(row => normalize(row.auditor).includes(normalize(filter)));
+    const reportRows = topMode === 'top10' ? exportRows.slice(0, 10) : exportRows;
+    if (!reportRows.length) { setError('Nenhum auditor para exportar.'); return; }
     const width = 2172;
     const scale = width / 1200;
     const bannerHeight = 544;
     const rowHeight = 42;
     const rowsPerImage = 55;
     const fmt = (n: number) => n.toLocaleString('pt-BR');
-    const ratio = (r: RankingRow) => r.rotas ? (r.total / r.rotas).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : '—';
-    const stamp = saved?.savedAt ? new Date(saved.savedAt) : new Date();
-    const reportDate = stamp.toLocaleDateString('pt-BR');
-    for (let offset = 0; offset < ranking.length; offset += rowsPerImage) {
-      const rows = ranking.slice(offset, offset + rowsPerImage);
+    const ratio = (r: RankingRow) => r.rotas ? Math.round(r.total / r.rotas).toLocaleString('pt-BR') : '—';
+    const reportDate = new Date().toLocaleDateString('pt-BR');
+    for (let offset = 0; offset < reportRows.length; offset += rowsPerImage) {
+      const rows = reportRows.slice(offset, offset + rowsPerImage);
       const canvas = document.createElement('canvas');
       canvas.width = width;
       canvas.height = bannerHeight * 2 + Math.ceil((124 + 54 + rows.length * rowHeight) * scale);
@@ -207,6 +209,7 @@ export function RankingAuditores({ aduana, auditoria }: { aduana: ExpedicaoRow[]
       ctx.translate(0, bannerHeight);
       ctx.scale(scale, scale);
       rect(0, 0, 1200, 124, '#ffe600');
+      print('DATA: ' + reportDate, 930, 12, 'bold 13px Arial', '#111820');
       const stats = [
         ['PACOTES AUDITADOS', summary.registros],
         ['ROTAS DISTINTAS', summary.rotas],
@@ -224,17 +227,21 @@ export function RankingAuditores({ aduana, auditoria }: { aduana: ExpedicaoRow[]
       ['RANK', 'COLABORADOR', 'ROTAS', 'PACOTES', 'PACOTES / ROTA'].forEach((heading, i) => {
         print(heading, xs[i] + 10, tableY + 35, 'bold 18px Arial', '#fff', xs[i+1] - xs[i] - 18);
       });
+      const printCentered = (text: string, x: number, y: number, font: string) => {
+        ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#111820'; ctx.font = font; ctx.fillText(text, x, y); ctx.restore();
+      };
       rows.forEach((row, i) => {
         const y = tableY + 54 + i * rowHeight;
         const position = offset + i + 1;
         rect(25, y, 1150, rowHeight, position <= 3 ? '#ffe34f' : i % 2 ? '#fff' : '#edf0f4');
         ctx.strokeStyle = '#cad1d9'; ctx.lineWidth = 1;
         ctx.beginPath(); ctx.moveTo(25, y + rowHeight); ctx.lineTo(1175, y + rowHeight); ctx.stroke();
-        print(position === 1 ? '🥇' : position === 2 ? '🥈' : position === 3 ? '🥉' : String(position), 42, y + 29, 'bold 22px Arial', '#111820');
-        print(row.auditor, 137, y + 29, position <= 3 ? 'bold 21px Arial' : '19px Arial', '#111820', 417);
-        print(fmt(row.rotas), 635, y + 29, 'bold 21px Arial', '#111820');
-        print(fmt(row.total), 836, y + 29, 'bold 21px Arial', '#111820');
-        print(ratio(row), 1040, y + 29, 'bold 20px Arial', '#111820');
+        printCentered(position === 1 ? '🥇' : position === 2 ? '🥈' : position === 3 ? '🥉' : String(position), (xs[0] + xs[1]) / 2, y + rowHeight / 2, 'bold 22px Arial');
+        print(row.auditor, 137, y + rowHeight / 2 + 7, position <= 3 ? 'bold 21px Arial' : '19px Arial', '#111820', 417);
+        printCentered(fmt(row.rotas), (xs[2] + xs[3]) / 2, y + rowHeight / 2, 'bold 21px Arial');
+        printCentered(fmt(row.total), (xs[3] + xs[4]) / 2, y + rowHeight / 2, 'bold 21px Arial');
+        printCentered(ratio(row), (xs[4] + xs[5]) / 2, y + rowHeight / 2, 'bold 20px Arial');
       });
       ctx.strokeStyle = '#b9c1cb'; ctx.lineWidth = 1;
       xs.forEach(x => { ctx.beginPath(); ctx.moveTo(x, tableY); ctx.lineTo(x, tableY + 54 + rows.length * rowHeight); ctx.stroke(); });
@@ -247,7 +254,10 @@ export function RankingAuditores({ aduana, auditoria }: { aduana: ExpedicaoRow[]
     }
   };
 
-  const visible = useMemo(() => ranking.filter(row => normalize(row.auditor).includes(normalize(filter))), [ranking, filter]);
+  const visible = useMemo(() => {
+    const rows = ranking.filter(row => normalize(row.auditor).includes(normalize(filter)));
+    return topMode === 'top10' ? rows.slice(0, 10) : rows;
+  }, [ranking, filter, topMode]);
   return (
     <div className="space-y-3">
       <section className="border border-slate-300 bg-white p-4 shadow-sm">
@@ -274,13 +284,13 @@ export function RankingAuditores({ aduana, auditoria }: { aduana: ExpedicaoRow[]
           {([['PACOTES AUDITADOS', summary.registros], ['ROTAS AUDITADAS', summary.rotas], ['CORRETOS', summary.corretos], ['AUDITORES', summary.auditores]] as const).map(([label, value]) => <div key={label} className="border border-slate-300 bg-white p-4"><div className="text-xs font-black uppercase text-slate-600">{label}</div><div className="mt-2 text-4xl font-black text-slate-950">{value.toLocaleString('pt-BR')}</div></div>)}
         </section>
         <section className="overflow-hidden border border-slate-300 bg-white">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 p-3"><div className="flex items-center gap-3"><h3 className="text-lg font-black">Ranking por pacotes auditados</h3><button type="button" onClick={() => void downloadReport()} className="inline-flex items-center gap-2 bg-slate-900 px-4 py-2 text-sm font-black text-white"><Download size={17} />Baixar reporte PNG</button></div><input className="w-full border border-slate-300 px-3 py-2 text-sm sm:w-64" value={filter} onChange={event => setFilter(event.target.value)} placeholder="Pesquisar auditor" /></div>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 p-3"><div className="flex items-center gap-3"><h3 className="text-lg font-black">Ranking por pacotes auditados</h3><button type="button" onClick={() => void downloadReport()} className="inline-flex items-center gap-2 bg-slate-900 px-4 py-2 text-sm font-black text-white"><Download size={17} />Baixar reporte PNG</button><select aria-label="Exibir ranking" value={topMode} onChange={event => setTopMode(event.target.value as 'all' | 'top10')} className="border border-slate-300 bg-white px-3 py-2 text-sm font-semibold"><option value="all">Todos</option><option value="top10">Top 10</option></select></div><input className="w-full border border-slate-300 px-3 py-2 text-sm sm:w-64" value={filter} onChange={event => setFilter(event.target.value)} placeholder="Pesquisar auditor" /></div>
           <div className="overflow-x-auto">
             <div className="bg-[#ffe600] px-5 py-4 text-[#111820]">
               <div className="text-sm font-black uppercase tracking-wide">Mercado Livre • SSP21 Mooca</div>
             </div>
             <div className="bg-[#10151d] px-5 py-4 text-2xl font-black text-white">
-              ADUANA DO DIA {saved ? new Date(saved.savedAt).toLocaleDateString('pt-BR') : ''}
+              ADUANA DO DIA {saved ? new Date().toLocaleDateString('pt-BR') : ''}
             </div>
             <table className="w-full min-w-[920px] table-fixed text-sm">
               <colgroup><col style={{ width: '9%' }} /><col style={{ width: '37%' }} /><col style={{ width: '18%' }} /><col style={{ width: '19%' }} /><col style={{ width: '17%' }} /></colgroup>
@@ -295,7 +305,7 @@ export function RankingAuditores({ aduana, auditoria }: { aduana: ExpedicaoRow[]
                     <td className="border border-slate-300 px-3 py-2 font-semibold">{row.auditor}</td>
                     <td className="border border-slate-300 px-3 py-2 text-center font-bold tabular-nums">{row.rotas.toLocaleString('pt-BR')}</td>
                     <td className="border border-slate-300 px-3 py-2 text-center font-bold tabular-nums">{row.total.toLocaleString('pt-BR')}</td>
-                    <td className="border border-slate-300 px-3 py-2 text-center font-bold tabular-nums">{row.rotas ? (row.total / row.rotas).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : '—'}</td>
+                    <td className="border border-slate-300 px-3 py-2 text-center font-bold tabular-nums">{row.rotas ? Math.round(row.total / row.rotas).toLocaleString('pt-BR') : '—'}</td>
                   </tr>;
                 })}
                 {!visible.length && <tr><td colSpan={5} className="p-8 text-center text-slate-500">Nenhum auditor encontrado.</td></tr>}
