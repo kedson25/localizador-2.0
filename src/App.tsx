@@ -141,15 +141,15 @@ export default function App() {
             <Route path="/configuracoes" element={insideDashboard(<SettingsPage currentUser={currentUser} />)} />
             {currentUser?.isAdmin && <Route path="/admin" element={insideDashboard(<AdminPanel currentUser={currentUser} />)} />}
             {(currentUser?.isAdmin || currentUser?.allowedGroups?.includes('consulta')) && <Route path="/consulta" element={insideDashboard(<div className="space-y-4"><StatsSummary totalRows={rows.length} groups={groups} /><IdLookupEnhanced rows={rows} onNavigateToUpload={() => navigate('/upload')} /></div>)} />}
-            <Route path="/correlacao" element={insideDashboard(<CorrelacaoIds />)} />
-            <Route path="/baixas" element={insideDashboard(<BaixasPanel />)} />
-            <Route path="/refugo" element={dedicatedOperation(<ControleRefugoClean currentUser={currentUser} />)} />
+            {(currentUser?.isAdmin || currentUser?.allowedGroups?.includes('correlacao')) && <Route path="/correlacao" element={insideDashboard(<CorrelacaoIds />})} />
+            {(currentUser?.isAdmin || currentUser?.allowedGroups?.includes('baixas')) && <Route path="/baixas" element={insideDashboard(<BaixasPanel />})} />
+            {(currentUser?.isAdmin || currentUser?.allowedGroups?.includes('refugo')) && <Route path="/refugo" element={dedicatedOperation(<ControleRefugoClean currentUser={currentUser} />})} />
             {(currentUser?.isAdmin || currentUser?.allowedGroups?.includes('remover')) && <Route path="/remover" element={insideDashboard(<IdRemover rows={rows} headers={headers} />)} />}
             {(currentUser?.isAdmin || currentUser?.allowedGroups?.includes('reporte')) && <Route path="/reporte" element={insideDashboard(<WhatsappReportEnhanced rows={rows} />)} />}
             {(currentUser?.isAdmin || currentUser?.allowedGroups?.includes('listas')) && <><Route path="/listas" element={insideDashboard(<ListasDashboard currentUser={currentUser} />)} /><Route path="/listas/:id" element={dedicatedOperation(<ListasColetaEnhanced currentUser={currentUser} />)} /></>}
             {(currentUser?.isAdmin || currentUser?.allowedGroups?.includes('upload')) && <Route path="/upload" element={insideDashboard(<CsvUploader onLoadText={(text) => { handleParseAndSave(text); navigate('/'); }} currentTotalRows={rows.length} />)} />}
-            <Route path="/brancas" element={insideDashboard(<BrancasPanelWithCsvFallback currentUser={currentUser} />)} />
-            <Route path="/expedicao" element={insideDashboard(<ExpedicaoPanel />)} />
+            {(currentUser?.isAdmin || currentUser?.allowedGroups?.includes('brancas')) && <Route path="/brancas" element={insideDashboard(<BrancasPanelWithCsvFallback currentUser={currentUser} />})} />
+            {(currentUser?.isAdmin || currentUser?.allowedGroups?.includes('expedicao')) && <Route path="/expedicao" element={insideDashboard(<ExpedicaoPanel />})} />
           </>}
           <Route path="*" element={isAuthenticated ? <Navigate to="/" replace /> : <Navigate to="/login" replace />} />
         </Routes>
