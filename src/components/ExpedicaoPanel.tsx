@@ -18,11 +18,24 @@ import {
   parseExpedicaoRows,
   type ExpedicaoDocaChange,
   type ExpedicaoStore,
+  type ExpedicaoRow,
   type FonteImportacaoExpedicao,
 } from '../lib/expedicao';
 
 const STORAGE_KEY = 'expedicao-daily-v1';
 const TAB_STORAGE_KEY = 'docas-active-tab-v1';
+const CYCLE_STORAGE_KEY = 'docas-cycle-filter-v1';
+type CycleFilter = 'todos' | 'AM' | 'PM' | 'SD';
+
+function getRouteCycle(value: string): CycleFilter | null {
+  const tokens = String(value || '').toUpperCase().split(/[^A-Z0-9]+/).filter(Boolean);
+  for (const token of tokens) {
+    const match = token.match(/^(AM|PM|SD)\d*$/);
+    if (match) return match[1] as CycleFilter;
+  }
+  return null;
+}
+
 type ViewTab = 'aduana' | 'auditoria' | 'ranking';
 type TipoFilter = 'todos' | 'A mais' | 'Faltante';
 type ListaFilter = 'todos' | 'em-lista' | 'fora-lista' | 'encontrados' | 'pendentes';
@@ -164,6 +177,13 @@ export function ExpedicaoPanel() {
   useEffect(() => {
     try { window.localStorage.setItem(TAB_STORAGE_KEY, tab); } catch {}
   }, [tab]);
+  const [cycle, setCycle] = useState<CycleFilter>(() => {
+    try {
+      const saved = localStorage.getItem(CYCLE_STORAGE_KEY);
+      return saved === 'AM' || saved === 'PM' || saved === 'SD' ? saved : 'todos';
+    } catch { return 'todos'; }
+  });
+  useEffect(() => { try { localStorage.setItem(CYCLE_STORAGE_KEY, cycle); } catch {} }, [cycle]);
   const [filter, setFilter] = useState<TipoFilter>('todos');
   const [listaFilter, setListaFilter] = useState<ListaFilter>('todos');
   const [query, setQuery] = useState('');
@@ -295,7 +315,20 @@ export function ExpedicaoPanel() {
     }
   };
 
-  const enriched = useMemo(() => enrichExpedicao(store), [store]);
+  const cycleStore = useMemo<ExpedicaoStore>(() => {
+    if (cycle === 'todos') return store;
+    const base = store.base.filter(row =>
+      getRouteCycle(row.rotaOtimizada) === cycle || getRouteCycle(row.rotaOriginal) === cycle || getRouteCycle(row.onda) === cycle
+    );
+    const matchingPackages = new Set(base.map(row => row.pacote).filter(Boolean));
+    const selectRecords = (records: ExpedicaoRow[]) => records.filter(row => {
+      const routeCycle = getRouteCycle(row.rotaInformada);
+      // Ciclo explícito na ocorrência tem prioridade sobre vínculos antigos do mesmo pacote.
+      return routeCycle ? routeCycle === cycle : matchingPackages.has(row.pacote);
+    });
+    return { ...store, base, aduana: selectRecords(store.aduana), auditoria: selectRecords(store.auditoria) };
+  }, [store, cycle]);
+  const enriched = useMemo(() => enrichExpedicao(cycleStore), [cycleStore]);
   const aduanaRows = useMemo(() => enriched.filter(row => row.origem === 'aduana'), [enriched]);
   const auditoriaRows = useMemo(() => enriched.filter(row => row.origem === 'auditoria'), [enriched]);
 
@@ -560,6 +593,15 @@ export function ExpedicaoPanel() {
           </div>
 
           <div className="flex flex-wrap gap-2">
+            <label className="flex items-center gap-2 border border-slate-300 bg-slate-50 px-2 text-xs font-bold text-slate-700">
+              Ciclo
+              <select aria-label="Filtrar ciclo do monitoramento" value={cycle} onChange={event => { setCycle(event.target.value as CycleFilter); setSelectedDoca(null); setSelectedStreet(null); }} className="h-9 bg-transparent font-bold outline-none">
+                <option value="todos">Todos</option>
+                <option value="AM">AM</option>
+                <option value="PM">PM</option>
+                <option value="SD">SD</option>
+              </select>
+            </label>
             {store.base.length === 0 && upload('Despacho', baseInput)}
             {tab === 'aduana' && upload('Aduana', aduanaInput)}
             {tab === 'auditoria' && upload('Auditoria', auditInput)}
@@ -584,7 +626,7 @@ export function ExpedicaoPanel() {
 
       {error && <div className="border border-amber-300 bg-white px-3 py-2 text-xs font-bold text-amber-900">{error}</div>}
 
-      {tab === 'ranking' ? <RankingAuditores aduana={store.aduana} auditoria={store.auditoria} /> : tab === 'aduana' ? (
+      {tab === 'ranking' ? <RankingAuditores aduana={cycleStore.aduana} auditoria={cycleStore.auditoria} /> : tab === 'aduana' ? (
         <>
           <section className="border border-slate-300 bg-white p-3 shadow-sm">
             <div className="mb-3 flex flex-wrap justify-end gap-2 text-[10px] font-black">
