@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Papa from 'papaparse';
 import { BarChart3, CheckCircle2, Download, Trash2, UploadCloud } from 'lucide-react';
 import type { ExpedicaoRow } from '../lib/expedicao';
@@ -111,6 +111,7 @@ export function RankingAuditores({ aduana, auditoria }: { aduana: ExpedicaoRow[]
   const [topMode, setTopMode] = useState<'all' | 'top10'>('all');
   const [working, setWorking] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
+  const downloadLock = useRef(false);
   const [error, setError] = useState('');
   const calculated = saved !== null;
   const resetRanking = async () => {
@@ -161,9 +162,13 @@ export function RankingAuditores({ aduana, auditoria }: { aduana: ExpedicaoRow[]
   };
 
   const downloadReport = async () => {
-    if (isDownloading) return;
+    if (downloadLock.current) return;
+    downloadLock.current = true;
     setIsDownloading(true);
+    setError('');
     try {
+      // Permite ao React renderizar 'Baixando...' antes do canvas pesado.
+      await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
     const loadPng = (src: string) => new Promise<HTMLImageElement>((resolve, reject) => {
       const image = new Image();
       image.onload = () => resolve(image);
@@ -276,10 +281,21 @@ export function RankingAuditores({ aduana, auditoria }: { aduana: ExpedicaoRow[]
       ctx.drawImage(footer, 0, canvas.height - bannerHeight, width, bannerHeight);
       const link = document.createElement('a');
       link.download = 'aduana-ranking-' + reportDate.replace(/\//g, '-') + '-parte-' + (Math.floor(offset / rowsPerImage) + 1) + '.png';
-      link.href = canvas.toDataURL('image/png');
+      const png = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Não foi possível criar o PNG.')), 'image/png');
+      });
+      const url = URL.createObjectURL(png);
+      link.href = url;
+      document.body.appendChild(link);
       link.click();
+      link.remove();
+      // Aguarda o navegador iniciar o download antes de liberar o recurso.
+      window.setTimeout(() => URL.revokeObjectURL(url), 60000);
     }
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Erro ao baixar o PNG. Tente novamente.');
     } finally {
+      downloadLock.current = false;
       setIsDownloading(false);
     }
   };
