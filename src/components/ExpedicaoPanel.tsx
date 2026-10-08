@@ -23,6 +23,7 @@ import {
 } from '../lib/expedicao';
 
 const STORAGE_KEY = 'expedicao-daily-v1';
+const TAB_STORAGE_KEY = 'docas-active-tab-v1';
 type ViewTab = 'aduana' | 'auditoria' | 'ranking';
 type TipoFilter = 'todos' | 'A mais' | 'Faltante';
 type ListaFilter = 'todos' | 'em-lista' | 'fora-lista' | 'encontrados' | 'pendentes';
@@ -155,7 +156,15 @@ export function ExpedicaoPanel() {
   const [hydrated, setHydrated] = useState(false);
   const [remoteReady, setRemoteReady] = useState(false);
   const [screenReady, setScreenReady] = useState(false);
-  const [tab, setTab] = useState<ViewTab>('aduana');
+  const [tab, setTab] = useState<ViewTab>(() => {
+    try {
+      const previous = window.localStorage.getItem(TAB_STORAGE_KEY);
+      return previous === 'aduana' || previous === 'auditoria' || previous === 'ranking' ? previous : 'aduana';
+    } catch { return 'aduana'; }
+  });
+  useEffect(() => {
+    try { window.localStorage.setItem(TAB_STORAGE_KEY, tab); } catch {}
+  }, [tab]);
   const [filter, setFilter] = useState<TipoFilter>('todos');
   const [listaFilter, setListaFilter] = useState<ListaFilter>('todos');
   const [query, setQuery] = useState('');
