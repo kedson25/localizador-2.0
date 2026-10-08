@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { CheckCircle2, Download, FileText, Search, Share2, Trash2, UploadCloud, X } from 'lucide-react';
-import { ExpedicaoSkeleton } from './ExpedicaoSkeleton';
 import { RankingAuditores } from './RankingAuditores';
 import { getLocalValue, setLocalValue } from '../lib/localPersistence';
 import {
@@ -482,7 +481,10 @@ export function ExpedicaoPanel() {
     }
   };
 
-  if (!hydrated || !remoteReady || !screenReady) return <ExpedicaoSkeleton />;
+  const numbersLoading = !hydrated || !remoteReady || !screenReady;
+  const pendingNumber = (value: React.ReactNode, width = 'w-9') => numbersLoading
+    ? <span role="status" aria-label="Carregando indicador" className={`inline-block h-[1em] ${width} animate-pulse rounded-sm bg-slate-200 align-middle`} />
+    : value;
 
   const upload = (label: string, ref: RefObject<HTMLInputElement | null>) => (
     <button
@@ -586,9 +588,9 @@ export function ExpedicaoPanel() {
         <>
           <section className="border border-slate-300 bg-white p-3 shadow-sm">
             <div className="mb-3 flex flex-wrap justify-end gap-2 text-[10px] font-black">
-              <span className="border border-slate-300 bg-slate-50 px-3 py-1.5">EM LISTA HOJE: {totalEmLista}</span>
-              <span className="border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-emerald-800">ENCONTRADOS: {totalEncontrados}/{aduanaRows.length} • {totalPercentual}%</span>
-              {unconfirmedAduana > 0 && <span className="border border-amber-300 bg-amber-50 px-3 py-1.5 text-amber-800">SEM VAGA: {unconfirmedAduana}</span>}
+              <span className="border border-slate-300 bg-slate-50 px-3 py-1.5">EM LISTA HOJE: {pendingNumber(totalEmLista)}</span>
+              <span className="border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-emerald-800">ENCONTRADOS: {pendingNumber(`${totalEncontrados}/${aduanaRows.length} • ${totalPercentual}%`, 'w-24')}</span>
+              {(numbersLoading || unconfirmedAduana > 0) && <span className="border border-amber-300 bg-amber-50 px-3 py-1.5 text-amber-800">SEM VAGA: {pendingNumber(unconfirmedAduana)}</span>}
             </div>
 
             <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_390px] xl:items-start">
@@ -600,10 +602,10 @@ export function ExpedicaoPanel() {
                     onClick={() => setSelectedDoca(selectedDoca === item.doca ? null : item.doca)}
                     className={`min-h-[128px] border p-3 text-left transition ${item.concluida ? 'border-slate-400 bg-slate-200 text-slate-700' : 'border-slate-300 bg-white'} ${selectedDoca === item.doca ? 'ring-2 ring-slate-900' : ''}`}
                   >
-                    <div className="flex items-center justify-between gap-2"><span className="font-black">VAGA {item.doca}</span><span className="text-sm font-black">{item.percentual}%</span></div>
-                    <div className="mt-2 grid grid-cols-2 gap-2 text-xs"><span>A+ <b className="text-red-600">{item.amais}</b></span><span>Falt. <b className="text-amber-700">{item.faltantes}</b></span></div>
-                    <div className="mt-2 text-[10px] font-bold text-slate-600">{item.encontrados}/{item.total} encontrados</div>
-                    <div className="mt-0.5 text-[9px] font-bold text-slate-400">{item.emLista} em lista do dia</div>
+                    <div className="flex items-center justify-between gap-2"><span className="font-black">VAGA {item.doca}</span><span className="text-sm font-black">{pendingNumber(`${item.percentual}%`)}</span></div>
+                    <div className="mt-2 grid grid-cols-2 gap-2 text-xs"><span>A+ <b className="text-red-600">{pendingNumber(item.amais)}</b></span><span>Falt. <b className="text-amber-700">{pendingNumber(item.faltantes)}</b></span></div>
+                    <div className="mt-2 text-[10px] font-bold text-slate-600">{pendingNumber(`${item.encontrados}/${item.total}`, 'w-14')} encontrados</div>
+                    <div className="mt-0.5 text-[9px] font-bold text-slate-400">{pendingNumber(item.emLista)} em lista do dia</div>
                     {item.rotasEncontradas.length > 0 && (
                       <div className="mt-2">
                         <div className="text-[8px] font-black uppercase tracking-wide text-slate-400">Rotas encontradas</div>
@@ -715,7 +717,7 @@ export function ExpedicaoPanel() {
         <div className="space-y-3">
           <section className="border border-slate-300 bg-white p-3 shadow-sm">
             <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
-              {auditStreetStats[0] && <div className="ml-auto border border-slate-300 bg-slate-900 px-4 py-2 text-white"><div className="text-[9px] font-black uppercase tracking-wider text-slate-300">Rua com mais achados</div><div className="text-xl font-black">{auditStreetStats[0].rua} • {auditStreetStats[0].total}</div></div>}
+              {(numbersLoading || auditStreetStats[0]) && <div className="ml-auto border border-slate-300 bg-slate-900 px-4 py-2 text-white"><div className="text-[9px] font-black uppercase tracking-wider text-slate-300">Rua com mais achados</div><div className="text-xl font-black">{numbersLoading ? pendingNumber('', 'w-20') : `${auditStreetStats[0]?.rua} • ${auditStreetStats[0]?.total}`}</div></div>}
             </div>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-6">
               {auditStreetStats.map((item, index) => {
@@ -723,14 +725,14 @@ export function ExpedicaoPanel() {
                 const selected = selectedStreet === item.rua;
                 return (
                   <button key={item.rua} type="button" onClick={() => setSelectedStreet(selected ? null : item.rua)} className={`min-h-[116px] border p-3 text-left transition ${selected ? 'border-slate-900 bg-slate-900 text-white ring-2 ring-slate-900 ring-offset-1' : index === 0 ? 'border-slate-500 bg-slate-50' : 'border-slate-300 bg-white hover:bg-slate-50'}`}>
-                    <div className="flex items-start justify-between gap-2"><div><div className={`text-[9px] font-black uppercase ${selected ? 'text-slate-300' : 'text-slate-400'}`}>#{index + 1}</div><div className={`text-xl font-black ${selected ? 'text-white' : 'text-slate-900'}`}>RUA {item.rua}</div></div><div className="text-lg font-black">{item.total}</div></div>
+                    <div className="flex items-start justify-between gap-2"><div><div className={`text-[9px] font-black uppercase ${selected ? 'text-slate-300' : 'text-slate-400'}`}>#{index + 1}</div><div className={`text-xl font-black ${selected ? 'text-white' : 'text-slate-900'}`}>RUA {item.rua}</div></div><div className="text-lg font-black" >{pendingNumber(item.total)}</div></div>
                     <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] font-black">
-                      <span className="border border-red-200 bg-red-50 px-1.5 py-0.5 text-red-700">A+ {item.amais}</span>
-                      <span className="border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-amber-800">FALT. {item.faltantes}</span>
-                      <span className={`border px-1.5 py-0.5 ${selected ? 'border-slate-500 bg-slate-800 text-white' : 'border-slate-200 bg-slate-50 text-slate-600'}`}>OK {item.ok}</span>
+                      <span className="border border-red-200 bg-red-50 px-1.5 py-0.5 text-red-700">A+ {pendingNumber(item.amais)}</span>
+                      <span className="border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-amber-800">FALT. {pendingNumber(item.faltantes)}</span>
+                      <span className={`border px-1.5 py-0.5 ${selected ? 'border-slate-500 bg-slate-800 text-white' : 'border-slate-200 bg-slate-50 text-slate-600'}`}>OK {pendingNumber(item.ok)}</span>
                     </div>
                     <div className={`mt-2 h-1.5 overflow-hidden ${selected ? 'bg-slate-700' : 'bg-slate-200'}`}><div className={`h-full ${selected ? 'bg-white' : 'bg-slate-700'}`} style={{ width: `${percentual}%` }} /></div>
-                    <div className={`mt-1 text-[9px] font-bold ${selected ? 'text-slate-300' : 'text-slate-400'}`}>{percentual}% dos achados{selected ? ' • selecionada' : ''}</div>
+                    <div className={`mt-1 text-[9px] font-bold ${selected ? 'text-slate-300' : 'text-slate-400'}`} >{pendingNumber(`${percentual}%`)} dos achados{selected ? ' • selecionada' : ''}</div>
                   </button>
                 );
               })}
