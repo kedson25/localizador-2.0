@@ -160,65 +160,77 @@ export function RankingAuditores({ aduana, auditoria }: { aduana: ExpedicaoRow[]
 
   const downloadReport = () => {
     if (!ranking.length) return;
-    const width = 1100;
-    const rowHeight = 56;
-    const linesPerImage = 110;
-    const date = new Date().toLocaleString('pt-BR');
-    const drawText = (ctx: CanvasRenderingContext2D, text: string, x: number, y: number, maxWidth: number) => {
-      let value = text;
-      while (value.length && ctx.measureText(value).width > maxWidth) value = value.slice(0, -1);
-      ctx.fillText(value.length < text.length ? value + '…' : value, x, y);
-    };
-    for (let start = 0; start < ranking.length; start += linesPerImage) {
-      const page = ranking.slice(start, start + linesPerImage);
+    const width = 1200;
+    const rowHeight = 42;
+    const rowsPerImage = 55;
+    const fmt = (n: number) => n.toLocaleString('pt-BR');
+    const ratio = (r: RankingRow) => r.rotas ? (r.total / r.rotas).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : '—';
+    const stamp = saved?.savedAt ? new Date(saved.savedAt) : new Date();
+    const reportDate = stamp.toLocaleDateString('pt-BR');
+    for (let offset = 0; offset < ranking.length; offset += rowsPerImage) {
+      const rows = ranking.slice(offset, offset + rowsPerImage);
       const canvas = document.createElement('canvas');
       canvas.width = width;
-      canvas.height = 365 + page.length * rowHeight + 80;
+      canvas.height = 325 + rows.length * rowHeight + 135;
       const ctx = canvas.getContext('2d');
-      if (!ctx) { setError('Não foi possível gerar a imagem neste navegador.'); return; }
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, width, canvas.height);
-      ctx.fillStyle = '#ffe600'; ctx.fillRect(0, 0, width, 155);
-      ctx.fillStyle = '#17212e'; ctx.font = 'bold 43px Arial'; ctx.fillText('RANKING DE AUDITORIA', 45, 95);
-      
-      const cards = [
-        ['PACOTES AUDITADOS', summary.registros], ['ROTAS DISTINTAS', summary.rotas],
-        ['CORRETOS', summary.corretos], ['A MAIS / OUTROS', summary.amais + summary.pendentes],
-      ] as const;
-      cards.forEach(([label, value], index) => {
-        const x = 45 + index * 260;
-        ctx.fillStyle = '#f1f5f9'; ctx.fillRect(x, 175, 240, 115);
-        ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 2; ctx.strokeRect(x, 175, 240, 115);
-        ctx.fillStyle = '#475569'; ctx.font = 'bold 16px Arial'; ctx.fillText(label, x + 14, 209);
-        ctx.fillStyle = '#0f172a'; ctx.font = 'bold 44px Arial'; ctx.fillText(value.toLocaleString('pt-BR'), x + 14, 264);
+      if (!ctx) { setError('Não foi possível gerar a imagem.'); return; }
+      const rect = (x: number, y: number, w: number, h: number, color: string) => {
+        ctx.fillStyle = color; ctx.fillRect(x, y, w, h);
+      };
+      const print = (text: string, x: number, y: number, font: string, color: string, maxWidth?: number) => {
+        ctx.fillStyle = color; ctx.font = font;
+        if (maxWidth) {
+          let label = text;
+          while (label.length > 1 && ctx.measureText(label).width > maxWidth) label = label.slice(0, -1);
+          ctx.fillText(label.length < text.length ? label + '…' : label, x, y);
+        } else ctx.fillText(text, x, y);
+      };
+      rect(0, 0, width, canvas.height, '#fff');
+      rect(0, 0, width, 93, '#ffe600');
+      print('MERCADO LIVRE', 45, 55, 'bold 38px Arial', '#0b111a');
+      print('SSP21  •  MOOCA', 780, 55, 'bold 30px Arial', '#0b111a');
+      rect(0, 93, width, 108, '#0d1117');
+      print('ADUANA DO DIA  ' + reportDate, 45, 164, 'bold 53px Arial', '#fff');
+      rect(0, 201, width, 124, '#ffe600');
+      const stats = [
+        ['PACOTES AUDITADOS', fmt(summary.registros)],
+        ['ROTAS DISTINTAS', fmt(summary.rotas)],
+        ['AUDITORES', fmt(summary.auditores)],
+      ];
+      stats.forEach(([label, value], i) => {
+        const x = 36 + i * 392;
+        rect(x, 214, 368, 96, '#fff5b8');
+        print(label, x + 15, 241, 'bold 17px Arial', '#222');
+        print(value, x + 15, 287, 'bold 38px Arial', '#0d1117');
       });
-      ctx.fillStyle = '#f1f5f9'; ctx.fillRect(45, 309, 1010, 50);
-      ctx.fillStyle = '#475569'; ctx.font = 'bold 16px Arial';
-      ctx.fillText('POS.', 55, 340); ctx.fillText('AUDITOR', 137, 340);
-      ctx.fillText('PACOTES', 730, 340); ctx.fillText('ROTAS', 895, 340);
-      // Divisórias alinhadas aos cabeçalhos e às linhas do relatório.
-      ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 2;
-      ctx.strokeRect(45, 309, 1010, 50 + page.length * rowHeight);
-      page.forEach((row, index) => {
-        const y = 360 + index * rowHeight;
-        ctx.fillStyle = index % 2 ? '#ffffff' : '#f8fafc'; ctx.fillRect(46, y, 1008, rowHeight);
-        ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.moveTo(45, y); ctx.lineTo(1055, y); ctx.stroke();
-        ctx.fillStyle = '#0f172a'; ctx.font = 'bold 21px Arial';
-        ctx.fillText(String(start + index + 1).padStart(2, '0'), 55, y + 36);
-        drawText(ctx, row.auditor, 137, y + 36, 540);
-        ctx.fillText(row.total.toLocaleString('pt-BR'), 745, y + 36);
-        ctx.fillText(row.rotas.toLocaleString('pt-BR'), 912, y + 36);
+      const tableY = 325;
+      const xs = [25, 125, 565, 760, 970, 1175];
+      rect(25, tableY, 1150, 54, '#111820');
+      ['RANK', 'COLABORADOR', 'ROTAS CONFERIDAS', 'PACOTES AUDITADOS', 'PACOTES / ROTA'].forEach((heading, i) => {
+        print(heading, xs[i] + 10, tableY + 35, 'bold 18px Arial', '#fff', xs[i+1] - xs[i] - 18);
       });
-      ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 2;
-      [115, 710, 875].forEach(x => {
-        ctx.beginPath(); ctx.moveTo(x, 309); ctx.lineTo(x, 359 + page.length * rowHeight); ctx.stroke();
+      rows.forEach((row, i) => {
+        const y = tableY + 54 + i * rowHeight;
+        const position = offset + i + 1;
+        rect(25, y, 1150, rowHeight, position <= 3 ? '#ffe34f' : i % 2 ? '#fff' : '#edf0f4');
+        ctx.strokeStyle = '#cad1d9'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(25, y + rowHeight); ctx.lineTo(1175, y + rowHeight); ctx.stroke();
+        print(position === 1 ? '🥇' : position === 2 ? '🥈' : position === 3 ? '🥉' : String(position), 42, y + 29, 'bold 22px Arial', '#111820');
+        print(row.auditor, 137, y + 29, position <= 3 ? 'bold 21px Arial' : '19px Arial', '#111820', 417);
+        print(fmt(row.rotas), 635, y + 29, 'bold 21px Arial', '#111820');
+        print(fmt(row.total), 836, y + 29, 'bold 21px Arial', '#111820');
+        print(ratio(row), 1040, y + 29, 'bold 20px Arial', '#111820');
       });
-      ctx.fillStyle = '#64748b'; ctx.font = '16px Arial';
-      
-      ctx.fillText(date + '  •  Página ' + (Math.floor(start / linesPerImage) + 1), 45, canvas.height - 25);
+      ctx.strokeStyle = '#b9c1cb'; ctx.lineWidth = 1;
+      xs.forEach(x => { ctx.beginPath(); ctx.moveTo(x, tableY); ctx.lineTo(x, tableY + 54 + rows.length * rowHeight); ctx.stroke(); });
+      const bottom = tableY + 54 + rows.length * rowHeight + 14;
+      rect(0, bottom, width, canvas.height - bottom, '#0d1117');
+      rect(0, bottom, width, 8, '#ffe600');
+      print('FOCO  •  DISCIPLINA  •  RESULTADO', 44, bottom + 52, 'bold 27px Arial', '#ffe600');
+      print('Cada rota, cada pacote, cada colaborador faz a diferença!', 44, bottom + 80, '19px Arial', '#fff');
+      print('SSP21  |  Página ' + (Math.floor(offset / rowsPerImage) + 1), 925, bottom + 81, 'bold 16px Arial', '#ffe600');
       const link = document.createElement('a');
-      link.download = 'ranking-auditoria-' + (Math.floor(start / linesPerImage) + 1) + '.png';
+      link.download = 'aduana-ranking-' + reportDate.replace(/\//g, '-') + '-parte-' + (Math.floor(offset / rowsPerImage) + 1) + '.png';
       link.href = canvas.toDataURL('image/png');
       link.click();
     }
@@ -252,13 +264,37 @@ export function RankingAuditores({ aduana, auditoria }: { aduana: ExpedicaoRow[]
         </section>
         <section className="overflow-hidden border border-slate-300 bg-white">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 p-3"><div className="flex items-center gap-3"><h3 className="text-lg font-black">Ranking por pacotes auditados</h3><button type="button" onClick={downloadReport} className="inline-flex items-center gap-2 bg-slate-900 px-4 py-2 text-sm font-black text-white"><Download size={17} />Baixar reporte PNG</button></div><input className="w-full border border-slate-300 px-3 py-2 text-sm sm:w-64" value={filter} onChange={event => setFilter(event.target.value)} placeholder="Pesquisar auditor" /></div>
-          <div className="overflow-x-auto"><table className="w-full min-w-[980px] table-fixed text-left text-sm">
-            <colgroup><col style={{ width: 48 }} /><col style={{ width: 280 }} /><col style={{ width: 170 }} /><col style={{ width: 140 }} /><col style={{ width: 120 }} /><col style={{ width: 90 }} /><col style={{ width: 150 }} /></colgroup>
-            <thead className="bg-slate-100 text-slate-600"><tr>{['#', 'Rep auditoria', 'PACOTES AUDITADOS', 'Rotas auditadas', 'Corretos', 'A mais', 'Outros / pendentes'].map(label => <th key={label} className="border-r border-b border-slate-300 px-3 py-3 font-black last:border-r-0">{label}</th>)}</tr></thead>
-            <tbody>{visible.map(row => <tr key={normalize(row.auditor)} className="border-t border-slate-300 hover:bg-slate-50 [&>td]:border-r [&>td]:border-slate-200 [&>td:last-child]:border-r-0"><td className="px-3 py-3 text-sm font-semibold">{ranking.indexOf(row) + 1}</td><td className="truncate px-3 py-3 text-sm font-semibold">{row.auditor}</td><td className="px-3 py-3 text-sm font-semibold tabular-nums text-slate-950">{row.total.toLocaleString("pt-BR")}</td><td className="px-3 py-3 text-sm font-semibold tabular-nums">{row.rotas}</td><td className="px-3 py-3 text-sm font-semibold tabular-nums text-emerald-700">{row.corretos.toLocaleString("pt-BR")}</td><td className="px-3 py-3 text-sm font-semibold tabular-nums">{row.amais}</td><td className="px-3 py-3 text-sm font-semibold tabular-nums">{row.pendentes}</td></tr>)}
-              {!visible.length && <tr><td colSpan={7} className="p-8 text-center text-slate-500">Nenhum auditor encontrado.</td></tr>}
-            </tbody>
-          </table></div>
+          <div className="overflow-x-auto">
+            <div className="bg-[#ffe600] px-5 py-4 text-[#111820]">
+              <div className="text-sm font-black uppercase tracking-wide">Mercado Livre • SSP21 Mooca</div>
+            </div>
+            <div className="bg-[#10151d] px-5 py-4 text-2xl font-black text-white">
+              ADUANA DO DIA {saved ? new Date(saved.savedAt).toLocaleDateString('pt-BR') : ''}
+            </div>
+            <table className="w-full min-w-[920px] table-fixed text-sm">
+              <colgroup><col style={{ width: '9%' }} /><col style={{ width: '37%' }} /><col style={{ width: '18%' }} /><col style={{ width: '19%' }} /><col style={{ width: '17%' }} /></colgroup>
+              <thead className="bg-[#111820] text-white">
+                <tr>{['🏆 Ranking', 'Colaborador', 'Rotas conferidas', 'Pacotes auditados', 'Pacotes / rota'].map(label => <th key={label} className="border-r border-slate-500 px-3 py-4 text-center font-black last:border-r-0">{label}</th>)}</tr>
+              </thead>
+              <tbody>
+                {visible.map(row => {
+                  const position = ranking.indexOf(row) + 1;
+                  return <tr key={normalize(row.auditor)} className={position <= 3 ? 'bg-[#ffe34f] font-black text-[#111820]' : position % 2 ? 'bg-[#eef1f5]' : 'bg-white'}>
+                    <td className="border border-slate-300 px-3 py-2 text-center font-black">{position === 1 ? '🥇' : position === 2 ? '🥈' : position === 3 ? '🥉' : position}</td>
+                    <td className="border border-slate-300 px-3 py-2 font-semibold">{row.auditor}</td>
+                    <td className="border border-slate-300 px-3 py-2 text-center font-bold tabular-nums">{row.rotas.toLocaleString('pt-BR')}</td>
+                    <td className="border border-slate-300 px-3 py-2 text-center font-bold tabular-nums">{row.total.toLocaleString('pt-BR')}</td>
+                    <td className="border border-slate-300 px-3 py-2 text-center font-bold tabular-nums">{row.rotas ? (row.total / row.rotas).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : '—'}</td>
+                  </tr>;
+                })}
+                {!visible.length && <tr><td colSpan={5} className="p-8 text-center text-slate-500">Nenhum auditor encontrado.</td></tr>}
+              </tbody>
+            </table>
+            <div className="border-t-4 border-[#ffe600] bg-[#10151d] px-5 py-5 text-white">
+              <strong className="text-lg text-[#ffe600]">FOCO • DISCIPLINA • RESULTADO</strong>
+              <p className="mt-1 text-sm">Cada rota, cada pacote, cada colaborador faz a diferença!</p>
+            </div>
+          </div>
         </section>
         <p className="text-xs text-slate-500">Critério: um registro final por Shipment ID e por arquivo, usando Data auditoria. Rotas auditadas = cada código de rota é contado apenas uma vez por auditor, mesmo quando aparece nos arquivos de Aduana e Auditoria. O ranking é ordenado pelo TOTAL de pacotes auditados, incluindo Correto, A mais e demais estados. Corretos é uma métrica complementar.</p>
       </>}
