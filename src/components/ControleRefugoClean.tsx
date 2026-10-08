@@ -2,6 +2,7 @@ import React from 'react';
 import type { User } from '../lib/auth';
 import { ControleRefugo as ControleRefugoBase } from './ControleRefugo';
 import './ControleRefugoTheme.css';
+import { RefugoCsvWorkspaces } from './RefugoCsvWorkspaces';
 
 interface ControleRefugoCleanProps {
   currentUser?: User | null;
@@ -16,7 +17,8 @@ interface ControleRefugoCleanProps {
  */
 export function ControleRefugoClean({ currentUser }: ControleRefugoCleanProps) {
   return (
-    <div className="refugo-clean">
+    <div className="refugo-clean space-y-4">
+      <RefugoCsvWorkspaces />
       <ControleRefugoBase currentUser={currentUser} />
     </div>
   );
