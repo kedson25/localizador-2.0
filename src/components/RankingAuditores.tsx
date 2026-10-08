@@ -171,7 +171,7 @@ export function RankingAuditores({ aduana, auditoria }: { aduana: ExpedicaoRow[]
       const rows = ranking.slice(offset, offset + rowsPerImage);
       const canvas = document.createElement('canvas');
       canvas.width = width;
-      canvas.height = 325 + rows.length * rowHeight + 135;
+      canvas.height = 325 + rows.length * rowHeight + 175;
       const ctx = canvas.getContext('2d');
       if (!ctx) { setError('Não foi possível gerar a imagem.'); return; }
       const rect = (x: number, y: number, w: number, h: number, color: string) => {
