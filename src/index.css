@@ -84,3 +84,70 @@
 .safe-top {
   padding-top: env(safe-area-inset-top, 0.5rem);
 }
+
+
+/* Ecooy — base visual única para áreas de gestão e operação.
+   Tokens compartilhados, sem sobrepor estilos operacionais existentes. */
+:root {
+  --ecooy-accent: #ffe600;
+  --ecooy-ink: #17212b;
+  --ecooy-muted: #64748b;
+  --ecooy-bg: #f5f6f8;
+  --ecooy-border: #dbe1e8;
+  --ecooy-surface: #fff;
+  --ecooy-radius: 8px;
+  --ecooy-focus: #2563eb;
+}
+.ecooy-shell {
+  background: var(--ecooy-bg);
+  color: var(--ecooy-ink);
+}
+.ecooy-panel {
+  background: var(--ecooy-surface);
+  border: 1px solid var(--ecooy-border);
+  border-radius: var(--ecooy-radius);
+}
+.ecooy-control {
+  min-height: 40px;
+  border: 1px solid var(--ecooy-border);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--ecooy-ink);
+  font: inherit;
+}
+.ecooy-control:focus-visible,
+.ecooy-action:focus-visible,
+.ecooy-nav-link:focus-visible {
+  outline: 2px solid var(--ecooy-focus);
+  outline-offset: 2px;
+}
+.ecooy-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .5rem;
+  min-height: 40px;
+  border: 1px solid var(--ecooy-border);
+  border-radius: 6px;
+  background: var(--ecooy-surface);
+  font-weight: 650;
+}
+.ecooy-action:hover { background: #f5f7fa; }
+.ecooy-action:disabled { opacity: .55; cursor: not-allowed; }
+.ecooy-nav-link { border-radius: 6px; }
+.ecooy-nav-link[aria-current="page"] {
+  background: #fff5bc;
+  color: #101820;
+  font-weight: 750;
+}
+.ecooy-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.ecooy-table th { background: #f0f3f7; color: #475569; text-align: left; font-size: 12px; font-weight: 700; }
+.ecooy-table th, .ecooy-table td { border-bottom: 1px solid var(--ecooy-border); padding: .7rem .85rem; }
+.ecooy-table tbody tr:hover { background: #f8fafc; }
+@media (prefers-reduced-motion: reduce) {
+  .ecooy-shell *, .ecooy-shell *::before, .ecooy-shell *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .01ms !important;
+    transition-duration: .01ms !important;
+  }
+}
