@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import Papa from 'papaparse';
-import { BarChart3, Download, UploadCloud } from 'lucide-react';
+import { BarChart3, CheckCircle2, Download, UploadCloud } from 'lucide-react';
 import type { ExpedicaoRow } from '../lib/expedicao';
 import { dateScore } from '../lib/expedicao';
 
@@ -169,10 +169,10 @@ export function RankingAuditores({ aduana, auditoria }: { aduana: ExpedicaoRow[]
         <div className="mb-4 flex items-center gap-2"><BarChart3 size={19} /><h2 className="text-lg font-black">Ranking de auditores</h2></div>
         <div className="grid gap-3 sm:grid-cols-2">
           {(['aduana', 'auditoria'] as const).map(source => (
-            <label key={source} className="flex cursor-pointer items-center gap-3 border border-dashed border-slate-400 bg-slate-50 p-3 hover:bg-slate-100">
-              <UploadCloud size={20} className="shrink-0" />
-              <span className="min-w-0 flex-1 text-xs font-bold"><strong className="block text-sm">{sourceName(source)} CSV</strong><span className="block truncate text-slate-500">{files[source]?.name || 'Selecionar arquivo CSV (ou usar o já importado)'}</span></span>
-              <input aria-label={'Importar CSV ' + sourceName(source)} className="sr-only" type="file" accept=".csv,text/csv" onChange={event => { const file = event.target.files?.[0]; if (file) { setFiles(old => ({ ...old, [source]: file })); setCalculated(false); } }} />
+            <label key={source} className={`flex cursor-pointer items-center gap-3 border-2 border-dashed p-3 transition-colors ${files[source] ? 'border-emerald-500 bg-emerald-50 text-emerald-900' : 'border-slate-400 bg-slate-50 hover:bg-slate-100'}`}>
+              {files[source] ? <CheckCircle2 size={22} className="shrink-0 text-emerald-700" /> : <UploadCloud size={20} className="shrink-0" />}
+              <span className="min-w-0 flex-1 text-xs font-bold"><strong className="block text-sm">{sourceName(source)} CSV</strong><span className="block truncate text-slate-500">{files[source] ? `✓ Carregado: ${files[source].name}` : 'Selecionar arquivo CSV (ou usar o já importado)'}</span></span>
+              <input aria-label={'Importar CSV ' + sourceName(source)} className="sr-only" type="file" accept=".csv,text/csv" onChange={event => { const file = event.target.files?.[0]; if (file) { setFiles(old => ({ ...old, [source]: file })); setCalculated(false); setError(''); } }} />
             </label>
           ))}
         </div>
