@@ -51,7 +51,13 @@ interface AdminPanelProps {
 }
 
 const ACCESS_TABS = [
-  { id: 'consulta', label: 'Buscar grupos' },
+  { id: 'consulta', label: 'Buscar IDs' },
+  { id: 'listas', label: 'Listas de Coleta' },
+  { id: 'refugo', label: 'Refugo' },
+  { id: 'brancas', label: 'Brancas' },
+  { id: 'correlacao', label: 'Correlação' },
+  { id: 'baixas', label: 'Baixas' },
+  { id: 'expedicao', label: 'Controle de Docas' },
   { id: 'remover', label: 'Remover IDs' },
   { id: 'reporte', label: 'Reporte' },
   { id: 'upload', label: 'Importar CSV' },
@@ -155,6 +161,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [users, setUsers] = useState<User[]>([]);
+  const [userSearch, setUserSearch] = useState('');
+  const [userOrder, setUserOrder] = useState<'recentes' | 'antigos' | 'nome'>('recentes');
   const [listas, setListas] = useState<ColetaLista[]>([]);
   const [refugoScans, setRefugoScans] = useState<RefugoScan[]>([]);
   const [refugoHistorico, setRefugoHistorico] = useState<RefugoHistoricoMetrica[]>([]);
@@ -352,6 +360,17 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
   }, [filteredListas, filteredRefugoHistorico, filteredActiveScans]);
 
   const pendingUsers = users.filter(user => !user.isApproved);
+  const visibleUsers = useMemo(() => {
+    const term = userSearch.trim().toLocaleLowerCase('pt-BR');
+    return users.filter(user => !term || [user.username, user.email, user.id].some(value => String(value || '').toLocaleLowerCase('pt-BR').includes(term)))
+      .sort((a, b) => {
+        if (userOrder === 'nome') return a.username.localeCompare(b.username, 'pt-BR');
+        const aTime = Date.parse(a.createdAt || '') || 0;
+        const bTime = Date.parse(b.createdAt || '') || 0;
+        return userOrder === 'recentes' ? bTime - aTime : aTime - bTime;
+      });
+  }, [users, userSearch, userOrder]);
+
 
   const openReport = async (lista: ColetaLista) => {
     let itens = lista.itens || [];
@@ -734,15 +753,27 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
           <section className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
             <div className="border-b border-gray-100 px-4 py-3">
               <h2 className="text-sm font-bold text-gray-900">Usuários</h2>
-              <p className="text-xs text-gray-400">{users.length} cadastrados</p>
+              <p className="text-xs text-gray-400">{visibleUsers.length} de {users.length} cadastrados</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <label className="relative min-w-[180px] flex-1">
+                  <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                  <input value={userSearch} onChange={e => setUserSearch(e.target.value)} placeholder="Pesquisar nome, e-mail ou ID" aria-label="Pesquisar usuários" className="h-9 w-full rounded-md border border-slate-300 bg-white pl-9 pr-3 text-sm" />
+                </label>
+                <select value={userOrder} onChange={e => setUserOrder(e.target.value as 'recentes' | 'antigos' | 'nome')} aria-label="Ordenar usuários" className="h-9 rounded-md border border-slate-300 bg-white px-3 text-sm">
+                  <option value="recentes">Mais recentes</option>
+                  <option value="antigos">Mais antigos</option>
+                  <option value="nome">Nome A–Z</option>
+                </select>
+              </div>
             </div>
 
             <div className="divide-y divide-gray-100">
-              {users.map(user => (
+              {visibleUsers.map(user => (
                 <div key={user.id} className="grid gap-3 px-4 py-4 lg:grid-cols-[minmax(190px,1fr)_auto_minmax(300px,1.4fr)_auto] lg:items-center">
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold text-gray-900">{user.username}</p>
                     <p className="truncate text-xs text-gray-400">{user.email}</p>
+                    <p className="mt-1 text-[11px] text-gray-400">Cadastro: {user.createdAt ? new Date(user.createdAt).toLocaleDateString('pt-BR') : 'Data indisponível'}</p>
                   </div>
 
                   <div className="flex gap-2">
@@ -770,6 +801,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
                   </button>
                 </div>
               ))}
+              {visibleUsers.length === 0 && <p className="p-5 text-center text-sm text-slate-500">Nenhum usuário encontrado.</p>}
             </div>
           </section>
         </div>
