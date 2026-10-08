@@ -19,7 +19,6 @@ import { SettingsPage } from './components/SettingsPage';
 import { Login } from './components/Login';
 import { AdminPanel } from './components/AdminPanel';
 import { OperationNavigation } from './components/OperationNavigation';
-import { AvariasDashboard } from './components/AvariasDashboard';
 import { ExpedicaoPanel } from './components/ExpedicaoPanel';
 import { User, getCurrentUser } from './lib/auth';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -150,7 +149,6 @@ export default function App() {
             {(currentUser?.isAdmin || currentUser?.allowedGroups?.includes('listas')) && <><Route path="/listas" element={insideDashboard(<ListasDashboard currentUser={currentUser} />)} /><Route path="/listas/:id" element={dedicatedOperation(<ListasColetaEnhanced currentUser={currentUser} />)} /></>}
             {(currentUser?.isAdmin || currentUser?.allowedGroups?.includes('upload')) && <Route path="/upload" element={insideDashboard(<CsvUploader onLoadText={(text) => { handleParseAndSave(text); navigate('/'); }} currentTotalRows={rows.length} />)} />}
             <Route path="/brancas" element={insideDashboard(<BrancasPanelWithCsvFallback currentUser={currentUser} />)} />
-            <Route path="/avarias" element={insideDashboard(<AvariasDashboard />)} />
             <Route path="/expedicao" element={insideDashboard(<ExpedicaoPanel />)} />
           </>}
           <Route path="*" element={isAuthenticated ? <Navigate to="/" replace /> : <Navigate to="/login" replace />} />
