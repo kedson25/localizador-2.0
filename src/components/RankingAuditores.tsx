@@ -107,7 +107,7 @@ export function RankingAuditores({ aduana, auditoria }: { aduana: ExpedicaoRow[]
   const downloadReport = () => {
     if (!ranking.length) return;
     const width = 1100;
-    const rowHeight = 70;
+    const rowHeight = 56;
     const linesPerImage = 110;
     const date = new Date().toLocaleString('pt-BR');
     const drawText = (ctx: CanvasRenderingContext2D, text: string, x: number, y: number, maxWidth: number) => {
@@ -125,8 +125,8 @@ export function RankingAuditores({ aduana, auditoria }: { aduana: ExpedicaoRow[]
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(0, 0, width, canvas.height);
       ctx.fillStyle = '#ffe600'; ctx.fillRect(0, 0, width, 155);
-      ctx.fillStyle = '#17212e'; ctx.font = 'bold 43px Arial'; ctx.fillText('RANKING DE AUDITORIA', 45, 78);
-      ctx.font = '22px Arial'; ctx.fillText('Controle de Docas • Aduana + Auditoria', 47, 121);
+      ctx.fillStyle = '#17212e'; ctx.font = 'bold 43px Arial'; ctx.fillText('RANKING DE AUDITORIA', 45, 95);
+      
       const cards = [
         ['PACOTES AUDITADOS', summary.registros], ['ROTAS DISTINTAS', summary.rotas],
         ['CORRETOS', summary.corretos], ['A MAIS / OUTROS', summary.amais + summary.pendentes],
@@ -150,20 +150,18 @@ export function RankingAuditores({ aduana, auditoria }: { aduana: ExpedicaoRow[]
         ctx.fillStyle = index % 2 ? '#ffffff' : '#f8fafc'; ctx.fillRect(46, y, 1008, rowHeight);
         ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 1;
         ctx.beginPath(); ctx.moveTo(45, y); ctx.lineTo(1055, y); ctx.stroke();
-        ctx.fillStyle = '#0f172a'; ctx.font = 'bold 23px Arial';
-        ctx.fillText(String(start + index + 1).padStart(2, '0'), 55, y + 42);
-        drawText(ctx, row.auditor, 137, y + 33, 540);
-        ctx.fillStyle = '#64748b'; ctx.font = '16px Arial';
-        ctx.fillText('Corretos: ' + row.corretos + '  |  A mais: ' + row.amais + '  |  Outros: ' + row.pendentes, 137, y + 56);
-        ctx.fillStyle = '#0f172a'; ctx.font = 'bold 30px Arial';
-        ctx.fillText(row.total.toLocaleString('pt-BR'), 745, y + 43); ctx.fillText(row.rotas.toLocaleString('pt-BR'), 912, y + 43);
+        ctx.fillStyle = '#0f172a'; ctx.font = 'bold 21px Arial';
+        ctx.fillText(String(start + index + 1).padStart(2, '0'), 55, y + 36);
+        drawText(ctx, row.auditor, 137, y + 36, 540);
+        ctx.fillText(row.total.toLocaleString('pt-BR'), 745, y + 36);
+        ctx.fillText(row.rotas.toLocaleString('pt-BR'), 912, y + 36);
       });
       ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 2;
       [115, 710, 875].forEach(x => {
         ctx.beginPath(); ctx.moveTo(x, 309); ctx.lineTo(x, 359 + page.length * rowHeight); ctx.stroke();
       });
       ctx.fillStyle = '#64748b'; ctx.font = '16px Arial';
-      ctx.fillText('Total = todos os estados • 1 registro final por Shipment ID em cada fonte', 45, canvas.height - 50);
+      
       ctx.fillText(date + '  •  Página ' + (Math.floor(start / linesPerImage) + 1), 45, canvas.height - 25);
       const link = document.createElement('a');
       link.download = 'ranking-auditoria-' + (Math.floor(start / linesPerImage) + 1) + '.png';
@@ -198,9 +196,10 @@ export function RankingAuditores({ aduana, auditoria }: { aduana: ExpedicaoRow[]
         </section>
         <section className="overflow-hidden border border-slate-300 bg-white">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 p-3"><div className="flex items-center gap-3"><h3 className="text-lg font-black">Ranking por pacotes auditados</h3><button type="button" onClick={downloadReport} className="inline-flex items-center gap-2 bg-slate-900 px-4 py-2 text-sm font-black text-white"><Download size={17} />Baixar reporte PNG</button></div><input className="w-full border border-slate-300 px-3 py-2 text-sm sm:w-64" value={filter} onChange={event => setFilter(event.target.value)} placeholder="Pesquisar auditor" /></div>
-          <div className="overflow-x-auto"><table className="w-full min-w-[800px] text-left text-sm">
+          <div className="overflow-x-auto"><table className="w-full min-w-[980px] table-fixed text-left text-sm">
+            <colgroup><col style={{ width: 48 }} /><col style={{ width: 280 }} /><col style={{ width: 170 }} /><col style={{ width: 140 }} /><col style={{ width: 120 }} /><col style={{ width: 90 }} /><col style={{ width: 150 }} /></colgroup>
             <thead className="bg-slate-100 text-slate-600"><tr>{['#', 'Rep auditoria', 'PACOTES AUDITADOS', 'Rotas auditadas', 'Corretos', 'A mais', 'Outros / pendentes'].map(label => <th key={label} className="border-r border-b border-slate-300 px-3 py-3 font-black last:border-r-0">{label}</th>)}</tr></thead>
-            <tbody>{visible.map(row => <tr key={normalize(row.auditor)} className="border-t border-slate-300 hover:bg-slate-50 [&>td]:border-r [&>td]:border-slate-200 [&>td:last-child]:border-r-0"><td className="px-3 py-3 font-bold">{ranking.indexOf(row) + 1}</td><td className="px-3 py-3 font-black">{row.auditor}</td><td className="px-3 py-3 text-2xl font-black text-slate-950">{row.total}</td><td className="px-3 py-3 text-xl font-black">{row.rotas}</td><td className="px-3 py-3 font-black text-emerald-700">{row.corretos}</td><td className="px-3 py-3">{row.amais}</td><td className="px-3 py-3">{row.pendentes}</td></tr>)}
+            <tbody>{visible.map(row => <tr key={normalize(row.auditor)} className="border-t border-slate-300 hover:bg-slate-50 [&>td]:border-r [&>td]:border-slate-200 [&>td:last-child]:border-r-0"><td className="px-3 py-3 text-sm font-semibold">{ranking.indexOf(row) + 1}</td><td className="truncate px-3 py-3 text-sm font-semibold">{row.auditor}</td><td className="px-3 py-3 text-sm font-semibold tabular-nums text-slate-950">{row.total.toLocaleString("pt-BR")}</td><td className="px-3 py-3 text-sm font-semibold tabular-nums">{row.rotas}</td><td className="px-3 py-3 text-sm font-semibold tabular-nums text-emerald-700">{row.corretos.toLocaleString("pt-BR")}</td><td className="px-3 py-3 text-sm font-semibold tabular-nums">{row.amais}</td><td className="px-3 py-3 text-sm font-semibold tabular-nums">{row.pendentes}</td></tr>)}
               {!visible.length && <tr><td colSpan={7} className="p-8 text-center text-slate-500">Nenhum auditor encontrado.</td></tr>}
             </tbody>
           </table></div>
