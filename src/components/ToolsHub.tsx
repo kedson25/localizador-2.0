@@ -16,7 +16,6 @@ import {
   ListTodo,
   MessageSquare,
   PackageOpen,
-  PackageX,
   Search,
   Settings,
   Trash2,
@@ -180,7 +179,6 @@ export const ToolsHub: React.FC<ToolsHubProps> = ({
   const [isRefugoOpen, setIsRefugoOpen] = useState(false);
   const [isBrancasOpen, setIsBrancasOpen] = useState(false);
   const [isCorrelacaoOpen, setIsCorrelacaoOpen] = useState(false);
-  const [isAvariasOpen, setIsAvariasOpen] = useState(false);
   const [isExpedicaoOpen, setIsExpedicaoOpen] = useState(false);
 
   const allBacklogTools: ToolItem[] = [
@@ -289,13 +287,6 @@ export const ToolsHub: React.FC<ToolsHubProps> = ({
     },
   ];
 
-  const avariasTools: ToolItem[] = [{
-    id: 'avarias', path: '/avarias', name: 'Avarias',
-    description: 'Importe o CSV diário e acompanhe casos, responsáveis e indicadores.',
-    tag: 'Reporte', icon: PackageX, iconClass: 'text-rose-600', iconBoxClass: 'bg-rose-50',
-    badgeClass: 'border-rose-200 bg-rose-50 text-rose-700',
-  }];
-
   const expedicaoTools: ToolItem[] = [{
     id: 'expedicao', path: '/expedicao', name: 'Controle de Docas',
     description: 'Cruza Base Despacho, Aduana e Auditoria com rota, doca e placa.',
@@ -313,7 +304,6 @@ export const ToolsHub: React.FC<ToolsHubProps> = ({
   const filteredRefugo = useMemo(() => refugoTools.filter(matchesQuery), [query]);
   const filteredBrancas = useMemo(() => brancasTools.filter(matchesQuery), [query]);
   const filteredCorrelacao = useMemo(() => correlacaoTools.filter(matchesQuery), [query]);
-  const filteredAvarias = useMemo(() => avariasTools.filter(matchesQuery), [query]);
   const filteredExpedicao = useMemo(() => expedicaoTools.filter(matchesQuery), [query]);
 
   const logout = async () => {
@@ -511,16 +501,6 @@ export const ToolsHub: React.FC<ToolsHubProps> = ({
               onToggle={() => setIsExpedicaoOpen(value => !value)}
               onOpenTool={navigate}
               status={<span className="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-[10px] font-black uppercase text-indigo-700">Novo</span>}
-            />
-            <ModuleGroup
-              title="Avarias"
-              count={avariasTools.length}
-              accent="orange"
-              icon={PackageX}
-              tools={filteredAvarias}
-              isOpen={isAvariasOpen}
-              onToggle={() => setIsAvariasOpen(value => !value)}
-              onOpenTool={navigate}
             />
           </div>
         </main>
