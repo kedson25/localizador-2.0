@@ -3,9 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import {
   BarChart3,
   ClipboardList,
-  Bell,
   Boxes,
-  ChevronDown,
   CircleHelp,
   PackageOpen,
   PanelLeftClose,
@@ -83,7 +81,7 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
   };
 
   const navClass = (active: boolean) =>
-    `relative flex w-full items-center rounded-xl py-3 text-sm transition ${
+    `ecooy-nav-link relative flex w-full items-center py-3 text-sm transition ${
       sidebarCollapsed ? 'justify-center px-3' : 'gap-4 px-4'
     } ${
       active
@@ -98,7 +96,7 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-[#f6f8fb] text-slate-900">
+    <div className="ecooy-shell min-h-screen">
       <aside
         className={`fixed inset-y-0 left-0 z-30 hidden flex-col border-r border-slate-200 bg-white transition-[width] duration-200 lg:flex ${
           sidebarCollapsed ? 'w-[82px]' : 'w-[238px]'
@@ -214,7 +212,7 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
             <button
               type="button"
               onClick={() => navigate('/')}
-              className="flex h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 shadow-sm transition hover:bg-slate-50"
+              className="ecooy-action px-3 text-sm text-slate-700"
               aria-label="Ir para Módulos"
               title="Módulos"
             >
@@ -232,7 +230,7 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
               onBlur={() => window.setTimeout(() => setSearchFocused(false), 120)}
               onChange={event => setSearch(event.target.value)}
               placeholder="Buscar módulos, ferramentas ou ajuda..."
-              className="h-11 w-full rounded-lg border border-slate-300 bg-slate-50 pl-12 pr-4 text-sm text-slate-800 outline-none transition focus:border-[#3483FA] focus:bg-white focus:ring-2 focus:ring-blue-100"
+              className="ecooy-control h-11 w-full pl-12 pr-4 text-sm focus:border-blue-500"
             />
 
             {searchFocused && search.trim() && (
@@ -255,16 +253,11 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
           </div>
 
           <div className="ml-auto flex items-center gap-2 sm:gap-4">
-            <button type="button" className="relative hidden h-10 w-10 items-center justify-center rounded-full text-slate-700 hover:bg-slate-100 sm:flex">
-              <Bell className="h-5 w-5" />
-              <span className="absolute right-2 top-1.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-red-500" />
-            </button>
             <div className="hidden items-center gap-3 rounded-lg bg-slate-100 px-3 py-2 sm:flex">
               <UserCircle2 className="h-7 w-7 text-slate-600" />
               <span className="max-w-[150px] truncate text-sm font-bold text-slate-800">
                 {currentUser?.username || 'Usuário'}
               </span>
-              <ChevronDown className="h-4 w-4 text-slate-500" />
             </div>
             <button type="button" onClick={logout} className="px-2 py-2 text-xs font-black uppercase text-red-600 hover:text-red-700">
               Sair
