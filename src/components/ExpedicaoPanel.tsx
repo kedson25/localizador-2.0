@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { CheckCircle2, Download, FileText, Search, Share2, Trash2, UploadCloud, X } from 'lucide-react';
 import { ExpedicaoSkeleton } from './ExpedicaoSkeleton';
+import { RankingAuditores } from './RankingAuditores';
 import { getLocalValue, setLocalValue } from '../lib/localPersistence';
 import {
   listenExpedicaoShared,
@@ -22,7 +23,7 @@ import {
 } from '../lib/expedicao';
 
 const STORAGE_KEY = 'expedicao-daily-v1';
-type ViewTab = 'aduana' | 'auditoria';
+type ViewTab = 'aduana' | 'auditoria' | 'ranking';
 type TipoFilter = 'todos' | 'A mais' | 'Faltante';
 type ListaFilter = 'todos' | 'em-lista' | 'fora-lista' | 'encontrados' | 'pendentes';
 type SyncState = 'connecting' | 'syncing' | 'synced' | 'error';
@@ -544,6 +545,7 @@ export function ExpedicaoPanel() {
             >
               Auditoria • pacotes
             </button>
+            <button type="button" onClick={() => setTab('ranking')} className={`px-4 py-2 text-sm font-black ${tab === 'ranking' ? 'bg-slate-900 text-white' : 'border border-slate-300 bg-white'}`}>Ranking auditores</button>
           </div>
 
           <div className="flex flex-wrap gap-2">
@@ -571,7 +573,7 @@ export function ExpedicaoPanel() {
 
       {error && <div className="border border-amber-300 bg-white px-3 py-2 text-xs font-bold text-amber-900">{error}</div>}
 
-      {tab === 'aduana' ? (
+      {tab === 'ranking' ? <RankingAuditores aduana={store.aduana} auditoria={store.auditoria} /> : tab === 'aduana' ? (
         <>
           <section className="border border-slate-300 bg-white p-3 shadow-sm">
             <div className="mb-3 flex flex-wrap justify-end gap-2 text-[10px] font-black">
