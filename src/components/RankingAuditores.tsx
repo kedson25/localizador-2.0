@@ -7,7 +7,7 @@ import { deleteLocalValue, getLocalValue, setLocalValue } from '../lib/localPers
 
 type Source = 'aduana' | 'auditoria';
 type AuditRecord = { id: string; auditor: string; status: string; rota: string; timestamp: string; source: Source };
-type RankingRow = { auditor: string; total: number; corretos: number; amais: number; pendentes: number; rotas: number; pacotes: number };
+type RankingRow = { auditor: string; total: number; corretos: number; amais: number; faltantes: number; pendentes: number; rotas: number; pacotes: number };
 
 const normalize = (value: unknown) => String(value ?? '').trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 const field = (row: Record<string, unknown>, ...names: string[]) => {
@@ -17,19 +17,19 @@ const field = (row: Record<string, unknown>, ...names: string[]) => {
 const route = (value: string) => value.split('|')[0].trim().toUpperCase();
 const status = (value: string) => normalize(value).replace(/\s+/g, ' ');
 const sourceName = (source: Source) => source === 'aduana' ? 'Aduana' : 'Auditoria';
-const RANKING_STORAGE_KEY = 'docas-ranking-auditores-v2';
+const RANKING_STORAGE_KEY = 'docas-ranking-auditores-v3';
 const FILE_STORAGE_KEY = 'docas-ranking-csvs-v1';
 type SavedFile = { name: string; records: AuditRecord[] };
 type SavedFiles = Partial<Record<Source, SavedFile>>;
-type RankingSummary = { registros: number; corretos: number; rotas: number; auditores: number; amais: number; pendentes: number };
-type SavedRanking = { version: 2; ranking: RankingRow[]; summary: RankingSummary; savedAt: string };
-const emptySummary = (): RankingSummary => ({ registros: 0, corretos: 0, rotas: 0, auditores: 0, amais: 0, pendentes: 0 });
+type RankingSummary = { registros: number; corretos: number; rotas: number; auditores: number; amais: number; faltantes: number; pendentes: number };
+type SavedRanking = { version: 3; ranking: RankingRow[]; summary: RankingSummary; savedAt: string };
+const emptySummary = (): RankingSummary => ({ registros: 0, corretos: 0, rotas: 0, auditores: 0, amais: 0, faltantes: 0, pendentes: 0 });
 const readSavedRanking = (cycle: 'todos' | 'AM' | 'PM' | 'SD' = 'todos'): SavedRanking | null => {
   try {
     const json = window.localStorage.getItem(`${RANKING_STORAGE_KEY}:${cycle}`);
     if (!json) return null;
     const value = JSON.parse(json) as SavedRanking;
-    if (value.version !== 2 || !Array.isArray(value.ranking) || !value.summary) return null;
+    if (value.version !== 3 || !Array.isArray(value.ranking) || !value.summary) return null;
     return value;
   } catch { return null; }
 };
@@ -73,6 +73,7 @@ function computeRanking(records: AuditRecord[]): RankingRow[] {
     const estado = status(record.status);
     if (estado === 'correto') item.corretos++;
     else if (estado === 'a mais' || estado === 'amais') item.amais++;
+    else if (estado === 'faltante' || estado === 'faltantes' || estado === 'a menos' || estado === 'amenos') item.faltantes++;
     else item.pendentes++;
   });
   return [...byAuditor.values()].map(({ routes, ids, ...item }) => ({ ...item, rotas: routes.size, pacotes: ids.size }))
@@ -151,9 +152,10 @@ export function RankingAuditores({ aduana, auditoria, cycle = 'todos' }: { aduan
         rotas: new Set(cycleRecords.map(row => row.rota).filter(Boolean)).size,
         auditores: result.length,
         amais: result.reduce((n, row) => n + row.amais, 0),
+        faltantes: result.reduce((n, row) => n + row.faltantes, 0),
         pendentes: result.reduce((n, row) => n + row.pendentes, 0),
       };
-      const next: SavedRanking = { version: 2, ranking: result, summary: nextSummary, savedAt: new Date().toISOString() };
+      const next: SavedRanking = { version: 3, ranking: result, summary: nextSummary, savedAt: new Date().toISOString() };
       window.localStorage.setItem(`${RANKING_STORAGE_KEY}:${cycle}`, JSON.stringify(next));
       setSaved(next);
     } catch (cause) {
@@ -329,7 +331,7 @@ export function RankingAuditores({ aduana, auditoria, cycle = 'todos' }: { aduan
       </section>
       {calculated && <>
         <section className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          {([['PACOTES AUDITADOS', summary.registros], ['ROTAS AUDITADAS', summary.rotas], ['CORRETOS', summary.corretos], ['AUDITORES', summary.auditores]] as const).map(([label, value]) => <div key={label} className="border border-slate-300 bg-white p-4"><div className="text-xs font-black uppercase text-slate-600">{label}</div><div className="mt-2 text-4xl font-black text-slate-950">{value.toLocaleString('pt-BR')}</div></div>)}
+          {([['PACOTES AUDITADOS', summary.registros], ['ROTAS AUDITADAS', summary.rotas], ['CORRETOS', summary.corretos], ['A MAIS', summary.amais], ['FALTANTES', summary.faltantes], ['AUDITORES', summary.auditores]] as const).map(([label, value]) => <div key={label} className="border border-slate-300 bg-white p-4"><div className="text-xs font-black uppercase text-slate-600">{label}</div><div className="mt-2 text-4xl font-black text-slate-950">{value.toLocaleString('pt-BR')}</div></div>)}
         </section>
         <section className="overflow-hidden border border-slate-300 bg-white">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 p-3"><div className="flex items-center gap-3"><h3 className="text-lg font-black">Ranking por pacotes auditados</h3><button type="button" disabled={isDownloading} onClick={() => void downloadReport()} className="inline-flex items-center gap-2 bg-slate-900 px-4 py-2 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-60"><Download size={17} />{isDownloading ? "Baixando..." : "Baixar reporte PNG"}</button><select aria-label="Exibir ranking" value={topMode} onChange={event => setTopMode(event.target.value as 'all' | 'top10')} className="border border-slate-300 bg-white px-3 py-2 text-sm font-semibold"><option value="all">Todos</option><option value="top10">Top 10</option></select></div><input className="w-full border border-slate-300 px-3 py-2 text-sm sm:w-64" value={filter} onChange={event => setFilter(event.target.value)} placeholder="Pesquisar auditor" /></div>
@@ -340,10 +342,10 @@ export function RankingAuditores({ aduana, auditoria, cycle = 'todos' }: { aduan
             <div className="bg-[#10151d] px-5 py-4 text-2xl font-black text-white">
               ADUANA DO DIA {saved ? new Date().toLocaleDateString('pt-BR') : ''}
             </div>
-            <table className="w-full min-w-[920px] table-fixed text-sm">
-              <colgroup><col style={{ width: '9%' }} /><col style={{ width: '37%' }} /><col style={{ width: '18%' }} /><col style={{ width: '19%' }} /><col style={{ width: '17%' }} /></colgroup>
+            <table className="w-full min-w-[1120px] table-fixed text-sm">
+              <colgroup><col style={{ width: '8%' }} /><col style={{ width: '30%' }} /><col style={{ width: '12%' }} /><col style={{ width: '13%' }} /><col style={{ width: '12%' }} /><col style={{ width: '12%' }} /><col style={{ width: '13%' }} /></colgroup>
               <thead className="bg-[#111820] text-white">
-                <tr>{['🏆 Ranking', 'Colaborador', 'Rotas', 'Pacotes', 'Pacotes / rota'].map(label => <th key={label} className="border-r border-slate-500 px-3 py-4 text-center font-black last:border-r-0">{label}</th>)}</tr>
+                <tr>{['🏆 Ranking', 'Colaborador', 'Rotas', 'Pacotes', 'Corretos', 'A mais', 'Faltantes'].map(label => <th key={label} className="border-r border-slate-500 px-3 py-4 text-center font-black last:border-r-0">{label}</th>)}</tr>
               </thead>
               <tbody>
                 {visible.map(row => {
@@ -353,10 +355,12 @@ export function RankingAuditores({ aduana, auditoria, cycle = 'todos' }: { aduan
                     <td className="border border-slate-300 px-3 py-2 font-semibold">{row.auditor}</td>
                     <td className="border border-slate-300 px-3 py-2 text-center font-bold tabular-nums">{row.rotas.toLocaleString('pt-BR')}</td>
                     <td className="border border-slate-300 px-3 py-2 text-center font-bold tabular-nums">{row.total.toLocaleString('pt-BR')}</td>
-                    <td className="border border-slate-300 px-3 py-2 text-center font-bold tabular-nums">{row.rotas ? Math.round(row.total / row.rotas).toLocaleString('pt-BR') : '—'}</td>
+                    <td className="border border-slate-300 px-3 py-2 text-center font-bold tabular-nums text-emerald-700">{row.corretos.toLocaleString('pt-BR')}</td>
+                     <td className="border border-slate-300 px-3 py-2 text-center font-bold tabular-nums text-red-700">{row.amais.toLocaleString('pt-BR')}</td>
+                     <td className="border border-slate-300 px-3 py-2 text-center font-bold tabular-nums text-amber-700">{row.faltantes.toLocaleString('pt-BR')}</td>
                   </tr>;
                 })}
-                {!visible.length && <tr><td colSpan={5} className="p-8 text-center text-slate-500">Nenhum auditor encontrado.</td></tr>}
+                {!visible.length && <tr><td colSpan={7} className="p-8 text-center text-slate-500">Nenhum auditor encontrado.</td></tr>}
               </tbody>
             </table>
             <div className="border-t-4 border-[#ffe600] bg-[#10151d] px-5 py-5 text-white">
@@ -365,7 +369,7 @@ export function RankingAuditores({ aduana, auditoria, cycle = 'todos' }: { aduan
             </div>
           </div>
         </section>
-        <p className="text-xs text-slate-500">Critério: um registro final por Shipment ID e por arquivo, usando Data auditoria. Rotas auditadas = cada código de rota é contado apenas uma vez por auditor, mesmo quando aparece nos arquivos de Aduana e Auditoria. O ranking é ordenado pelo TOTAL de pacotes auditados, incluindo Correto, A mais e demais estados. Corretos é uma métrica complementar.</p>
+        <p className="text-xs text-slate-500">Critério: um registro final por Shipment ID e por arquivo, usando Data auditoria. Rotas auditadas = cada código de rota é contado apenas uma vez por auditor, mesmo quando aparece nos arquivos de Aduana e Auditoria. O ranking é ordenado pelo TOTAL de pacotes auditados, incluindo Corretos, A mais, Faltantes e outros estados. Cada situação aparece separada nas colunas do ranking.</p>
       </>}
     </div>
   );
