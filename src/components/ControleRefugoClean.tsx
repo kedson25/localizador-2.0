@@ -2,23 +2,15 @@ import React from 'react';
 import type { User } from '../lib/auth';
 import { ControleRefugo as ControleRefugoBase } from './ControleRefugo';
 import './ControleRefugoTheme.css';
-import { RefugoCsvWorkspaces } from './RefugoCsvWorkspaces';
 
 interface ControleRefugoCleanProps {
   currentUser?: User | null;
 }
 
-/**
- * Camada visual do Refugo.
- *
- * A persistência das métricas NÃO depende desta camada: cada bip já é salvo
- * automaticamente pela RefugoSyncQueue no estado operacional e também no
- * histórico permanente de métricas.
- */
+/** Interface principal do Refugo, sem salas CSV e armazenamento local de salas. */
 export function ControleRefugoClean({ currentUser }: ControleRefugoCleanProps) {
   return (
     <div className="refugo-clean space-y-4">
-      <RefugoCsvWorkspaces />
       <ControleRefugoBase currentUser={currentUser} />
     </div>
   );
