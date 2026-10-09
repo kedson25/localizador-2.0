@@ -23,6 +23,8 @@ type SavedFile = { name: string; records: AuditRecord[] };
 type SavedFiles = Partial<Record<Source, SavedFile>>;
 type RankingSummary = { registros: number; corretos: number; rotas: number; auditores: number; amais: number; faltantes: number; pendentes: number };
 type SavedRanking = { version: 3; ranking: RankingRow[]; summary: RankingSummary; savedAt: string };
+const safeCount = (value: unknown): number => typeof value === 'number' && Number.isFinite(value) ? value : 0;
+const formatCount = (value: unknown): string => safeCount(value).toLocaleString('pt-BR');
 const emptySummary = (): RankingSummary => ({ registros: 0, corretos: 0, rotas: 0, auditores: 0, amais: 0, faltantes: 0, pendentes: 0 });
 const readSavedRanking = (cycle: 'todos' | 'AM' | 'PM' | 'SD' = 'todos'): SavedRanking | null => {
   try {
@@ -30,7 +32,15 @@ const readSavedRanking = (cycle: 'todos' | 'AM' | 'PM' | 'SD' = 'todos'): SavedR
     if (!json) return null;
     const value = JSON.parse(json) as SavedRanking;
     if (value.version !== 3 || !Array.isArray(value.ranking) || !value.summary) return null;
-    return value;
+    const summary = { ...emptySummary(), ...value.summary };
+    for (const key of Object.keys(emptySummary()) as (keyof RankingSummary)[]) summary[key] = safeCount(summary[key]);
+    const ranking = value.ranking.filter(row => row && typeof row.auditor === 'string').map(row => ({
+      ...row,
+      total: safeCount(row.total), rotas: safeCount(row.rotas), pacotes: safeCount(row.pacotes),
+      corretos: safeCount(row.corretos), amais: safeCount(row.amais),
+      faltantes: safeCount(row.faltantes), pendentes: safeCount(row.pendentes),
+    }));
+    return { ...value, summary, ranking };
   } catch { return null; }
 };
 
@@ -331,7 +341,7 @@ export function RankingAuditores({ aduana, auditoria, cycle = 'todos' }: { aduan
       </section>
       {calculated && <>
         <section className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          {([['PACOTES AUDITADOS', summary.registros], ['ROTAS AUDITADAS', summary.rotas], ['CORRETOS', summary.corretos], ['A MAIS', summary.amais], ['FALTANTES', summary.faltantes], ['AUDITORES', summary.auditores]] as const).map(([label, value]) => <div key={label} className="border border-slate-300 bg-white p-4"><div className="text-xs font-black uppercase text-slate-600">{label}</div><div className="mt-2 text-4xl font-black text-slate-950">{value.toLocaleString('pt-BR')}</div></div>)}
+          {([['PACOTES AUDITADOS', summary.registros], ['ROTAS AUDITADAS', summary.rotas], ['CORRETOS', summary.corretos], ['A MAIS', summary.amais], ['FALTANTES', summary.faltantes], ['AUDITORES', summary.auditores]] as const).map(([label, value]) => <div key={label} className="border border-slate-300 bg-white p-4"><div className="text-xs font-black uppercase text-slate-600">{label}</div><div className="mt-2 text-4xl font-black text-slate-950">{formatCount(value)}</div></div>)}
         </section>
         <section className="overflow-hidden border border-slate-300 bg-white">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 p-3"><div className="flex items-center gap-3"><h3 className="text-lg font-black">Ranking por pacotes auditados</h3><button type="button" disabled={isDownloading} onClick={() => void downloadReport()} className="inline-flex items-center gap-2 bg-slate-900 px-4 py-2 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-60"><Download size={17} />{isDownloading ? "Baixando..." : "Baixar reporte PNG"}</button><select aria-label="Exibir ranking" value={topMode} onChange={event => setTopMode(event.target.value as 'all' | 'top10')} className="border border-slate-300 bg-white px-3 py-2 text-sm font-semibold"><option value="all">Todos</option><option value="top10">Top 10</option></select></div><input className="w-full border border-slate-300 px-3 py-2 text-sm sm:w-64" value={filter} onChange={event => setFilter(event.target.value)} placeholder="Pesquisar auditor" /></div>
@@ -353,11 +363,11 @@ export function RankingAuditores({ aduana, auditoria, cycle = 'todos' }: { aduan
                   return <tr key={normalize(row.auditor)} className={position <= 3 ? 'bg-[#ffe34f] font-black text-[#111820]' : position % 2 ? 'bg-[#eef1f5]' : 'bg-white'}>
                     <td className="border border-slate-300 px-3 py-2 text-center font-black">{position === 1 ? '🥇' : position === 2 ? '🥈' : position === 3 ? '🥉' : position}</td>
                     <td className="border border-slate-300 px-3 py-2 font-semibold">{row.auditor}</td>
-                    <td className="border border-slate-300 px-3 py-2 text-center font-bold tabular-nums">{row.rotas.toLocaleString('pt-BR')}</td>
-                    <td className="border border-slate-300 px-3 py-2 text-center font-bold tabular-nums">{row.total.toLocaleString('pt-BR')}</td>
-                    <td className="border border-slate-300 px-3 py-2 text-center font-bold tabular-nums text-emerald-700">{row.corretos.toLocaleString('pt-BR')}</td>
-                     <td className="border border-slate-300 px-3 py-2 text-center font-bold tabular-nums text-red-700">{row.amais.toLocaleString('pt-BR')}</td>
-                     <td className="border border-slate-300 px-3 py-2 text-center font-bold tabular-nums text-amber-700">{row.faltantes.toLocaleString('pt-BR')}</td>
+                    <td className="border border-slate-300 px-3 py-2 text-center font-bold tabular-nums">{formatCount(row.rotas)}</td>
+                    <td className="border border-slate-300 px-3 py-2 text-center font-bold tabular-nums">{formatCount(row.total)}</td>
+                    <td className="border border-slate-300 px-3 py-2 text-center font-bold tabular-nums text-emerald-700">{formatCount(row.corretos)}</td>
+                     <td className="border border-slate-300 px-3 py-2 text-center font-bold tabular-nums text-red-700">{formatCount(row.amais)}</td>
+                     <td className="border border-slate-300 px-3 py-2 text-center font-bold tabular-nums text-amber-700">{formatCount(row.faltantes)}</td>
                   </tr>;
                 })}
                 {!visible.length && <tr><td colSpan={7} className="p-8 text-center text-slate-500">Nenhum auditor encontrado.</td></tr>}
