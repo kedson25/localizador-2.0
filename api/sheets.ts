@@ -72,7 +72,7 @@ export default async function handler(req: any, res: any) {
         spreadsheet: true,
       });
     } catch (err: any) {
-      logApi('error', 'Health check do Google Sheets falhou', { error: err.message });
+      logApi('warn', 'Health check do Google Sheets falhou', { error: err.message });
       return sendSuccess(res, {
         ok: false,
         google: false,

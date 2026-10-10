@@ -38,6 +38,7 @@ export interface RefugoRow {
   id: string;
   rota: string;
   rawFields: Record<string, string>;
+  isHighPriority?: boolean;
 }
 
 export interface ColetaItem {

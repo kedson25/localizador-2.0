@@ -17,7 +17,9 @@ import {
   Check,
   Star,
   RefreshCw,
-  ShieldCheck
+  ShieldCheck,
+  Truck,
+  Layers
 } from 'lucide-react';
 import { RefugoRow, ColetaItem, ColetaLista, RefugoHistoricoMetrica } from '../types';
 import {
@@ -126,7 +128,13 @@ function formatFirestoreDate(
   return date.toLocaleString('pt-BR');
 }
 
-export function ControleRefugo({ currentUser }: { currentUser?: User | null }) {
+export function ControleRefugo({
+  currentUser,
+  onNavigateToMapa
+}: {
+  currentUser?: User | null;
+  onNavigateToMapa?: () => void;
+}) {
   const [rows, setRows] = useState<RefugoRow[]>([]);
   const [scannedItems, setScannedItems] = useState<RefugoScan[]>([]);
   const [bipInput, setBipInput] = useState('');
@@ -161,6 +169,7 @@ export function ControleRefugo({ currentUser }: { currentUser?: User | null }) {
   // Modal de exportação para Lista Branca
   const [existingListas, setExistingListas] = useState<ColetaLista[]>([]);
   const [showExportModal, setShowExportModal] = useState(false);
+  const [showRotasColetaModal, setShowRotasColetaModal] = useState(false);
   const [exportDestinationType, setExportDestinationType] = useState<'new' | 'existing'>('new');
   const [exportListName, setExportListName] = useState('');
   const [selectedListId, setSelectedListId] = useState('');
@@ -222,6 +231,39 @@ export function ControleRefugo({ currentUser }: { currentUser?: User | null }) {
 
     return { found, notFound, highPriority };
   }, [scannedItems, rowByCode]);
+
+  // Quantidade encontrada de rotas em coleta
+  const rotasEmColetaStats = useMemo(() => {
+    let totalRotasEmColeta = 0;
+    const rotasMap: Record<string, number> = {};
+
+    for (let i = 0; i < existingListas.length; i++) {
+      const lista = existingListas[i];
+      if (lista.rotasCount) {
+        Object.entries(lista.rotasCount).forEach(([r, count]) => {
+          const nomeRota = String(r || '').trim();
+          if (nomeRota && !nomeRota.toUpperCase().includes('SEM ROTA') && !nomeRota.toLowerCase().includes('branca')) {
+            const qtd = Number(count) || 0;
+            totalRotasEmColeta += qtd;
+            rotasMap[nomeRota] = (rotasMap[nomeRota] || 0) + qtd;
+          }
+        });
+      } else {
+        const rotaPadrao = String(lista.rota || '').trim();
+        if (rotaPadrao && !rotaPadrao.toUpperCase().includes('SEM ROTA') && !rotaPadrao.toLowerCase().includes('branca')) {
+          const qtd = Number(lista.totalItens || lista.totalValidados || (lista.itens ? lista.itens.length : 0)) || 0;
+          totalRotasEmColeta += qtd;
+          rotasMap[rotaPadrao] = (rotasMap[rotaPadrao] || 0) + qtd;
+        }
+      }
+    }
+
+    return {
+      totalRotasEmColeta,
+      rotasMap,
+      rotasCount: Object.keys(rotasMap).length,
+    };
+  }, [existingListas]);
 
   const semRotaCount = stats.notFound;
   const currentPage = Math.min(page, Math.max(0, Math.ceil(scannedItems.length / RESULTS_PAGE_SIZE) - 1));
@@ -1062,6 +1104,14 @@ export function ControleRefugo({ currentUser }: { currentUser?: User | null }) {
                     <span className="bg-red-100 text-red-800 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-md font-mono text-[11px] sm:text-xs font-bold border border-red-200 flex items-center gap-1">
                       <XCircle className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-red-600 shrink-0" /> Sem Rota: {stats.notFound}
                     </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowRotasColetaModal(true)}
+                      className="bg-indigo-100 hover:bg-indigo-200 text-indigo-900 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-md font-mono text-[11px] sm:text-xs font-bold border border-indigo-300 flex items-center gap-1 cursor-pointer transition-colors"
+                      title="Ver detalhamento da quantidade encontrada de rota em coleta"
+                    >
+                      <Truck className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-indigo-700 shrink-0" /> Rota em Coleta: {rotasEmColetaStats.totalRotasEmColeta}
+                    </button>
                     <span className="bg-blue-100 text-blue-800 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-md font-mono text-[11px] sm:text-xs font-bold border border-blue-200">
                       Total: {scannedItems.length}
                     </span>
@@ -1069,6 +1119,17 @@ export function ControleRefugo({ currentUser }: { currentUser?: User | null }) {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
+                  {onNavigateToMapa && (
+                    <button
+                      type="button"
+                      onClick={onNavigateToMapa}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-lg transition-colors shadow-sm cursor-pointer border border-slate-950 min-h-[36px] sm:min-h-0"
+                      title="Abrir o Mapa de Refugo onde você alterna entre Refugo e Quanto Passou"
+                    >
+                      <Layers className="w-4 h-4 text-blue-400" />
+                      <span>Mapa Refugo</span>
+                    </button>
+                  )}
                   <label className="cursor-pointer bg-[#3483FA] hover:bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm transition-colors flex items-center gap-1.5 min-h-[36px] sm:min-h-0">
                     <UploadCloud className="w-4 h-4" />
                     <span>Carregar Base</span>
@@ -1356,6 +1417,84 @@ export function ControleRefugo({ currentUser }: { currentUser?: User | null }) {
                   </>
                 )}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Detalhamento de Rotas em Coleta */}
+      {showRotasColetaModal && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-white rounded-none p-4 sm:p-6 max-w-lg w-full shadow-2xl animate-in fade-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto border border-slate-300">
+            <div className="flex justify-between items-start mb-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="p-1.5 bg-indigo-100 text-indigo-700">
+                    <Truck className="w-5 h-5" />
+                  </span>
+                  <h2 className="text-base sm:text-lg font-black text-gray-900 uppercase">
+                    Rotas Encontradas em Coleta
+                  </h2>
+                </div>
+                <p className="text-xs text-gray-500 mt-1 font-medium">
+                  {rotasEmColetaStats.totalRotasEmColeta} pacotes distribuídos em {rotasEmColetaStats.rotasCount} rotas na Coleta
+                </p>
+              </div>
+              <button
+                onClick={() => setShowRotasColetaModal(false)}
+                className="text-gray-400 hover:text-gray-700 bg-gray-100 hover:bg-gray-200 p-1.5 transition-colors cursor-pointer shrink-0"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div className="bg-indigo-50 border border-indigo-200 p-3 flex items-center justify-between">
+                <span className="text-xs font-bold text-indigo-900 uppercase">Total Geral de Rotas em Coleta</span>
+                <span className="font-mono text-lg font-black text-indigo-950">
+                  {rotasEmColetaStats.totalRotasEmColeta}
+                </span>
+              </div>
+
+              {rotasEmColetaStats.rotasCount > 0 ? (
+                <div className="max-h-60 overflow-y-auto border border-slate-200 divide-y divide-slate-100">
+                  {Object.entries(rotasEmColetaStats.rotasMap)
+                    .sort(([, a], [, b]) => (Number(b) || 0) - (Number(a) || 0))
+                    .map(([nomeRota, qtd]) => (
+                      <div key={nomeRota} className="flex items-center justify-between p-2.5 hover:bg-slate-50 text-xs">
+                        <span className="font-mono font-bold text-slate-800">{nomeRota}</span>
+                        <span className="font-mono font-extrabold bg-indigo-100 text-indigo-800 px-2 py-0.5 border border-indigo-200">
+                          {qtd} pacote(s)
+                        </span>
+                      </div>
+                    ))}
+                </div>
+              ) : (
+                <div className="p-6 text-center text-xs text-slate-500 bg-slate-50 border border-dashed border-slate-200">
+                  Nenhuma rota com pacotes encontrada nas listas de coleta ativas.
+                </div>
+              )}
+            </div>
+
+            <div className="mt-6 flex flex-col-reverse sm:flex-row justify-end gap-2">
+              <button
+                onClick={() => setShowRotasColetaModal(false)}
+                className="px-4 py-2 text-xs font-bold text-gray-600 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 uppercase cursor-pointer"
+              >
+                Fechar
+              </button>
+              {onNavigateToMapa && (
+                <button
+                  onClick={() => {
+                    setShowRotasColetaModal(false);
+                    onNavigateToMapa();
+                  }}
+                  className="flex items-center justify-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold uppercase cursor-pointer shadow-sm"
+                >
+                  <Layers className="w-4 h-4" />
+                  <span>Ver no Mapa Refugo</span>
+                </button>
+              )}
             </div>
           </div>
         </div>

@@ -210,11 +210,11 @@ export const IdLookupEnhanced: React.FC<IdLookupEnhancedProps> = (props) => {
     const digits = cleanDigits(term);
     const found = occurrences.get(term.toUpperCase()) || (digits ? occurrences.get(digits) : undefined) || [];
     const unique = Array.from(new Map(found.map(item => [occurrenceKey(item), item])).values());
-    const cycles = Array.from(new Set(unique.map(item => cycleShort(item.listaSaida)).filter(Boolean)));
+    const cycles = Array.from(new Set(unique.map((item: any) => cycleShort(item.listaSaida)).filter(Boolean)));
     return [{
       id: term,
       cycles,
-      lists: Array.from(new Set(unique.map(item => item.listaNome))).sort(),
+      lists: Array.from(new Set(unique.map((item: any) => item.listaNome))).sort(),
       detectedAt: new Date().toISOString(),
     }];
   }), [terms, occurrences]);

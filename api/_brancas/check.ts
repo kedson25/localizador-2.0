@@ -8,7 +8,11 @@ export default async function checkHandler(req: any, res: any) {
   }
 
   if (!isGoogleSheetsConfigured()) {
-    return sendError(res, 503, 'SHEETS_NOT_CONFIGURED', 'Google Sheets não configurado.');
+    return sendSuccess(res, {
+      ok: true,
+      synced: false,
+      message: 'Google Sheets não configurado.',
+    });
   }
 
   // Executa sync automático leve (forceManual: false)

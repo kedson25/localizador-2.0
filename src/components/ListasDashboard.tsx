@@ -166,11 +166,25 @@ export const ListasDashboard: React.FC<ListasDashboardProps> = ({ currentUser })
   const [novoTipo, setNovoTipo] = useState<'comum' | 'grupos'>('comum');
 
   useEffect(() => {
+    let active = true;
+    const startTime = Date.now();
     const unsubscribe = listenToListas(data => {
+      if (!active) return;
       setListas(data);
-      setLoading(false);
+      const elapsed = Date.now() - startTime;
+      const minDisplay = 400;
+      if (elapsed < minDisplay) {
+        setTimeout(() => {
+          if (active) setLoading(false);
+        }, minDisplay - elapsed);
+      } else {
+        setLoading(false);
+      }
     });
-    return unsubscribe;
+    return () => {
+      active = false;
+      unsubscribe();
+    };
   }, []);
 
   const filtered = useMemo(() => {
@@ -405,9 +419,21 @@ export const ListasDashboard: React.FC<ListasDashboardProps> = ({ currentUser })
         </div>
 
         {loading ? (
-          <div className="space-y-3 p-4">
+          <div className="space-y-2.5 p-4 sm:p-5">
             {[1, 2, 3].map(item => (
-              <div key={item} className="h-24 animate-pulse rounded-xl bg-gray-100" />
+              <div
+                key={item}
+                className="flex h-[52px] w-full animate-pulse items-center justify-between border border-gray-200 bg-gray-50 px-4 py-2.5"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="h-4 w-32 bg-gray-200" />
+                  <div className="h-3 w-16 bg-gray-200" />
+                </div>
+                <div className="hidden sm:flex items-center gap-4">
+                  <div className="h-3.5 w-24 bg-gray-200" />
+                  <div className="h-7 w-20 bg-gray-200" />
+                </div>
+              </div>
             ))}
           </div>
         ) : grouped.length === 0 ? (
@@ -444,76 +470,76 @@ export const ListasDashboard: React.FC<ListasDashboardProps> = ({ currentUser })
                     return (
                       <div
                         key={lista.id}
-                        className={`grid gap-4 px-4 py-4 transition hover:bg-gray-50 sm:px-5 lg:grid-cols-[minmax(260px,1.5fr)_minmax(330px,1.2fr)_auto] lg:items-center ${index > 0 ? 'border-t border-gray-100' : ''}`}
+                        className={`grid gap-2.5 px-4 py-2 transition hover:bg-gray-50 sm:gap-3 sm:px-5 sm:py-2.5 lg:grid-cols-[minmax(240px,1.5fr)_minmax(300px,1.2fr)_auto] lg:items-center ${index > 0 ? 'border-t border-gray-100' : ''}`}
                       >
                         <button type="button" onClick={() => abrirLista(lista.id)} className="min-w-0 text-left">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="truncate text-sm font-bold text-gray-900 sm:text-[15px]">{lista.nome}</span>
-                            <span className={`rounded-md px-2 py-0.5 text-[10px] font-bold ${finalizada ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-blue-700'}`}>
+                          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                            <span className="truncate text-sm font-bold text-gray-900">{lista.nome}</span>
+                            <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold ${finalizada ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-blue-700'}`}>
                               {finalizada ? 'Finalizada' : 'Em andamento'}
                             </span>
                           </div>
-                          <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+                          <div className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-xs text-gray-500">
                             <span>{formatDate(date)}</span>
                             <span className="font-medium text-gray-600">{shortCycle(lista.saidaPadrao)}</span>
                             <span>{lista.tipo === 'grupos' ? 'Por grupos' : 'Comum'}</span>
                           </div>
                         </button>
 
-                        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3">
                           <div>
                             <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Pacotes</p>
-                            <p className="mt-0.5 text-sm font-bold tabular-nums text-[#3483FA]">{total.toLocaleString('pt-BR')}</p>
+                            <p className="text-sm font-bold tabular-nums text-[#3483FA]">{total.toLocaleString('pt-BR')}</p>
                           </div>
                           <div>
                             <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Responsável</p>
-                            <p className="mt-0.5 truncate text-sm font-semibold text-gray-700">{lista.responsavel || '-'}</p>
+                            <p className="truncate text-sm font-semibold text-gray-700">{lista.responsavel || '-'}</p>
                           </div>
                           <div className="hidden sm:block">
                             <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Tipo</p>
-                            <p className="mt-0.5 text-sm font-semibold text-gray-700">{lista.tipo === 'grupos' ? 'Grupos' : 'Comum'}</p>
+                            <p className="text-sm font-semibold text-gray-700">{lista.tipo === 'grupos' ? 'Grupos' : 'Comum'}</p>
                           </div>
                         </div>
 
-                        <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+                        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 lg:justify-end">
                           <button
                             type="button"
                             onClick={() => abrirLista(lista.id)}
                             disabled={openingId === lista.id}
-                            className="inline-flex min-h-[38px] items-center gap-1.5 rounded-lg bg-[#3483FA] px-3.5 py-2 text-xs font-bold text-white transition hover:bg-blue-600 disabled:opacity-60"
+                            className="inline-flex h-8 min-h-[32px] items-center gap-1.5 rounded-lg bg-[#3483FA] px-3 py-1.5 text-xs font-bold text-white transition hover:bg-blue-600 disabled:opacity-60"
                           >
-                            <Barcode className="h-4 w-4" />
+                            <Barcode className="h-3.5 w-3.5" />
                             {openingId === lista.id ? 'Abrindo...' : 'Abrir'}
-                            <ChevronRight className="h-3.5 w-3.5" />
+                            <ChevronRight className="h-3 w-3" />
                           </button>
 
                           <button
                             type="button"
                             onClick={() => exportarLista(lista)}
-                            className="flex h-[38px] w-[38px] items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition hover:bg-gray-100 hover:text-gray-800"
+                            className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition hover:bg-gray-100 hover:text-gray-800"
                             title="Exportar IDs"
                           >
-                            <Download className="h-4 w-4" />
+                            <Download className="h-3.5 w-3.5" />
                           </button>
 
                           {finalizada && (
                             <button
                               type="button"
                               onClick={() => reabrirLista(lista)}
-                              className="flex h-[38px] w-[38px] items-center justify-center rounded-lg border border-amber-200 text-amber-600 transition hover:bg-amber-50"
+                              className="flex h-8 w-8 items-center justify-center rounded-lg border border-amber-200 text-amber-600 transition hover:bg-amber-50"
                               title="Reabrir lista"
                             >
-                              <RotateCcw className="h-4 w-4" />
+                              <RotateCcw className="h-3.5 w-3.5" />
                             </button>
                           )}
 
                           <button
                             type="button"
                             onClick={() => excluirLista(lista)}
-                            className="flex h-[38px] w-[38px] items-center justify-center rounded-lg border border-red-100 text-red-500 transition hover:bg-red-50"
+                            className="flex h-8 w-8 items-center justify-center rounded-lg border border-red-100 text-red-500 transition hover:bg-red-50"
                             title="Excluir lista"
                           >
-                            <Trash2 className="h-4 w-4" />
+                            <Trash2 className="h-3.5 w-3.5" />
                           </button>
                         </div>
                       </div>

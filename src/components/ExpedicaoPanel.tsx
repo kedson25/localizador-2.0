@@ -420,7 +420,7 @@ export function ExpedicaoPanel() {
         .filter(row => Boolean(store.localizados?.[row.pacote]) || (backlogById[row.pacote]?.length || 0) > 0)
         .map(row => routeLabel(row.encontradoRota).toUpperCase())
         .filter(Boolean),
-    )].sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true }));
+    )].sort((a: string, b: string) => a.localeCompare(b, 'pt-BR', { numeric: true }));
     return {
       doca,
       amais: rows.filter(row => row.classificacao === 'A mais').length,

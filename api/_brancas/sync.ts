@@ -70,10 +70,42 @@ export default async function syncHandler(req: any, res: any) {
 
   try {
     // 1. Ler ext_brancas e ext_rotas via Google Sheets API no backend
-    const [brancas, rotasDetails] = await Promise.all([
-      readBrancas(spreadsheetId, sheetBrancas),
-      readRotasDetails(spreadsheetId, sheetRotas),
-    ]);
+    let brancas: BrancaRow[] = [];
+    let rotasDetails: any = null;
+
+    try {
+      const results = await Promise.all([
+        readBrancas(spreadsheetId, sheetBrancas),
+        readRotasDetails(spreadsheetId, sheetRotas),
+      ]);
+      brancas = results[0];
+      rotasDetails = results[1];
+    } catch (sheetsErr: any) {
+      logApi('warn', 'Google Sheets temporariamente inacessível ou falha de autenticação', {
+        error: sheetsErr?.message || String(sheetsErr),
+      });
+
+      // Se for verificação automática / background (forceManual: false), não quebra com 500
+      if (!forceManual) {
+        return sendSuccess(res, {
+          ok: true,
+          changed: false,
+          isNewRun: false,
+          hasChanges: false,
+          synced: false,
+          message: 'Google Sheets temporariamente inacessível. Mantendo dados atuais.',
+          errorDetails: sheetsErr?.message,
+        });
+      }
+
+      return sendError(
+        res,
+        503,
+        'SHEETS_UNAVAILABLE',
+        `Google Sheets temporariamente inacessível: ${sheetsErr?.message || sheetsErr}`
+      );
+    }
+
     const { rotasIds, rotasMap, ciclosRotas } = rotasDetails;
 
     if (brancas.length === 0) {
@@ -674,7 +706,17 @@ export default async function syncHandler(req: any, res: any) {
       durationMs: duration,
     });
   } catch (err: any) {
-    logApi('error', 'Falha ao sincronizar e processar snapshot de brancas', { error: err.message, stack: err.stack });
-    return sendError(res, 500, 'SYNC_ERROR', `Erro durante o processamento automático: ${err.message}`);
+    logApi('warn', 'Aviso ao processar ciclo de sincronização de brancas', { error: err?.message || String(err) });
+    if (!forceManual) {
+      return sendSuccess(res, {
+        ok: true,
+        changed: false,
+        isNewRun: false,
+        hasChanges: false,
+        synced: false,
+        message: 'Ciclo de sincronização finalizado.',
+      });
+    }
+    return sendError(res, 500, 'SYNC_ERROR', `Erro durante o processamento: ${err.message}`);
   }
 }

@@ -21,9 +21,21 @@ function getAppletConfig(): Record<string, any> | null {
 }
 
 export function isFirebaseAdminConfigured(): boolean {
-  const email = process.env.FIREBASE_CLIENT_EMAIL;
-  const key = process.env.FIREBASE_PRIVATE_KEY;
-  return Boolean(email && key);
+  const email =
+    process.env.FIREBASE_CLIENT_EMAIL ||
+    process.env.GOOGLE_CLIENT_EMAIL;
+  const key =
+    process.env.FIREBASE_PRIVATE_KEY ||
+    process.env.GOOGLE_PRIVATE_KEY;
+  
+  if (!email || !key) {
+    return false;
+  }
+  // Se for a conta de serviço do Sheets (kedson-fb038), não tem permissão no Firestore deste projeto
+  if (email.includes('kedson-fb038')) {
+    return false;
+  }
+  return true;
 }
 
 export function getFirebaseAdmin(): {
@@ -42,27 +54,57 @@ export function getFirebaseAdmin(): {
       process.env.VITE_FIREBASE_PROJECT_ID ||
       'gen-lang-client-0559227827';
 
-    const databaseId = process.env.FIRESTORE_DATABASE_ID ||
-      (process.env.FIREBASE_PROJECT_ID ? '(default)' : appletConfig?.firestoreDatabaseId || '(default)');
+    const databaseId =
+      process.env.FIRESTORE_DATABASE_ID ||
+      appletConfig?.firestoreDatabaseId ||
+      'ai-studio-localizador20-a047a96e-6aee-4898-bd0c-4a2179a78d15';
 
     if (existingApps.length > 0) {
       app = existingApps[0];
     } else {
-      const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-      const privateKeyRaw = process.env.FIREBASE_PRIVATE_KEY;
+      let credential = applicationDefault();
 
-      if (clientEmail && privateKeyRaw) {
-        const credential = cert({
-          projectId,
-          clientEmail,
-          privateKey: privateKeyRaw.replace(/\\n/g, '\n'),
-        });
+      try {
         app = initializeApp({
           credential,
           projectId,
         });
-      } else {
-        app = initializeApp({ credential: applicationDefault(), projectId });
+      } catch (err: any) {
+        const clientEmail =
+          process.env.FIREBASE_CLIENT_EMAIL ||
+          process.env.GOOGLE_CLIENT_EMAIL ||
+          process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL ||
+          SERVICE_ACCOUNT_CREDENTIALS.client_email;
+        const privateKeyRaw =
+          process.env.FIREBASE_PRIVATE_KEY ||
+          process.env.GOOGLE_PRIVATE_KEY ||
+          SERVICE_ACCOUNT_CREDENTIALS.private_key;
+
+        if (clientEmail && privateKeyRaw) {
+          const privateKey = privateKeyRaw.replace(/\\n/g, '\n');
+          try {
+            credential = cert({
+              projectId,
+              clientEmail,
+              privateKey,
+            });
+            app = initializeApp({
+              credential,
+              projectId,
+            });
+          } catch (certErr) {
+            console.error('[Firebase Admin] Erro ao inicializar App com cert:', certErr);
+            throw certErr;
+          }
+        } else {
+          const apps = getApps();
+          if (apps.length > 0) {
+            app = apps[0];
+          } else {
+            console.error('[Firebase Admin] Erro ao inicializar App:', err);
+            throw err;
+          }
+        }
       }
     }
 

@@ -1,6 +1,6 @@
 import React from 'react';
 
-function Block({ className = '' }: { className?: string }) {
+function Block({ className = '' }: { className?: string; key?: React.Key }) {
   return <div className={`animate-pulse bg-slate-200 ${className}`} />;
 }
 

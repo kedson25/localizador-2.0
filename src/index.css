@@ -1,5 +1,17 @@
 @import "tailwindcss";
 
+@theme {
+  --radius-xs: 0px;
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-xl: 0px;
+  --radius-2xl: 0px;
+  --radius-3xl: 0px;
+  --radius-4xl: 0px;
+  --radius: 0px;
+}
+
 @layer base {
   html, body {
     width: 100%;
@@ -12,6 +24,32 @@
 
   button, input, select, textarea {
     touch-action: manipulation;
+  }
+
+  /* Sistema com bordas quadradas em todos os componentes */
+  *,
+  *::before,
+  *::after {
+    border-radius: 0px !important;
+  }
+
+  /* Preservar rotação circular para ícones/spinners de carregamento */
+  .animate-spin {
+    border-radius: 9999px !important;
+  }
+
+  /* Animação suave e desacelerada para skeletons */
+  @keyframes skeleton-pulse {
+    0%, 100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.38;
+    }
+  }
+
+  .animate-pulse {
+    animation: skeleton-pulse 2.8s cubic-bezier(0.4, 0, 0.6, 1) infinite !important;
   }
 }
 
@@ -29,12 +67,12 @@
 
 .app-scroll-x::-webkit-scrollbar-track {
   background: #f1f5f9;
-  border-radius: 9999px;
+  border-radius: 0px;
 }
 
 .app-scroll-x::-webkit-scrollbar-thumb {
   background-color: #cbd5e1;
-  border-radius: 9999px;
+  border-radius: 0px;
 }
 
 .app-scroll-x::-webkit-scrollbar-thumb:hover {
@@ -95,7 +133,7 @@
   --ecooy-bg: #f5f6f8;
   --ecooy-border: #dbe1e8;
   --ecooy-surface: #fff;
-  --ecooy-radius: 8px;
+  --ecooy-radius: 0px;
   --ecooy-focus: #2563eb;
 }
 .ecooy-shell {
@@ -110,7 +148,7 @@
 .ecooy-control {
   min-height: 40px;
   border: 1px solid var(--ecooy-border);
-  border-radius: 6px;
+  border-radius: 0px;
   background: #fff;
   color: var(--ecooy-ink);
   font: inherit;
@@ -128,13 +166,13 @@
   gap: .5rem;
   min-height: 40px;
   border: 1px solid var(--ecooy-border);
-  border-radius: 6px;
+  border-radius: 0px;
   background: var(--ecooy-surface);
   font-weight: 650;
 }
 .ecooy-action:hover { background: #f5f7fa; }
 .ecooy-action:disabled { opacity: .55; cursor: not-allowed; }
-.ecooy-nav-link { border-radius: 6px; }
+.ecooy-nav-link { border-radius: 0px; }
 .ecooy-nav-link[aria-current="page"] {
   background: #fff5bc;
   color: #101820;

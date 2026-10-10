@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowRight,
@@ -14,13 +14,16 @@ import {
   Folder,
   GitCompareArrows,
   ListTodo,
+  LogOut,
   MessageSquare,
   PackageOpen,
   Search,
   Settings,
   Trash2,
   UploadCloud,
+  UserCheck,
   UserCircle2,
+  X,
   Zap,
 } from 'lucide-react';
 import type { GroupSummary } from '../types';
@@ -180,6 +183,34 @@ export const ToolsHub: React.FC<ToolsHubProps> = ({
   const [isBrancasOpen, setIsBrancasOpen] = useState(false);
   const [isCorrelacaoOpen, setIsCorrelacaoOpen] = useState(false);
   const [isExpedicaoOpen, setIsExpedicaoOpen] = useState(false);
+  const [userDrawerOpen, setUserDrawerOpen] = useState(false);
+  const userDrawerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!userDrawerOpen) return;
+
+    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
+      if (userDrawerRef.current && !userDrawerRef.current.contains(event.target as Node)) {
+        setUserDrawerOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setUserDrawerOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('touchstart', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('touchstart', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [userDrawerOpen]);
 
   const allBacklogTools: ToolItem[] = [
     {
@@ -374,21 +405,108 @@ export const ToolsHub: React.FC<ToolsHubProps> = ({
             />
           </div>
 
-          <div className="ml-auto flex items-center gap-2 sm:gap-4">
-            <button type="button" className="relative hidden h-10 w-10 items-center justify-center rounded-full text-slate-700 hover:bg-slate-100 sm:flex">
-              <Bell className="h-5 w-5" />
-              <span className="absolute right-2 top-1.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-red-500" />
+          <div ref={userDrawerRef} className="relative ml-auto flex items-center gap-2 sm:gap-4">
+            <button
+              type="button"
+              onClick={() => setUserDrawerOpen(prev => !prev)}
+              className="flex items-center gap-2.5 border border-slate-200 bg-slate-50 px-3 py-2 text-left font-bold text-slate-800 transition hover:border-slate-300 hover:bg-slate-100 focus:outline-none"
+              aria-label="Menu do perfil e configurações"
+              aria-expanded={userDrawerOpen}
+            >
+              <UserCircle2 className="h-6 w-6 text-slate-600 sm:h-7 sm:w-7" />
+              <div className="flex flex-col text-left leading-none">
+                <span className="max-w-[120px] truncate text-xs font-bold text-slate-900 sm:max-w-[160px] sm:text-sm">
+                  {currentUser?.username || 'Usuário'}
+                </span>
+                <span className="mt-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                  {currentUser?.isAdmin ? 'Administrador' : 'Operador'}
+                </span>
+              </div>
+              <ChevronDown className={`h-4 w-4 text-slate-500 transition-transform duration-150 ${userDrawerOpen ? 'rotate-180' : ''}`} />
             </button>
-            <div className="hidden items-center gap-3 rounded-lg bg-slate-100 px-3 py-2 sm:flex">
-              <UserCircle2 className="h-7 w-7 text-slate-600" />
-              <span className="max-w-[150px] truncate text-sm font-bold text-slate-800">
-                {currentUser?.username || 'Usuário'}
-              </span>
-              <ChevronDown className="h-4 w-4 text-slate-500" />
-            </div>
-            <button type="button" onClick={logout} className="px-2 py-2 text-xs font-black uppercase text-red-600 hover:text-red-700">
-              Sair
-            </button>
+
+            {/* Popup / Menu suspenso direto no perfil */}
+            {userDrawerOpen && (
+              <>
+                <div
+                  className="fixed inset-0 z-40 bg-black/10 backdrop-blur-[1px]"
+                  onClick={() => setUserDrawerOpen(false)}
+                  aria-hidden="true"
+                />
+                <div
+                  role="menu"
+                  className="absolute right-0 top-full z-50 mt-1.5 w-72 origin-top-right border border-slate-300 bg-white shadow-xl animate-in fade-in zoom-in-95 duration-100 sm:w-80"
+                >
+                  {/* Cabeçalho com dados da conta */}
+                  <div className="border-b border-slate-200 bg-slate-50 p-4">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center bg-slate-900 text-amber-300">
+                        <UserCircle2 className="h-7 w-7" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-black text-slate-900">{currentUser?.username || 'Usuário'}</p>
+                        <p className="mt-0.5 inline-block border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-600">
+                          {currentUser?.isAdmin ? 'Administrador' : 'Operador'}
+                        </p>
+                        {currentUser?.email && (
+                          <p className="mt-1 truncate text-xs text-slate-500">{currentUser.email}</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Ações e Navegação */}
+                  <div className="p-2 space-y-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUserDrawerOpen(false);
+                        navigate('/configuracoes');
+                      }}
+                      className="flex w-full items-center gap-3 border border-transparent px-3 py-2.5 text-left text-xs sm:text-sm font-bold text-slate-700 transition hover:border-slate-200 hover:bg-slate-50"
+                    >
+                      <Settings className="h-4 w-4 text-slate-500" />
+                      <div className="flex-1">
+                        <div>Configurações</div>
+                        <div className="text-[11px] font-normal text-slate-400">Preferências do sistema</div>
+                      </div>
+                    </button>
+
+                    {currentUser?.isAdmin && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setUserDrawerOpen(false);
+                          navigate('/admin');
+                        }}
+                        className="flex w-full items-center gap-3 border border-transparent px-3 py-2.5 text-left text-xs sm:text-sm font-bold text-slate-700 transition hover:border-slate-200 hover:bg-slate-50"
+                      >
+                        <BarChart3 className="h-4 w-4 text-slate-500" />
+                        <div className="flex-1">
+                          <div>Painel Administrativo</div>
+                          <div className="text-[11px] font-normal text-slate-400">Auditoria e controle</div>
+                        </div>
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Sair do Sistema */}
+                  <div className="border-t border-slate-200 bg-slate-50 p-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUserDrawerOpen(false);
+                        logout();
+                      }}
+                      className="flex w-full items-center justify-center gap-2 border border-red-200 bg-red-50 px-3 py-2 text-xs sm:text-sm font-bold text-red-700 transition hover:bg-red-100 hover:text-red-800"
+                    >
+                      <LogOut className="h-4 w-4" />
+                      <span>Sair do Sistema</span>
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         </header>
 

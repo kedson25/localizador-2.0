@@ -74,7 +74,7 @@ function computeRanking(records: AuditRecord[]): RankingRow[] {
     const key = normalize(record.auditor).replace(/\s+/g, ' ');
     let item = byAuditor.get(key);
     if (!item) {
-      item = { auditor: record.auditor, total: 0, corretos: 0, amais: 0, pendentes: 0, rotas: 0, pacotes: 0, routes: new Set(), ids: new Set() };
+      item = { auditor: record.auditor, total: 0, corretos: 0, amais: 0, faltantes: 0, pendentes: 0, rotas: 0, pacotes: 0, routes: new Set(), ids: new Set() };
       byAuditor.set(key, item);
     }
     item.total++;

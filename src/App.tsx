@@ -68,7 +68,8 @@ export default function App() {
 
   useEffect(() => {
     if (currentUser) {
-      const tabName = location.pathname.startsWith('/refugo') ? 'Refugo' :
+      const tabName = location.pathname.startsWith('/mapa-refugo') ? 'Mapa Refugo' :
+        location.pathname.startsWith('/refugo') ? 'Refugo' :
         location.pathname.startsWith('/brancas') ? 'Brancas' :
         location.pathname.startsWith('/listas') ? 'Coleta (Listas)' :
         location.pathname.startsWith('/consulta') ? 'Consulta' :
@@ -143,7 +144,12 @@ export default function App() {
             {(currentUser?.isAdmin || currentUser?.allowedGroups?.includes('consulta')) && <Route path="/consulta" element={insideDashboard(<div className="space-y-4"><StatsSummary totalRows={rows.length} groups={groups} /><IdLookupEnhanced rows={rows} onNavigateToUpload={() => navigate('/upload')} /></div>)} />}
             {(currentUser?.isAdmin || currentUser?.allowedGroups?.includes('correlacao')) && <Route path="/correlacao" element={insideDashboard(<CorrelacaoIds />)} />}
             {(currentUser?.isAdmin || currentUser?.allowedGroups?.includes('baixas')) && <Route path="/baixas" element={insideDashboard(<BaixasPanel />)} />}
-            {(currentUser?.isAdmin || currentUser?.allowedGroups?.includes('refugo')) && <Route path="/refugo" element={dedicatedOperation(<ControleRefugoClean currentUser={currentUser} />)} />}
+            {(currentUser?.isAdmin || currentUser?.allowedGroups?.includes('refugo')) && (
+              <>
+                <Route path="/refugo" element={dedicatedOperation(<ControleRefugoClean currentUser={currentUser} />)} />
+                <Route path="/mapa-refugo" element={dedicatedOperation(<ControleRefugoClean currentUser={currentUser} initialTab="mapa" />)} />
+              </>
+            )}
             {(currentUser?.isAdmin || currentUser?.allowedGroups?.includes('remover')) && <Route path="/remover" element={insideDashboard(<IdRemover rows={rows} headers={headers} />)} />}
             {(currentUser?.isAdmin || currentUser?.allowedGroups?.includes('reporte')) && <Route path="/reporte" element={insideDashboard(<WhatsappReportEnhanced rows={rows} />)} />}
             {(currentUser?.isAdmin || currentUser?.allowedGroups?.includes('listas')) && <><Route path="/listas" element={insideDashboard(<ListasDashboard currentUser={currentUser} />)} /><Route path="/listas/:id" element={dedicatedOperation(<ListasColetaEnhanced currentUser={currentUser} />)} /></>}

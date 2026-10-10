@@ -445,14 +445,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
   const toggleValidatedItem = async (itemId: string) => {
     if (!selectedListaForReport) return;
     const itens = (selectedListaForReport.itens || []).map(item => item.id === itemId ? { ...item, validado: !item.validado } : item);
-    await runAdminAction(async () => saveLista({ ...selectedListaForReport, itens }));
+    await runAdminAction(async () => { await saveLista({ ...selectedListaForReport, itens }); });
   };
 
   const validateAll = async () => {
     if (!selectedListaForReport) return;
     if (!window.confirm('Validar todos os IDs pendentes desta lista?')) return;
     const itens = (selectedListaForReport.itens || []).map(item => ({ ...item, validado: true }));
-    await runAdminAction(async () => saveLista({ ...selectedListaForReport, itens }));
+    await runAdminAction(async () => { await saveLista({ ...selectedListaForReport, itens }); });
   };
 
   const copyPending = async () => {
@@ -966,7 +966,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
         .field-input {
           width: 100%;
           border: 1px solid rgb(229 231 235);
-          border-radius: 0.5rem;
+          border-radius: 0px;
           padding: 0.625rem 0.75rem;
           font-size: 0.875rem;
           color: rgb(31 41 55);

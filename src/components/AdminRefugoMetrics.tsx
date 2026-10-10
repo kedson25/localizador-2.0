@@ -175,13 +175,13 @@ export const AdminRefugoMetrics: React.FC<AdminRefugoMetricsProps> = ({
     const map: Record<string, number> = {};
 
     for (const [rota, quantidade] of Object.entries(legacyTotals.rotas)) {
-      map[rota] = (map[rota] || 0) + quantidade;
+      map[rota] = (map[rota] || 0) + Number(quantidade || 0);
     }
     for (const [rota, quantidade] of Object.entries(permanentSummary.rotas)) {
-      map[rota] = (map[rota] || 0) + quantidade;
+      map[rota] = (map[rota] || 0) + Number(quantidade || 0);
     }
     for (const [rota, quantidade] of Object.entries(activeFallback.rotas)) {
-      map[rota] = (map[rota] || 0) + quantidade;
+      map[rota] = (map[rota] || 0) + Number(quantidade || 0);
     }
 
     let list = Object.entries(map).map(([rota, total]) => ({ rota, total }));

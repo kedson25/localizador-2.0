@@ -8,7 +8,8 @@ function apiMiddlewarePlugin(): Plugin {
     name: 'api-middleware',
     configureServer(server) {
       server.middlewares.use(async (req, res, next) => {
-        if (req.url && req.url.startsWith('/api/')) {
+        const cleanUrl = (req.url || '').split('?')[0];
+        if (cleanUrl === '/api' || cleanUrl.startsWith('/api/')) {
           try {
             const { dispatchApiRoute } = await import('./api/_lib/router');
             await dispatchApiRoute(req, res);
