@@ -206,7 +206,6 @@ export function RankingAuditores({ aduana, auditoria, cycle = 'todos' }: { aduan
     const rowHeight = 42;
     const rowsPerImage = 55;
     const fmt = (n: number) => n.toLocaleString('pt-BR');
-    const ratio = (r: RankingRow) => r.rotas ? Math.round(r.total / r.rotas).toLocaleString('pt-BR') : '—';
     const reportDate = new Date().toLocaleDateString('pt-BR');
     for (let offset = 0; offset < reportRows.length; offset += rowsPerImage) {
       const rows = reportRows.slice(offset, offset + rowsPerImage);
@@ -246,36 +245,46 @@ export function RankingAuditores({ aduana, auditoria, cycle = 'todos' }: { aduan
       rect(0, 0, 1200, 124, '#ffe600');
 
       const stats = [
-        ['PACOTES AUDITADOS', summary.registros],
-        ['ROTAS DISTINTAS', summary.rotas],
-        ['AUDITORES', summary.auditores],
+        ['PACOTES AUDITADOS', summary.registros, '#fff3b0', '#111820'],
+        ['ROTAS AUDITADAS', summary.rotas, '#fff3b0', '#111820'],
+        ['CORRETOS', summary.corretos, '#dcfce7', '#065f46'],
+        ['A MAIS', summary.amais, '#fee2e2', '#991b1b'],
+        ['FALTANTES', summary.faltantes, '#fef3c7', '#92400e'],
+        ['AUDITORES', summary.auditores, '#fff3b0', '#111820'],
       ] as const;
-      stats.forEach(([label, value], i) => {
-        const x = 36 + i * 392;
-        rect(x, 15, 368, 96, '#fff3b0');
-        print(label, x + 15, 42, 'bold 17px Arial', '#222');
-        print(value.toLocaleString('pt-BR'), x + 15, 88, 'bold 38px Arial', '#111820');
+      stats.forEach(([label, value, bg, textColor], i) => {
+        const x = 25 + i * 194;
+        rect(x, 14, 180, 96, bg);
+        print(label, x + 12, 38, 'bold 13px Arial', '#334155');
+        print(value.toLocaleString('pt-BR'), x + 12, 84, 'bold 30px Arial', textColor);
       });
       const tableY = 124;
-      const xs = [25, 125, 565, 735, 930, 1175];
+      const xs = [25, 105, 475, 595, 730, 865, 1015, 1175];
       rect(25, tableY, 1150, 54, '#111820');
-      print('RANK', xs[0] + 10, tableY + 35, 'bold 18px Arial', '#fff');
-      print('COLABORADOR', xs[1] + 10, tableY + 35, 'bold 18px Arial', '#fff');
       const centerHeader = (label: string, index: number) => {
         ctx.save();
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.font = 'bold 18px Arial';
+        ctx.font = 'bold 16px Arial';
         ctx.fillStyle = '#ffffff';
         ctx.fillText(label, (xs[index] + xs[index + 1]) / 2, tableY + 27);
         ctx.restore();
       };
+      centerHeader('RANK', 0);
+      ctx.save();
+      ctx.textBaseline = 'middle';
+      ctx.font = 'bold 16px Arial';
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText('COLABORADOR', xs[1] + 14, tableY + 27);
+      ctx.restore();
       centerHeader('ROTAS', 2);
       centerHeader('PACOTES', 3);
-      centerHeader('PACOTES / ROTA', 4);
-      const printCentered = (text: string, x: number, y: number, font: string) => {
+      centerHeader('CORRETOS', 4);
+      centerHeader('A MAIS', 5);
+      centerHeader('FALTANTES', 6);
+      const printCentered = (text: string, x: number, y: number, font: string, color = '#111820') => {
         ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillStyle = '#111820'; ctx.font = font; ctx.fillText(text, x, y); ctx.restore();
+        ctx.fillStyle = color; ctx.font = font; ctx.fillText(text, x, y); ctx.restore();
       };
       rows.forEach((row, i) => {
         const y = tableY + 54 + i * rowHeight;
@@ -283,11 +292,13 @@ export function RankingAuditores({ aduana, auditoria, cycle = 'todos' }: { aduan
         rect(25, y, 1150, rowHeight, position <= 3 ? '#ffe34f' : i % 2 ? '#fff' : '#edf0f4');
         ctx.strokeStyle = '#cad1d9'; ctx.lineWidth = 1;
         ctx.beginPath(); ctx.moveTo(25, y + rowHeight); ctx.lineTo(1175, y + rowHeight); ctx.stroke();
-        printCentered(position === 1 ? '🥇' : position === 2 ? '🥈' : position === 3 ? '🥉' : String(position), (xs[0] + xs[1]) / 2, y + rowHeight / 2, 'bold 22px Arial');
-        print(row.auditor, 137, y + rowHeight / 2 + 7, position <= 3 ? 'bold 21px Arial' : '19px Arial', '#111820', 417);
-        printCentered(fmt(row.rotas), (xs[2] + xs[3]) / 2, y + rowHeight / 2, 'bold 21px Arial');
-        printCentered(fmt(row.total), (xs[3] + xs[4]) / 2, y + rowHeight / 2, 'bold 21px Arial');
-        printCentered(ratio(row), (xs[4] + xs[5]) / 2, y + rowHeight / 2, 'bold 20px Arial');
+        printCentered(position === 1 ? '🥇' : position === 2 ? '🥈' : position === 3 ? '🥉' : String(position), (xs[0] + xs[1]) / 2, y + rowHeight / 2, 'bold 20px Arial');
+        print(row.auditor, xs[1] + 14, y + rowHeight / 2 + 6, position <= 3 ? 'bold 18px Arial' : '17px Arial', '#111820', xs[2] - xs[1] - 24);
+        printCentered(fmt(row.rotas), (xs[2] + xs[3]) / 2, y + rowHeight / 2, 'bold 18px Arial');
+        printCentered(fmt(row.total), (xs[3] + xs[4]) / 2, y + rowHeight / 2, 'bold 18px Arial');
+        printCentered(fmt(row.corretos), (xs[4] + xs[5]) / 2, y + rowHeight / 2, 'bold 18px Arial', position <= 3 ? '#065f46' : '#047857');
+        printCentered(fmt(row.amais), (xs[5] + xs[6]) / 2, y + rowHeight / 2, 'bold 18px Arial', position <= 3 ? '#991b1b' : '#b91c1c');
+        printCentered(fmt(row.faltantes), (xs[6] + xs[7]) / 2, y + rowHeight / 2, 'bold 18px Arial', position <= 3 ? '#92400e' : '#b45309');
       });
       ctx.strokeStyle = '#b9c1cb'; ctx.lineWidth = 1;
       xs.forEach(x => { ctx.beginPath(); ctx.moveTo(x, tableY); ctx.lineTo(x, tableY + 54 + rows.length * rowHeight); ctx.stroke(); });
