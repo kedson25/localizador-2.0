@@ -10,7 +10,7 @@ import {
   Upload,
 } from 'lucide-react';
 import type { ColetaItem, ColetaLista, CsvRow } from '../types';
-import { cleanDigits } from '../utils/csvParser';
+import { cleanDigits, normalizeMotivo } from '../utils/csvParser';
 import { getAllItemsForExport, listenToListas } from '../lib/firebase';
 
 interface WhatsappReportEnhancedProps {
@@ -128,13 +128,22 @@ export function WhatsappReportEnhanced({ rows }: WhatsappReportEnhancedProps) {
       const motivosMap = new Map<string, number>();
       const saidasSet = new Set<string>();
 
-      selectedListaItens.forEach(item => {
-        const motivo = (item.motivo || 'Sem Motivo').trim();
-        motivosMap.set(motivo, (motivosMap.get(motivo) || 0) + 1);
+      if (selectedListaItens.length > 0) {
+        selectedListaItens.forEach(item => {
+          const motivo = normalizeMotivo(item.motivo);
+          motivosMap.set(motivo, (motivosMap.get(motivo) || 0) + 1);
 
-        const saida = (item.saida || selectedLista.saidaPadrao || selectedLista.saida || '').trim();
+          const saida = (item.saida || selectedLista.saidaPadrao || selectedLista.saida || '').trim();
+          if (saida) saidasSet.add(saida);
+        });
+      } else if (selectedLista.motivosCount) {
+        Object.entries(selectedLista.motivosCount).forEach(([rawMotivo, count]) => {
+          const motivo = normalizeMotivo(rawMotivo);
+          motivosMap.set(motivo, (motivosMap.get(motivo) || 0) + Number(count || 0));
+        });
+        const saida = (selectedLista.saidaPadrao || selectedLista.saida || '').trim();
         if (saida) saidasSet.add(saida);
-      });
+      }
 
       return {
         matchedRows: selectedListaItens as unknown as CsvRow[],
@@ -151,7 +160,7 @@ export function WhatsappReportEnhanced({ rows }: WhatsappReportEnhancedProps) {
       const saidasSet = new Set<string>();
 
       rows.forEach(row => {
-        const motivo = (row.motivo || row.rawFields?.MOTIVO || 'Sem Motivo').trim();
+        const motivo = normalizeMotivo(row.motivo || row.rawFields?.MOTIVO);
         motivosMap.set(motivo, (motivosMap.get(motivo) || 0) + 1);
 
         const saida = (row.saida || row.rawFields?.['Saída'] || row.rawFields?.Saida || '').trim();
@@ -219,7 +228,7 @@ export function WhatsappReportEnhanced({ rows }: WhatsappReportEnhancedProps) {
       seenRows.add(match.rowIndex);
       foundList.push(match);
 
-      const motivo = (match.motivo || match.rawFields?.MOTIVO || 'Sem Motivo').trim();
+      const motivo = normalizeMotivo(match.motivo || match.rawFields?.MOTIVO);
       motivosMap.set(motivo, (motivosMap.get(motivo) || 0) + 1);
 
       const saida = (match.saida || match.rawFields?.['Saída'] || match.rawFields?.Saida || '').trim();

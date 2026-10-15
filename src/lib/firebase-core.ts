@@ -1,6 +1,7 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { initializeFirestore, getFirestore, collection, doc, setDoc, getDoc, getDocs, updateDoc, deleteDoc, writeBatch, serverTimestamp, onSnapshot, query, where, orderBy, limit, startAfter, endBefore, increment, getCountFromServer, deleteField, QueryDocumentSnapshot, memoryLocalCache, enableNetwork, disableNetwork, setLogLevel } from 'firebase/firestore';
+import { normalizeMotivo } from '../utils/csvParser';
 
 // Silencia avisos internos de conectividade temporária do SDK do Firestore
 try {
@@ -806,7 +807,7 @@ export async function addItemToLista(
   // 3. Atualiza contadores no documento pai no servidor
   const op = item.responsavel || 'Operador';
   const saida = item.saida || 'Ciclo 2 - Saída PM';
-  const motivo = item.motivo || 'Pendente';
+  const motivo = normalizeMotivo(item.motivo || 'Pendente');
 
   const updatePayload: Record<string, any> = {
     updatedAt: serverTimestamp(),
@@ -1037,7 +1038,10 @@ export async function reconcileListaCounts(listaId: string): Promise<{ totalIten
       const op = item.responsavel || 'Operador';
       bipsPorOperador[op] = (bipsPorOperador[op] || 0) + 1;
       if (item.saida) saidasCount[item.saida] = (saidasCount[item.saida] || 0) + 1;
-      if (item.motivo) motivosCount[item.motivo] = (motivosCount[item.motivo] || 0) + 1;
+      if (item.motivo) {
+        const m = normalizeMotivo(item.motivo);
+        motivosCount[m] = (motivosCount[m] || 0) + 1;
+      }
     });
 
     const listaDocRef = doc(db, COLETA_LISTAS_COLLECTION, listaId);
@@ -1390,7 +1394,10 @@ export async function migrateLegacyListasToSubcollections(): Promise<{ migratedL
           const op = item.responsavel || data.responsavel || 'Operador';
           bipsPorOperador[op] = (bipsPorOperador[op] || 0) + 1;
           if (item.saida) saidasCount[item.saida] = (saidasCount[item.saida] || 0) + 1;
-          if (item.motivo) motivosCount[item.motivo] = (motivosCount[item.motivo] || 0) + 1;
+          if (item.motivo) {
+            const m = normalizeMotivo(item.motivo);
+            motivosCount[m] = (motivosCount[m] || 0) + 1;
+          }
         });
 
         // Remove o array itens do documento pai e salva os totais

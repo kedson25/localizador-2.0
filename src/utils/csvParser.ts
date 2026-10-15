@@ -15,6 +15,92 @@ export function normalizeTrackingCode(codigo: string): string {
   return digits || cleaned || codigo.trim().toUpperCase().replace(/M$/i, '');
 }
 
+/**
+ * Normaliza motivos operacionais para evitar duplicações por singular/plural,
+ * caixa alta/baixa ou grafias variantes (ex: 'Desconteinerizado' vs 'Desconteinerizados').
+ */
+export function normalizeMotivo(rawInput: unknown): string {
+  if (rawInput === null || rawInput === undefined) return 'Sem Motivo';
+  const str = String(rawInput).trim();
+  if (!str || str === '-' || str.toLowerCase() === 'sem motivo' || str.toLowerCase() === 'null') {
+    return 'Sem Motivo';
+  }
+
+  const clean = str
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+
+  // Desconteinerizados / Desconteinerizado / Descon
+  if (clean.startsWith('desconteineriz') || clean === 'descon' || clean.startsWith('descon ')) {
+    return 'Desconteinerizados';
+  }
+
+  // Brancas / Branca
+  if (clean === 'branca' || clean === 'brancas') {
+    return 'Brancas';
+  }
+
+  // Onway / On way / On-way
+  if (clean === 'onway' || clean === 'on way' || clean === 'on-way') {
+    return 'Onway';
+  }
+
+  // Inventário / Inventario / Inventarios
+  if (clean.startsWith('inventari')) {
+    return 'Inventário';
+  }
+
+  // Insucesso / Insucessos
+  if (clean.startsWith('insucesso')) {
+    return 'Insucesso';
+  }
+
+  // Pendente / Pendentes
+  if (clean.startsWith('pendente')) {
+    return 'Pendente';
+  }
+
+  // Parcial / Parciais
+  if (clean.startsWith('parcia')) {
+    return 'Parcial';
+  }
+
+  // Transferência / Transferencia / Transferencias
+  if (clean.startsWith('transferenci')) {
+    return 'Transferência';
+  }
+
+  // Roteirizado / Roteirizados
+  if (clean.startsWith('roteirizad')) {
+    return 'Roteirizado';
+  }
+
+  // Bipado / Bipados
+  if (clean.startsWith('bipad')) {
+    return 'Bipado';
+  }
+
+  // Aguardando coleta
+  if (clean.includes('aguardando') && clean.includes('coleta')) {
+    return 'Aguardando coleta';
+  }
+
+  // A mais / Amais / Sobras
+  if (clean === 'a mais' || clean === 'amais' || clean === 'sobra' || clean === 'sobras') {
+    return 'A mais';
+  }
+
+  // Faltante / Faltantes
+  if (clean.startsWith('faltant')) {
+    return 'Faltantes';
+  }
+
+  // Fallback: primeira letra maiúscula
+  return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
 export function cleanTrackingId(rawInput: string): string {
   if (!rawInput) return '';
   let processed = rawInput.trim();
@@ -161,7 +247,7 @@ export function parseCsvText(rawText: string): { rows: CsvRow[]; groups: GroupSu
       cleanId: cleanId,
       group: assignedGroup,
       saida: getVal('Saída', 1) || getVal('Saida', 1),
-      motivo: getVal('MOTIVO', 2),
+      motivo: normalizeMotivo(getVal('MOTIVO', 2)),
       reversao: getVal('Reversão', 3) || getVal('Reversao', 3),
       statusGp: getVal('STATUS GP', 4),
       substatusGp: getVal('SUBSTATUS GP', 5),

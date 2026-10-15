@@ -17,7 +17,7 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { CsvRow, ColetaLista, ColetaItem } from '../types';
-import { cleanDigits } from '../utils/csvParser';
+import { cleanDigits, normalizeMotivo } from '../utils/csvParser';
 import { listenToListas, getAllItemsForExport } from '../lib/firebase';
 
 interface WhatsappReportProps {
@@ -139,13 +139,22 @@ export function WhatsappReport({ rows }: WhatsappReportProps) {
       const motivosMap = new Map<string, number>();
       const saidasSet = new Set<string>();
 
-      selectedListaItens.forEach((i) => {
-        const mot = (i.motivo || 'Sem Motivo').trim();
-        motivosMap.set(mot, (motivosMap.get(mot) || 0) + 1);
+      if (selectedListaItens.length > 0) {
+        selectedListaItens.forEach((i) => {
+          const mot = normalizeMotivo(i.motivo);
+          motivosMap.set(mot, (motivosMap.get(mot) || 0) + 1);
 
-        const sai = (i.saida || selectedLista.saidaPadrao || '').trim();
+          const sai = (i.saida || selectedLista.saidaPadrao || '').trim();
+          if (sai) saidasSet.add(sai);
+        });
+      } else if (selectedLista.motivosCount) {
+        Object.entries(selectedLista.motivosCount).forEach(([rawMotivo, count]) => {
+          const mot = normalizeMotivo(rawMotivo);
+          motivosMap.set(mot, (motivosMap.get(mot) || 0) + Number(count || 0));
+        });
+        const sai = (selectedLista.saidaPadrao || '').trim();
         if (sai) saidasSet.add(sai);
-      });
+      }
 
       return {
         matchedRows: selectedListaItens as unknown as CsvRow[], // Just for length counting
@@ -162,7 +171,7 @@ export function WhatsappReport({ rows }: WhatsappReportProps) {
       const saidasSet = new Set<string>();
 
       rows.forEach((r) => {
-        const mot = (r.motivo || r.rawFields['MOTIVO'] || 'Sem Motivo').trim();
+        const mot = normalizeMotivo(r.motivo || r.rawFields['MOTIVO']);
         motivosMap.set(mot, (motivosMap.get(mot) || 0) + 1);
 
         const sai = (r.saida || r.rawFields['Saída'] || r.rawFields['Saida'] || '').trim();
@@ -230,7 +239,7 @@ export function WhatsappReport({ rows }: WhatsappReportProps) {
           seenRowIndices.add(match.rowIndex);
           foundList.push(match);
 
-          const mot = (match.motivo || match.rawFields['MOTIVO'] || 'Sem Motivo').trim();
+          const mot = normalizeMotivo(match.motivo || match.rawFields['MOTIVO']);
           motivosMap.set(mot, (motivosMap.get(mot) || 0) + 1);
 
           const sai = (match.saida || match.rawFields['Saída'] || match.rawFields['Saida'] || '').trim();

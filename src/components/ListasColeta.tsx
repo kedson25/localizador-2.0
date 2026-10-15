@@ -75,7 +75,7 @@ import {
 } from '../lib/api';
 import { RefugoRow, ColetaItem, ColetaLista } from '../types';
 import { User, getAllUsers } from '../lib/auth';
-import { cleanTrackingId } from '../utils/csvParser';
+import { cleanTrackingId, normalizeMotivo } from '../utils/csvParser';
 
 interface ListasColetaProps {
   currentUser?: User | null;
@@ -370,7 +370,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
 
   const [showModalLote, setShowModalLote] = useState(false);
   const [loteText, setLoteText] = useState('');
-  const [loteMotivo, setLoteMotivo] = useState('Desconteinerizado');
+  const [loteMotivo, setLoteMotivo] = useState('Desconteinerizados');
 
   const [isImporting, setIsImporting] = useState(false);
   const [importProgress, setImportProgress] = useState(0);
@@ -2015,7 +2015,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
     setImportStatusText('Iniciando processamento do lote...');
 
     const saidaCicloFinal = listaAtiva.saidaPadrao || selectedSaida || 'Ciclo 2 - Saída PM';
-    const motivoFinal = loteMotivo || selectedMotivo || 'Desconteinerizado';
+    const motivoFinal = normalizeMotivo(loteMotivo || selectedMotivo || 'Desconteinerizados');
 
     if (modoIndividual) {
       const codigosSet = new Set(itensModoIndividual.map(i => i.codigo));
