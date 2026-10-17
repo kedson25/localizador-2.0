@@ -203,7 +203,7 @@ export const CorrelacaoIds: React.FC = () => {
         {fos && <label className="text-xs font-bold text-slate-600">Coluna da data<select value={dataKey} onChange={event => setDataKey(event.target.value)} className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-800"><option value="">Não mapear</option>{fos.headers.map(header => <option key={header}>{header}</option>)}</select></label>}
       </section>}
 
-      <button type="button" disabled={!lista || !fos || !listaKey || !fosKey} onClick={correlate} className="inline-flex items-center gap-2 rounded-xl bg-[#1769ff] px-5 py-3 text-sm font-black text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300">
+      <button type="button" disabled={!lista || !fos || !listaKey || !fosKey} onClick={correlate} className="inline-flex items-center gap-2 rounded-xl bg-[var(--ecooy-primary)] px-5 py-3 text-sm font-black text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300">
         <RefreshCw className="h-4 w-4" /> Comparar IDs
       </button>
 

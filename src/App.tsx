@@ -18,7 +18,6 @@ import { BaixasPanel } from './components/BaixasPanel';
 import { SettingsPage } from './components/SettingsPage';
 import { Login } from './components/Login';
 import { AdminPanel } from './components/AdminPanel';
-import { OperationNavigation } from './components/OperationNavigation';
 import { ExpedicaoPanel } from './components/ExpedicaoPanel';
 import { User, getCurrentUser } from './lib/auth';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -119,9 +118,6 @@ export default function App() {
   };
 
   const insideDashboard = (content: React.ReactNode) => <DashboardShell currentUser={currentUser}>{content}</DashboardShell>;
-  const dedicatedOperation = (content: React.ReactNode) => (
-    <div className="min-h-screen bg-[#EBEBEB] text-[#333333]"><OperationNavigation /><main className="mx-auto w-full max-w-7xl space-y-4 px-3 py-4 sm:px-6 sm:py-6 lg:px-8">{content}</main></div>
-  );
 
   const maintenanceActive = maintenanceLoaded && isMaintenanceActive(maintenance);
   const adminMaintenanceRoute = currentUser?.isAdmin && (location.pathname.startsWith('/admin') || location.pathname.startsWith('/configuracoes'));
@@ -132,7 +128,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen w-full max-w-full overflow-x-hidden bg-[#EBEBEB] font-sans text-[#333333] selection:bg-[#3483FA] selection:text-white">
+    <div className="min-h-screen w-full max-w-full overflow-x-hidden bg-[#EBEBEB] font-sans text-[#333333] selection:bg-[var(--ecooy-primary)] selection:text-white">
       {notification && <div className="fixed left-1/2 top-4 z-[100] w-[min(92vw,720px)] -translate-x-1/2 rounded-lg border border-gray-700 bg-[#111827] px-3.5 py-2.5 text-xs text-white shadow-xl">{notification}</div>}
       <ErrorBoundary>
         <Routes>
@@ -146,13 +142,13 @@ export default function App() {
             {(currentUser?.isAdmin || currentUser?.allowedGroups?.includes('baixas')) && <Route path="/baixas" element={insideDashboard(<BaixasPanel />)} />}
             {(currentUser?.isAdmin || currentUser?.allowedGroups?.includes('refugo')) && (
               <>
-                <Route path="/refugo" element={dedicatedOperation(<ControleRefugoClean currentUser={currentUser} />)} />
-                <Route path="/mapa-refugo" element={dedicatedOperation(<ControleRefugoClean currentUser={currentUser} initialTab="mapa" />)} />
+                <Route path="/refugo" element={insideDashboard(<ControleRefugoClean currentUser={currentUser} />)} />
+                <Route path="/mapa-refugo" element={insideDashboard(<ControleRefugoClean currentUser={currentUser} initialTab="mapa" />)} />
               </>
             )}
             {(currentUser?.isAdmin || currentUser?.allowedGroups?.includes('remover')) && <Route path="/remover" element={insideDashboard(<IdRemover rows={rows} headers={headers} />)} />}
             {(currentUser?.isAdmin || currentUser?.allowedGroups?.includes('reporte')) && <Route path="/reporte" element={insideDashboard(<WhatsappReportEnhanced rows={rows} />)} />}
-            {(currentUser?.isAdmin || currentUser?.allowedGroups?.includes('listas')) && <><Route path="/listas" element={insideDashboard(<ListasDashboard currentUser={currentUser} />)} /><Route path="/listas/:id" element={dedicatedOperation(<ListasColetaEnhanced currentUser={currentUser} />)} /></>}
+            {(currentUser?.isAdmin || currentUser?.allowedGroups?.includes('listas')) && <><Route path="/listas" element={insideDashboard(<ListasDashboard currentUser={currentUser} />)} /><Route path="/listas/:id" element={insideDashboard(<ListasColetaEnhanced currentUser={currentUser} />)} /></>}
             {(currentUser?.isAdmin || currentUser?.allowedGroups?.includes('upload')) && <Route path="/upload" element={insideDashboard(<CsvUploader onLoadText={(text) => { handleParseAndSave(text); navigate('/'); }} currentTotalRows={rows.length} />)} />}
             {(currentUser?.isAdmin || currentUser?.allowedGroups?.includes('brancas')) && <Route path="/brancas" element={insideDashboard(<BrancasPanelWithCsvFallback currentUser={currentUser} />)} />}
             {(currentUser?.isAdmin || currentUser?.allowedGroups?.includes('expedicao')) && <Route path="/expedicao" element={insideDashboard(<ExpedicaoPanel />)} />}

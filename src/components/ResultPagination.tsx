@@ -14,7 +14,7 @@ export function ResultPagination({ total, page, onPageChange }: { total: number,
   return (
     <div className="px-3 sm:px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg flex flex-col sm:flex-row items-center justify-between gap-2 sm:gap-0 text-xs text-gray-600 mb-4 w-full">
       <span className="text-center sm:text-left">
-        Mostrando <strong className="text-gray-900 font-mono">{startIndex + 1}</strong>–<strong className="text-gray-900 font-mono">{endIndex}</strong> de <strong className="text-[#3483FA] font-mono">{total}</strong>
+        Mostrando <strong className="text-gray-900 font-mono">{startIndex + 1}</strong>–<strong className="text-gray-900 font-mono">{endIndex}</strong> de <strong className="text-[var(--ecooy-primary)] font-mono">{total}</strong>
       </span>
       <div className="flex items-center gap-1 sm:gap-1.5 flex-wrap justify-center">
         <button

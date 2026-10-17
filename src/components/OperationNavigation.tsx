@@ -18,7 +18,7 @@ export const OperationNavigation: React.FC = () => {
           title="Módulos"
           aria-label="Ir para Módulos"
         >
-          <Boxes className="h-4 w-4 text-[#3483FA]" />
+          <Boxes className="h-4 w-4 text-[var(--ecooy-primary)]" />
           <span>Módulos</span>
         </button>
 

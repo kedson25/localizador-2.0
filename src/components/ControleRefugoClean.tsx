@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Barcode, Layers, ArrowLeft } from 'lucide-react';
+import { Barcode, Layers } from 'lucide-react';
 import type { User } from '../lib/auth';
 import { ControleRefugo as ControleRefugoBase } from './ControleRefugo';
 import { MapaRefugo } from './MapaRefugo';
@@ -37,15 +37,16 @@ export function ControleRefugoClean({ currentUser, initialTab }: ControleRefugoC
   return (
     <div className="refugo-clean space-y-4">
       {/* Navegação de Abas do Módulo Refugo */}
-      <div className="border border-slate-300 bg-white p-2 shadow-2xs">
+      <div className="ecooy-panel p-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-1">
             <button
               type="button"
+              aria-pressed={activeTab === 'leitura'}
               onClick={() => handleSelectTab('leitura')}
-              className={`flex items-center gap-2 px-4 py-2 text-xs font-black uppercase tracking-wider transition-colors cursor-pointer border ${
+              className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold transition-colors cursor-pointer border ${
                 activeTab === 'leitura'
-                  ? 'bg-blue-600 text-white border-blue-600 shadow-2xs'
+                  ? 'bg-blue-50 text-blue-700 border-blue-100'
                   : 'bg-white text-slate-700 border-transparent hover:bg-slate-100 hover:text-slate-900'
               }`}
             >
@@ -55,10 +56,11 @@ export function ControleRefugoClean({ currentUser, initialTab }: ControleRefugoC
 
             <button
               type="button"
+              aria-pressed={activeTab === 'mapa'}
               onClick={() => handleSelectTab('mapa')}
-              className={`flex items-center gap-2 px-4 py-2 text-xs font-black uppercase tracking-wider transition-colors cursor-pointer border ${
+              className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold transition-colors cursor-pointer border ${
                 activeTab === 'mapa'
-                  ? 'bg-blue-600 text-white border-blue-600 shadow-2xs'
+                  ? 'bg-blue-50 text-blue-700 border-blue-100'
                   : 'bg-white text-slate-700 border-transparent hover:bg-slate-100 hover:text-slate-900'
               }`}
             >
@@ -67,7 +69,7 @@ export function ControleRefugoClean({ currentUser, initialTab }: ControleRefugoC
             </button>
           </div>
 
-          <div className="hidden sm:flex items-center text-[11px] font-bold text-slate-500 uppercase tracking-wide px-2">
+          <div className="hidden sm:flex items-center text-[11px] font-medium text-slate-500 px-2">
             {activeTab === 'leitura' ? 'Modo Bipagem & Auditoria' : 'Modo Visão de Rotas & Passagem'}
           </div>
         </div>

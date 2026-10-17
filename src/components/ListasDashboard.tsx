@@ -353,7 +353,7 @@ export const ListasDashboard: React.FC<ListasDashboardProps> = ({ currentUser })
       <section className="rounded-2xl border border-gray-200 bg-white px-5 py-5 shadow-sm sm:px-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex min-w-0 items-center gap-3">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-[#3483FA]">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-[var(--ecooy-primary)]">
               <Package className="h-6 w-6" />
             </div>
             <div className="min-w-0">
@@ -368,7 +368,7 @@ export const ListasDashboard: React.FC<ListasDashboardProps> = ({ currentUser })
           <button
             type="button"
             onClick={() => setShowCreate(true)}
-            className="inline-flex min-h-[40px] items-center justify-center gap-2 rounded-xl bg-[#3483FA] px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-blue-600"
+            className="inline-flex min-h-[40px] items-center justify-center gap-2 rounded-xl bg-[var(--ecooy-primary)] px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-blue-600"
           >
             <Plus className="h-4 w-4" />
             Nova lista
@@ -386,7 +386,7 @@ export const ListasDashboard: React.FC<ListasDashboardProps> = ({ currentUser })
                 onClick={() => setDateFilter(filter.id)}
                 className={`rounded-lg px-3.5 py-2 text-xs font-bold transition ${
                   dateFilter === filter.id
-                    ? 'bg-[#3483FA] text-white shadow-sm'
+                    ? 'bg-[var(--ecooy-primary)] text-white shadow-sm'
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200 hover:text-gray-900'
                 }`}
               >
@@ -403,7 +403,7 @@ export const ListasDashboard: React.FC<ListasDashboardProps> = ({ currentUser })
               value={search}
               onChange={event => setSearch(event.target.value)}
               placeholder="Buscar lista, ciclo ou responsável"
-              className="w-full rounded-xl border border-gray-200 bg-gray-50 py-2.5 pl-9 pr-3 text-sm text-gray-800 outline-none transition focus:border-[#3483FA] focus:bg-white"
+              className="w-full rounded-xl border border-gray-200 bg-gray-50 py-2.5 pl-9 pr-3 text-sm text-gray-800 outline-none transition focus:border-[var(--ecooy-primary)] focus:bg-white"
             />
           </div>
 
@@ -413,7 +413,7 @@ export const ListasDashboard: React.FC<ListasDashboardProps> = ({ currentUser })
             disabled={syncing}
             className="inline-flex min-h-[40px] items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-3.5 py-2 text-xs font-bold text-gray-600 transition hover:bg-gray-50 disabled:opacity-50"
           >
-            <RotateCcw className={`h-4 w-4 ${syncing ? 'animate-spin text-[#3483FA]' : ''}`} />
+            <RotateCcw className={`h-4 w-4 ${syncing ? 'animate-spin text-[var(--ecooy-primary)]' : ''}`} />
             {syncing ? 'Sincronizando' : 'Sincronizar'}
           </button>
         </div>
@@ -445,7 +445,7 @@ export const ListasDashboard: React.FC<ListasDashboardProps> = ({ currentUser })
               <button
                 type="button"
                 onClick={() => setDateFilter('todas')}
-                className="mt-4 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-[#3483FA] hover:bg-blue-50"
+                className="mt-4 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-[var(--ecooy-primary)] hover:bg-blue-50"
               >
                 Ver todas
               </button>
@@ -456,7 +456,7 @@ export const ListasDashboard: React.FC<ListasDashboardProps> = ({ currentUser })
             {grouped.map(group => (
               <section key={localDateKey(group.date)}>
                 <div className="mb-2 flex items-center gap-2 px-1">
-                  <CalendarDays className={`h-4 w-4 ${group.label === 'Hoje' ? 'text-[#3483FA]' : group.label === 'Ontem' ? 'text-amber-600' : 'text-gray-400'}`} />
+                  <CalendarDays className={`h-4 w-4 ${group.label === 'Hoje' ? 'text-[var(--ecooy-primary)]' : group.label === 'Ontem' ? 'text-amber-600' : 'text-gray-400'}`} />
                   <h2 className="text-sm font-bold text-gray-900">{group.label}</h2>
                   <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-bold text-gray-500">{group.items.length}</span>
                 </div>
@@ -489,7 +489,7 @@ export const ListasDashboard: React.FC<ListasDashboardProps> = ({ currentUser })
                         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3">
                           <div>
                             <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Pacotes</p>
-                            <p className="text-sm font-bold tabular-nums text-[#3483FA]">{total.toLocaleString('pt-BR')}</p>
+                            <p className="text-sm font-bold tabular-nums text-[var(--ecooy-primary)]">{total.toLocaleString('pt-BR')}</p>
                           </div>
                           <div>
                             <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Responsável</p>
@@ -506,7 +506,7 @@ export const ListasDashboard: React.FC<ListasDashboardProps> = ({ currentUser })
                             type="button"
                             onClick={() => abrirLista(lista.id)}
                             disabled={openingId === lista.id}
-                            className="inline-flex h-8 min-h-[32px] items-center gap-1.5 rounded-lg bg-[#3483FA] px-3 py-1.5 text-xs font-bold text-white transition hover:bg-blue-600 disabled:opacity-60"
+                            className="inline-flex h-8 min-h-[32px] items-center gap-1.5 rounded-lg bg-[var(--ecooy-primary)] px-3 py-1.5 text-xs font-bold text-white transition hover:bg-blue-600 disabled:opacity-60"
                           >
                             <Barcode className="h-3.5 w-3.5" />
                             {openingId === lista.id ? 'Abrindo...' : 'Abrir'}
@@ -568,7 +568,7 @@ export const ListasDashboard: React.FC<ListasDashboardProps> = ({ currentUser })
             <form onSubmit={criarLista} className="space-y-4 p-5">
               <label className="block space-y-1.5">
                 <span className="flex items-center gap-1.5 text-xs font-bold text-gray-700">
-                  <CalendarDays className="h-3.5 w-3.5 text-[#3483FA]" />
+                  <CalendarDays className="h-3.5 w-3.5 text-[var(--ecooy-primary)]" />
                   Data
                 </span>
                 <input
@@ -576,7 +576,7 @@ export const ListasDashboard: React.FC<ListasDashboardProps> = ({ currentUser })
                   value={novaData}
                   onChange={event => setNovaData(event.target.value)}
                   required
-                  className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none focus:border-[#3483FA] focus:bg-white"
+                  className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none focus:border-[var(--ecooy-primary)] focus:bg-white"
                 />
               </label>
 
@@ -588,7 +588,7 @@ export const ListasDashboard: React.FC<ListasDashboardProps> = ({ currentUser })
                 <select
                   value={novaSaida}
                   onChange={event => setNovaSaida(event.target.value)}
-                  className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm font-semibold outline-none focus:border-[#3483FA] focus:bg-white"
+                  className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm font-semibold outline-none focus:border-[var(--ecooy-primary)] focus:bg-white"
                 >
                   {CICLOS.map(ciclo => <option key={ciclo}>{ciclo}</option>)}
                 </select>
@@ -600,7 +600,7 @@ export const ListasDashboard: React.FC<ListasDashboardProps> = ({ currentUser })
                   <button
                     type="button"
                     onClick={() => setNovoTipo('comum')}
-                    className={`rounded-xl border p-3 text-left transition ${novoTipo === 'comum' ? 'border-[#3483FA] bg-blue-50 text-blue-700' : 'border-gray-200 bg-white text-gray-600'}`}
+                    className={`rounded-xl border p-3 text-left transition ${novoTipo === 'comum' ? 'border-[var(--ecooy-primary)] bg-blue-50 text-blue-700' : 'border-gray-200 bg-white text-gray-600'}`}
                   >
                     <Package className="h-4 w-4" />
                     <span className="mt-2 block text-xs font-bold">Comum</span>
@@ -623,7 +623,7 @@ export const ListasDashboard: React.FC<ListasDashboardProps> = ({ currentUser })
                 <button
                   type="submit"
                   disabled={creating}
-                  className="rounded-lg bg-[#3483FA] px-4 py-2 text-xs font-bold text-white hover:bg-blue-600 disabled:opacity-60"
+                  className="rounded-lg bg-[var(--ecooy-primary)] px-4 py-2 text-xs font-bold text-white hover:bg-blue-600 disabled:opacity-60"
                 >
                   {creating ? 'Criando...' : 'Criar lista'}
                 </button>

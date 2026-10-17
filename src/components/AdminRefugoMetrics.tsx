@@ -287,7 +287,7 @@ export const AdminRefugoMetrics: React.FC<AdminRefugoMetricsProps> = ({
     <section className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-100 pb-5">
         <div className="flex items-start sm:items-center gap-3">
-          <div className="p-2.5 bg-blue-50 text-[#3483FA] rounded-xl border border-blue-100">
+          <div className="p-2.5 bg-blue-50 text-[var(--ecooy-primary)] rounded-xl border border-blue-100">
             <Layers className="w-6 h-6" />
           </div>
           <div>
@@ -404,7 +404,7 @@ export const AdminRefugoMetrics: React.FC<AdminRefugoMetricsProps> = ({
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
               placeholder="Buscar rota..."
-              className="w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-gray-200 rounded-lg text-gray-800 placeholder-gray-400 focus:outline-none focus:border-[#3483FA]"
+              className="w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-gray-200 rounded-lg text-gray-800 placeholder-gray-400 focus:outline-none focus:border-[var(--ecooy-primary)]"
             />
           </div>
         </div>
@@ -524,7 +524,7 @@ export const AdminRefugoMetrics: React.FC<AdminRefugoMetricsProps> = ({
             <button
               type="button"
               onClick={() => setShowAllSessions(!showAllSessions)}
-              className="text-xs font-bold text-[#3483FA] hover:underline flex items-center gap-1 cursor-pointer"
+              className="text-xs font-bold text-[var(--ecooy-primary)] hover:underline flex items-center gap-1 cursor-pointer"
             >
               {showAllSessions ? (
                 <>Ver menos <ChevronUp className="w-3.5 h-3.5" /></>

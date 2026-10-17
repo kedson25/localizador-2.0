@@ -1,5 +1,5 @@
 .refugo-clean {
-  --refugo-blue: #3483fa;
+  --refugo-blue: var(--ecooy-primary);
   --refugo-border: #dfe5ec;
   --refugo-text: #1f2937;
 }
@@ -39,7 +39,7 @@
   min-height: 66px !important;
   padding-top: 14px !important;
   padding-bottom: 14px !important;
-  border-radius: 0 !important;
+  border-radius: var(--ecooy-radius) !important;
   font-size: clamp(1.35rem, 2.3vw, 1.9rem) !important;
   line-height: 1.1 !important;
 }
@@ -53,7 +53,7 @@
 .refugo-clean div[class*="animate-in"][class*="zoom-in"][class*="border-2"] {
   margin-top: 14px !important;
   padding: 16px !important;
-  border-radius: 0 !important;
+  border-radius: var(--ecooy-radius) !important;
 }
 
 .refugo-clean div[class*="animate-in"][class*="zoom-in"][class*="border-2"] > svg {
@@ -89,7 +89,7 @@
 .refugo-clean span[class*="bg-emerald-100"],
 .refugo-clean span[class*="bg-red-100"],
 .refugo-clean span[class*="bg-blue-100"] {
-  border-radius: 0 !important;
+  border-radius: var(--ecooy-radius) !important;
   box-shadow: none !important;
   white-space: nowrap;
 }
@@ -98,7 +98,7 @@
 .refugo-clean label[class*="cursor-pointer"][class*="bg-[#3483FA]"],
 .refugo-clean button[class*="min-h-[36px]"] {
   min-height: 34px !important;
-  border-radius: 0 !important;
+  border-radius: var(--ecooy-radius) !important;
   box-shadow: none !important;
 }
 
@@ -111,7 +111,7 @@
 /* Cartões do histórico mais baixos e mais fáceis de escanear */
 .refugo-clean div[class*="p-3"][class*="transition-opacity"] {
   padding: 10px 12px !important;
-  border-radius: 0 !important;
+  border-radius: var(--ecooy-radius) !important;
 }
 
 .refugo-clean div[class*="p-3"][class*="transition-opacity"] span[class*="font-mono"] {
@@ -124,7 +124,7 @@
 
 /* Modal de exportação segue colorido, mas sem excesso de arredondamento */
 .refugo-clean div[class*="fixed inset-0"] > div[class*="bg-white"] {
-  border-radius: 0 !important;
+  border-radius: var(--ecooy-radius) !important;
 }
 
 @media (max-width: 1023px) {

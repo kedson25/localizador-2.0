@@ -468,7 +468,7 @@ export const ListasColetaEnhanced: React.FC<ListasColetaEnhancedProps> = ({ curr
     <div className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2 py-1 shadow-sm">
       <span className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Saída</span>
       {changingCycle ? (
-        <Loader2 className="h-3.5 w-3.5 animate-spin text-[#3483FA]" />
+        <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--ecooy-primary)]" />
       ) : (
         <select
           value={headerCycle}

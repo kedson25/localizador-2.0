@@ -949,13 +949,13 @@ export function ControleRefugo({
       {rows.length === 0 ? (
         <div className="bg-white border-2 border-dashed border-gray-300 rounded-2xl p-12 flex flex-col items-center justify-center text-center mt-4">
           <div className="w-16 h-16 bg-[#E3F2FD] rounded-2xl flex items-center justify-center mb-4">
-            <UploadCloud className="w-8 h-8 text-[#3483FA]" />
+            <UploadCloud className="w-8 h-8 text-[var(--ecooy-primary)]" />
           </div>
           <h2 className="text-xl font-bold text-[#333333] mb-2">Controle de Refugo</h2>
           <p className="text-gray-500 mb-6 max-w-md">
             Importe a lista de pacotes faltantes em CSV para começar a bipar e dar baixa.
           </p>
-          <label className="cursor-pointer bg-[#3483FA] hover:bg-blue-600 text-white px-6 py-3 rounded-xl text-sm font-bold shadow-sm transition-colors flex items-center gap-2">
+          <label className="cursor-pointer bg-[var(--ecooy-primary)] hover:bg-blue-600 text-white px-6 py-3 rounded-xl text-sm font-bold shadow-sm transition-colors flex items-center gap-2">
             <UploadCloud className="w-5 h-5" />
             Carregar Base CSV
             <input type="file" accept=".csv" className="hidden" onChange={handleFileUpload} />
@@ -1008,7 +1008,7 @@ export function ControleRefugo({
 
                       <div className="relative">
                         <div className="absolute inset-y-0 left-0 pl-3.5 sm:pl-5 flex items-center pointer-events-none">
-                          <Barcode className={`h-6 w-6 sm:h-8 sm:w-8 ${isLocked ? 'text-gray-300' : 'text-[#3483FA]'}`} />
+                          <Barcode className={`h-6 w-6 sm:h-8 sm:w-8 ${isLocked ? 'text-gray-300' : 'text-[var(--ecooy-primary)]'}`} />
                         </div>
                         <input
                           ref={inputRef}
@@ -1024,7 +1024,7 @@ export function ControleRefugo({
                           className={`block w-full pl-12 sm:pl-16 pr-4 sm:pr-6 py-4 sm:py-7 border-2 rounded-xl text-xl sm:text-3xl font-mono font-bold transition-all min-h-[54px] ${
                             isLocked
                               ? 'bg-gray-50 border-gray-200 text-gray-400 placeholder-gray-300 cursor-not-allowed'
-                              : 'border-[#3483FA]/30 focus:ring-4 focus:ring-[#3483FA]/20 focus:border-[#3483FA] text-[#333333] placeholder-gray-300'
+                              : 'border-[var(--ecooy-primary)]/30 focus:ring-4 focus:ring-[var(--ecooy-primary)]/20 focus:border-[var(--ecooy-primary)] text-[#333333] placeholder-gray-300'
                           }`}
                           placeholder={isLocked ? "SISTEMA TRAVADO" : "MLB..."}
                           autoFocus
@@ -1130,7 +1130,7 @@ export function ControleRefugo({
                       <span>Mapa Refugo</span>
                     </button>
                   )}
-                  <label className="cursor-pointer bg-[#3483FA] hover:bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm transition-colors flex items-center gap-1.5 min-h-[36px] sm:min-h-0">
+                  <label className="cursor-pointer bg-[var(--ecooy-primary)] hover:bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm transition-colors flex items-center gap-1.5 min-h-[36px] sm:min-h-0">
                     <UploadCloud className="w-4 h-4" />
                     <span>Carregar Base</span>
                     <input type="file" accept=".csv" className="hidden" onChange={handleFileUpload} />

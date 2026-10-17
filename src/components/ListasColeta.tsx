@@ -242,7 +242,7 @@ const BipScannerForm: React.FC<BipScannerFormProps> = React.memo(({ onBip, isLoc
     <>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
         <div className="flex items-center gap-2">
-          <Barcode className="w-5 h-5 text-[#3483FA]" />
+          <Barcode className="w-5 h-5 text-[var(--ecooy-primary)]" />
           <span className="font-bold text-sm text-[#333333]">Leitor de Pacotes</span>
         </div>
 
@@ -262,7 +262,7 @@ const BipScannerForm: React.FC<BipScannerFormProps> = React.memo(({ onBip, isLoc
       <form onSubmit={handleSubmit} className="mt-3">
         <div className="relative flex items-center">
           <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-            <Barcode className={`h-5 w-5 ${isLocked ? 'text-gray-300' : 'text-[#3483FA]'}`} />
+            <Barcode className={`h-5 w-5 ${isLocked ? 'text-gray-300' : 'text-[var(--ecooy-primary)]'}`} />
           </div>
           <input
             ref={inputRef}
@@ -283,7 +283,7 @@ const BipScannerForm: React.FC<BipScannerFormProps> = React.memo(({ onBip, isLoc
             className={`block w-full pl-11 pr-3 py-2.5 border rounded-xl text-lg font-mono font-bold transition-all ${
               isLocked 
                 ? 'bg-gray-50 border-gray-200 text-gray-400 cursor-not-allowed'
-                : 'border-[#3483FA]/40 focus:ring-2 focus:ring-[#3483FA]/20 focus:border-[#3483FA] text-[#333333] placeholder-gray-400'
+                : 'border-[var(--ecooy-primary)]/40 focus:ring-2 focus:ring-[var(--ecooy-primary)]/20 focus:border-[var(--ecooy-primary)] text-[#333333] placeholder-gray-400'
             }`}
             placeholder="ID do pacote..."
             autoFocus
@@ -295,7 +295,7 @@ const BipScannerForm: React.FC<BipScannerFormProps> = React.memo(({ onBip, isLoc
         <button
           type="submit"
           disabled={isLocked || !inputValue.trim()}
-          className="w-full mt-2 py-2.5 bg-[#3483FA] hover:bg-blue-600 disabled:bg-gray-200 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer shadow-sm"
+          className="w-full mt-2 py-2.5 bg-[var(--ecooy-primary)] hover:bg-blue-600 disabled:bg-gray-200 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer shadow-sm"
         >
           Registrar Bip
         </button>
@@ -1760,7 +1760,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
       }`}>
         <div className="flex items-center gap-2 flex-wrap">
           <span>
-            Mostrando <strong className="text-gray-900 font-mono">{filteredItems.length === 0 ? 0 : startIndex + 1}</strong>–<strong className="text-gray-900 font-mono">{endIndex}</strong> de <strong className="text-[#3483FA] font-mono">{filteredItems.length.toLocaleString('pt-BR')}</strong> pacotes
+            Mostrando <strong className="text-gray-900 font-mono">{filteredItems.length === 0 ? 0 : startIndex + 1}</strong>–<strong className="text-gray-900 font-mono">{endIndex}</strong> de <strong className="text-[var(--ecooy-primary)] font-mono">{filteredItems.length.toLocaleString('pt-BR')}</strong> pacotes
           </span>
           <span className="text-gray-300 hidden sm:inline">|</span>
           <span className="text-gray-500">
@@ -1805,7 +1805,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
                   onClick={() => { setCurrentPage(Number(p)); setJumpPageInput(String(p)); }}
                   className={`min-w-[28px] h-7 px-1.5 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer ${
                     isCurrent
-                      ? 'bg-[#3483FA] text-white shadow-sm'
+                      ? 'bg-[var(--ecooy-primary)] text-white shadow-sm'
                       : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
                   }`}
                 >
@@ -1849,7 +1849,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
                 setCurrentPage(1);
                 setJumpPageInput('1');
               }}
-              className="px-2 py-1 bg-white border border-gray-300 rounded-lg text-xs font-bold text-gray-700 outline-none focus:border-[#3483FA] cursor-pointer"
+              className="px-2 py-1 bg-white border border-gray-300 rounded-lg text-xs font-bold text-gray-700 outline-none focus:border-[var(--ecooy-primary)] cursor-pointer"
             >
               <option value={50}>50</option>
               <option value={100}>100</option>
@@ -1868,7 +1868,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
               value={jumpPageInput}
               onChange={(e) => setJumpPageInput(e.target.value)}
               onBlur={handleJump}
-              className="w-12 px-1 py-1 bg-white border border-gray-300 rounded-lg text-xs font-mono font-bold text-center text-gray-800 outline-none focus:border-[#3483FA]"
+              className="w-12 px-1 py-1 bg-white border border-gray-300 rounded-lg text-xs font-mono font-bold text-center text-gray-800 outline-none focus:border-[var(--ecooy-primary)]"
             />
           </form>
         </div>
@@ -2301,7 +2301,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
       return (
         <div className="w-full min-h-[60vh] flex flex-col items-center justify-center gap-4 text-center px-4">
           <div className="w-16 h-16 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center shadow-xs">
-            <Loader2 className="w-8 h-8 text-[#3483FA] animate-spin" />
+            <Loader2 className="w-8 h-8 text-[var(--ecooy-primary)] animate-spin" />
           </div>
           <div className="max-w-md">
             <h3 className="text-base font-bold text-gray-900">Carregando lista de coleta...</h3>
@@ -2323,7 +2323,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
           </div>
           <button
             onClick={() => navigate('/listas')}
-            className="mt-2 px-4 py-2 bg-[#3483FA] text-white rounded-xl text-xs font-bold hover:bg-[#2c6ecf] transition-all cursor-pointer shadow-sm flex items-center gap-2"
+            className="mt-2 px-4 py-2 bg-[var(--ecooy-primary)] text-white rounded-xl text-xs font-bold hover:bg-[#2c6ecf] transition-all cursor-pointer shadow-sm flex items-center gap-2"
           >
             Voltar para Todas as Listas
           </button>
@@ -2336,7 +2336,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
       return (
         <div className="w-full min-h-[60vh] flex flex-col items-center justify-center gap-4 text-center px-4">
           <div className="w-16 h-16 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center shadow-xs">
-            <Loader2 className="w-8 h-8 text-[#3483FA] animate-spin" />
+            <Loader2 className="w-8 h-8 text-[var(--ecooy-primary)] animate-spin" />
           </div>
           <div className="max-w-md">
             <h3 className="text-base font-bold text-gray-900">{rawListaAtiva.nome}</h3>
@@ -2385,7 +2385,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
         {/* Header Principal */}
         <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-4">
-            <div className="p-3 bg-[#3483FA]/10 text-[#3483FA] rounded-xl">
+            <div className="p-3 bg-[var(--ecooy-primary)]/10 text-[var(--ecooy-primary)] rounded-xl">
               <Package className="w-8 h-8" />
             </div>
             <div>
@@ -2396,7 +2396,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
 
           <button
             onClick={() => setShowModalNovaLista(true)}
-            className="w-full sm:w-auto bg-[#3483FA] hover:bg-blue-600 text-white font-bold px-5 py-2.5 rounded-xl text-sm flex items-center justify-center gap-2 transition-colors shadow-sm cursor-pointer"
+            className="w-full sm:w-auto bg-[var(--ecooy-primary)] hover:bg-blue-600 text-white font-bold px-5 py-2.5 rounded-xl text-sm flex items-center justify-center gap-2 transition-colors shadow-sm cursor-pointer"
           >
             <Plus className="w-5 h-5" />
             Criar Nova Lista
@@ -2409,7 +2409,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
         <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-gray-100">
             <div className="flex items-center gap-2">
-              <Layers className="w-5 h-5 text-[#3483FA]" />
+              <Layers className="w-5 h-5 text-[var(--ecooy-primary)]" />
               <h3 className="text-base font-bold text-[#333333]">Lista</h3>
               <span className="bg-gray-100 text-gray-700 font-mono text-xs font-bold px-2.5 py-0.5 rounded-full">
                 {listas.length}
@@ -2423,7 +2423,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
                 title="Sincronizar contadores de pacotes com o servidor"
                 className="px-3 py-1.5 bg-gray-50 hover:bg-gray-100 text-gray-700 rounded-lg border border-gray-200 transition-colors flex items-center gap-1.5 text-xs font-bold cursor-pointer disabled:opacity-50"
               >
-                <RotateCcw className={`w-3.5 h-3.5 ${isReconciling ? 'animate-spin text-[#3483FA]' : ''}`} />
+                <RotateCcw className={`w-3.5 h-3.5 ${isReconciling ? 'animate-spin text-[var(--ecooy-primary)]' : ''}`} />
                 <span>Sincronizar</span>
               </button>
 
@@ -2434,7 +2434,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
                   value={dashboardSearchTerm}
                   onChange={(e) => setDashboardSearchTerm(e.target.value)}
                   placeholder="Filtrar por nome, rota ou criador..."
-                  className="w-full pl-8 pr-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs font-medium focus:outline-none focus:border-[#3483FA]"
+                  className="w-full pl-8 pr-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs font-medium focus:outline-none focus:border-[var(--ecooy-primary)]"
                 />
               </div>
             </div>
@@ -2479,13 +2479,13 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
                       <td className="py-3.5 px-4 whitespace-nowrap font-mono font-bold text-gray-400">{filteredDashboardListas.length - idx}</td>
                       <td 
                         onClick={() => handleAbrirLista(lista.id)}
-                        className="py-3.5 px-4 font-bold text-[#333333] text-sm cursor-pointer hover:text-[#3483FA] transition-colors"
+                        className="py-3.5 px-4 font-bold text-[#333333] text-sm cursor-pointer hover:text-[var(--ecooy-primary)] transition-colors"
                         title="Clique para abrir a coleta desta lista"
                       >
                         <div className="flex items-center gap-2">
                           <span>{lista.nome}</span>
                           {isLoadingLista && openingListaId === lista.id && (
-                            <Loader2 className="w-3.5 h-3.5 text-[#3483FA] animate-spin flex-shrink-0" />
+                            <Loader2 className="w-3.5 h-3.5 text-[var(--ecooy-primary)] animate-spin flex-shrink-0" />
                           )}
                         </div>
                       </td>
@@ -2507,7 +2507,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
                       <td className="py-3.5 px-4 whitespace-nowrap text-gray-700 font-bold">
                         {lista.responsavel}
                       </td>
-                      <td className="py-3.5 px-4 whitespace-nowrap font-mono font-bold text-[#3483FA] text-sm">
+                      <td className="py-3.5 px-4 whitespace-nowrap font-mono font-bold text-[var(--ecooy-primary)] text-sm">
                         {lista.totalItens || 0} pacotes
                       </td>
                       <td className="py-3.5 px-4 whitespace-nowrap text-center">
@@ -2522,7 +2522,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
                           <button
                             onClick={() => handleAbrirLista(lista.id)}
                             disabled={isLoadingLista && openingListaId === lista.id}
-                            className="bg-[#3483FA] hover:bg-blue-600 text-white font-bold px-3 py-1.5 rounded-lg text-xs flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer disabled:opacity-75"
+                            className="bg-[var(--ecooy-primary)] hover:bg-blue-600 text-white font-bold px-3 py-1.5 rounded-lg text-xs flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer disabled:opacity-75"
                           >
                             {isLoadingLista && openingListaId === lista.id ? (
                               <>
@@ -2581,7 +2581,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
             <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl border border-gray-100">
               <div className="flex justify-between items-center mb-4 pb-3 border-b border-gray-100">
                 <h3 className="text-base font-bold text-[#333333] flex items-center gap-2">
-                  <Plus className="w-5 h-5 text-[#3483FA]" />
+                  <Plus className="w-5 h-5 text-[var(--ecooy-primary)]" />
                   Criar Nova Lista de Coleta
                 </h3>
                 <button onClick={() => setShowModalNovaLista(false)} className="text-gray-400 hover:text-black">
@@ -2593,14 +2593,14 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
                 {/* 1. DATA */}
                 <div>
                   <label className="block text-xs font-bold text-gray-700 mb-1 flex items-center gap-1.5">
-                    <Clock className="w-3.5 h-3.5 text-[#3483FA]" />
+                    <Clock className="w-3.5 h-3.5 text-[var(--ecooy-primary)]" />
                     Data da Lista *
                   </label>
                   <input
                     type="date"
                     value={novaData}
                     onChange={(e) => setNovaData(e.target.value)}
-                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs text-[#333333] font-medium focus:outline-none focus:border-[#3483FA]"
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs text-[#333333] font-medium focus:outline-none focus:border-[var(--ecooy-primary)]"
                     required
                   />
                 </div>
@@ -2614,7 +2614,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
                   <select
                     value={novaSaida}
                     onChange={(e) => setNovaSaida(e.target.value)}
-                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs font-bold text-[#333333] focus:outline-none focus:border-[#3483FA]"
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs font-bold text-[#333333] focus:outline-none focus:border-[var(--ecooy-primary)]"
                     required
                   >
                     {SAIDAS_CICLOS_DISPONIVEIS.map(s => (
@@ -2636,7 +2636,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
                       onClick={() => setNovoTipo('comum')}
                       className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-1 ${
                         novoTipo === 'comum'
-                          ? 'bg-blue-50/70 border-[#3483FA] text-[#3483FA] shadow-xs'
+                          ? 'bg-blue-50/70 border-[var(--ecooy-primary)] text-[var(--ecooy-primary)] shadow-xs'
                           : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
                       }`}
                     >
@@ -2680,7 +2680,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
                   <button
                     type="submit"
                     disabled={isLoadingLista}
-                    className="flex-1 sm:flex-none px-4 py-2 bg-[#3483FA] hover:bg-blue-600 text-white rounded-xl text-xs font-bold shadow-sm flex items-center justify-center gap-1.5 disabled:opacity-75 cursor-pointer"
+                    className="flex-1 sm:flex-none px-4 py-2 bg-[var(--ecooy-primary)] hover:bg-blue-600 text-white rounded-xl text-xs font-bold shadow-sm flex items-center justify-center gap-1.5 disabled:opacity-75 cursor-pointer"
                   >
                     {isLoadingLista ? (
                       <>
@@ -2702,7 +2702,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
           <div className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center z-[9999] animate-in fade-in duration-150">
             <div className="bg-white rounded-2xl p-6 shadow-2xl border border-gray-100 flex flex-col items-center gap-4 max-w-xs w-full text-center">
               <div className="w-14 h-14 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center">
-                <Loader2 className="w-8 h-8 text-[#3483FA] animate-spin" />
+                <Loader2 className="w-8 h-8 text-[var(--ecooy-primary)] animate-spin" />
               </div>
               <div>
                 <h4 className="text-base font-bold text-[#333333]">{loadingMessage}</h4>
@@ -2811,7 +2811,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
           onClick={() => navigate('/listas')}
           className="flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-bold text-gray-700 hover:bg-gray-50 transition-colors shadow-sm cursor-pointer"
         >
-          <ArrowLeft className="w-4 h-4 text-[#3483FA]" />
+          <ArrowLeft className="w-4 h-4 text-[var(--ecooy-primary)]" />
           Voltar para Listas
         </button>
         <div className="h-4 w-px bg-gray-300 mx-1"></div>
@@ -2823,7 +2823,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
             Finalizada
           </span>
         ) : (
-          <span className="bg-blue-50 text-[#3483FA] text-[11px] font-black px-2.5 py-1 rounded-lg border border-blue-200 uppercase">
+          <span className="bg-blue-50 text-[var(--ecooy-primary)] text-[11px] font-black px-2.5 py-1 rounded-lg border border-blue-200 uppercase">
             Em Andamento
           </span>
         )}
@@ -3013,7 +3013,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
                     <div className="flex items-center gap-2.5 flex-wrap">
                       <button
                         onClick={() => setShowModalLote(true)}
-                        className="px-2.5 py-1.5 bg-[#3483FA]/10 hover:bg-[#3483FA]/20 text-[#3483FA] rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                        className="px-2.5 py-1.5 bg-[var(--ecooy-primary)]/10 hover:bg-[var(--ecooy-primary)]/20 text-[var(--ecooy-primary)] rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
                       >
                         <ListPlus className="w-3.5 h-3.5" />
                         Colar Lote
@@ -3046,7 +3046,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                         placeholder="Buscar ID, rota, motivo ou grupo..."
-                        className="pl-8 pr-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs font-mono focus:outline-none focus:border-[#3483FA] w-full sm:w-56"
+                        className="pl-8 pr-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs font-mono focus:outline-none focus:border-[var(--ecooy-primary)] w-full sm:w-56"
                       />
                     </div>
                   </div>
@@ -3055,7 +3055,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
                   <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-xs">
                     <div className="flex flex-wrap items-center gap-1.5">
                       <span className="text-gray-400 font-semibold text-[11px] flex items-center gap-1 mr-1">
-                        <Filter className="w-3 h-3 text-[#3483FA]" /> Seleção Rápida:
+                        <Filter className="w-3 h-3 text-[var(--ecooy-primary)]" /> Seleção Rápida:
                       </span>
 
                       <button
@@ -3104,7 +3104,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
 
                       <button
                         onClick={() => setShowModalLote(true)}
-                        className="px-2.5 py-1.5 bg-[#3483FA]/10 hover:bg-[#3483FA]/20 text-[#3483FA] rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                        className="px-2.5 py-1.5 bg-[var(--ecooy-primary)]/10 hover:bg-[var(--ecooy-primary)]/20 text-[var(--ecooy-primary)] rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
                       >
                         <ListPlus className="w-3.5 h-3.5" />
                         Colar Lote
@@ -3139,7 +3139,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                         placeholder="Buscar ID, rota, motivo ou grupo..."
-                        className="pl-8 pr-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs font-mono focus:outline-none focus:border-[#3483FA] w-full sm:w-56"
+                        className="pl-8 pr-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs font-mono focus:outline-none focus:border-[var(--ecooy-primary)] w-full sm:w-56"
                       />
                     </div>
                   </div>
@@ -3148,7 +3148,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
               <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-xs">
                 <div className="flex flex-wrap items-center gap-1.5">
                   <span className="text-gray-400 font-semibold text-[11px] flex items-center gap-1 mr-1">
-                    <Filter className="w-3 h-3 text-[#3483FA]" /> Seleção Rápida:
+                    <Filter className="w-3 h-3 text-[var(--ecooy-primary)]" /> Seleção Rápida:
                   </span>
 
                   <button
@@ -3179,13 +3179,13 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
 
             {/* PAINEL FLUTUANTE DE AÇÃO EM MASSA (QUANDO HÁ ITENS SELECIONADOS) */}
             {selectedItemIds.length > 0 && (
-              <div className="bg-blue-50/50 border-2 border-[#3483FA]/40 rounded-xl p-4 shadow-sm space-y-4 animate-in fade-in">
+              <div className="bg-blue-50/50 border-2 border-[var(--ecooy-primary)]/40 rounded-xl p-4 shadow-sm space-y-4 animate-in fade-in">
                 <div className="flex items-center justify-between border-b border-blue-200/50 pb-3">
                   <div className="flex items-center gap-3">
-                    <span className="bg-[#3483FA] text-white px-3 py-1 rounded-lg font-mono font-black text-sm shadow-sm">
+                    <span className="bg-[var(--ecooy-primary)] text-white px-3 py-1 rounded-lg font-mono font-black text-sm shadow-sm">
                       {selectedItemIds.length} {selectedItemIds.length === 1 ? 'ID' : 'IDs'}
                     </span>
-                    <span className="text-sm text-[#3483FA] font-black uppercase tracking-tight">
+                    <span className="text-sm text-[var(--ecooy-primary)] font-black uppercase tracking-tight">
                       Edição em Massa
                     </span>
                   </div>
@@ -3222,12 +3222,12 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
                         placeholder="Escreva o motivo manualmente..."
                         value={motivoEmMassaEscolha}
                         onChange={(e) => setMotivoEmMassaEscolha(e.target.value)}
-                        className="flex-1 bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm font-bold focus:outline-none focus:border-[#3483FA] focus:ring-2 focus:ring-blue-100 transition-all"
+                        className="flex-1 bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm font-bold focus:outline-none focus:border-[var(--ecooy-primary)] focus:ring-2 focus:ring-blue-100 transition-all"
                       />
                       <button
                         type="button"
                         onClick={() => handleAplicarMotivoEmMassa(motivoEmMassaEscolha)}
-                        className="px-5 py-2 bg-[#3483FA] hover:bg-blue-600 text-white rounded-lg text-sm font-black transition-colors active:scale-95 shadow-sm cursor-pointer"
+                        className="px-5 py-2 bg-[var(--ecooy-primary)] hover:bg-blue-600 text-white rounded-lg text-sm font-black transition-colors active:scale-95 shadow-sm cursor-pointer"
                       >
                         Aplicar
                       </button>
@@ -3250,7 +3250,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
                             }}
                             className={`px-3 py-1.5 rounded-lg border text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm hover:shadow active:scale-95 cursor-pointer ${
                               isSelectedM 
-                                ? 'bg-[#3483FA] text-white border-[#3483FA]' 
+                                ? 'bg-[var(--ecooy-primary)] text-white border-[var(--ecooy-primary)]'
                                 : 'bg-white hover:bg-gray-50 text-gray-700 border-gray-300'
                             }`}
                           >
@@ -3269,7 +3269,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
                 {allPageSelected && filteredItems.length > displayedItems.length && (
                   <div className="bg-blue-50 border-b border-blue-200 px-4 py-2 text-xs text-blue-900 flex flex-col sm:flex-row items-center justify-between gap-2">
                     <div className="flex items-center gap-1.5">
-                      <CheckCircle2 className="w-4 h-4 text-[#3483FA] flex-shrink-0" />
+                      <CheckCircle2 className="w-4 h-4 text-[var(--ecooy-primary)] flex-shrink-0" />
                       <span>
                         Todos os <strong>{displayedItems.length}</strong> pacotes desta página estão selecionados.
                       </span>
@@ -3286,7 +3286,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
                       <button
                         type="button"
                         onClick={() => setSelectedItemIds(filteredItems.map(i => i.id))}
-                        className="font-bold text-white bg-[#3483FA] hover:bg-blue-600 px-3 py-1 rounded-lg text-xs transition-colors shadow-2xs cursor-pointer"
+                        className="font-bold text-white bg-[var(--ecooy-primary)] hover:bg-blue-600 px-3 py-1 rounded-lg text-xs transition-colors shadow-2xs cursor-pointer"
                       >
                         Selecionar todos os {filteredItems.length.toLocaleString('pt-BR')} pacotes da lista
                       </button>
@@ -3316,7 +3316,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
                             type="checkbox"
                             checked={displayedItems.length > 0 && displayedItems.every(i => selectedItemIdsSet.has(i.id))}
                             onChange={handleToggleSelectPage}
-                            className="w-4 h-4 text-[#3483FA] focus:ring-[#3483FA] cursor-pointer"
+                            className="w-4 h-4 text-[var(--ecooy-primary)] focus:ring-[var(--ecooy-primary)] cursor-pointer"
                             title="Selecionar/Desmarcar Todos desta página"
                           />
                         </th>
@@ -3368,7 +3368,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
                                 type="checkbox"
                                 checked={isSelected}
                                 onChange={() => handleToggleSelectItem(item.id)}
-                                className="w-4 h-4 text-[#3483FA] focus:ring-[#3483FA] cursor-pointer"
+                                className="w-4 h-4 text-[var(--ecooy-primary)] focus:ring-[var(--ecooy-primary)] cursor-pointer"
                               />
                             </td>
                             <td className="py-1 px-1 sm:px-2 text-center text-gray-500 font-bold border-r border-gray-200">{filteredItems.length - (startIndex + idx)}</td>
@@ -3762,8 +3762,8 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
                                 ${
                                   selecionado
                                     ? `
-                                      border-[#3483FA]
-                                      bg-[#3483FA]
+                                      border-[var(--ecooy-primary)]
+                                      bg-[var(--ecooy-primary)]
                                       text-white
                                     `
                                     : `
@@ -3897,7 +3897,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
                             h-3.5
                             w-3.5
                             shrink-0
-                            text-[#3483FA]
+                            text-[var(--ecooy-primary)]
                           "
                         />
 
@@ -3922,7 +3922,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
                           font-mono
                           text-[10px]
                           font-bold
-                          text-[#3483FA]
+                          text-[var(--ecooy-primary)]
                         "
                       >
                         {
@@ -4043,7 +4043,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
                             text-gray-800
                             outline-none
                             transition-all
-                            focus:border-[#3483FA]
+                            focus:border-[var(--ecooy-primary)]
                             focus:ring-2
                             focus:ring-blue-100
                           "
@@ -4072,7 +4072,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
                             h-10
                             shrink-0
                             rounded-lg
-                            bg-[#3483FA]
+                            bg-[var(--ecooy-primary)]
                             px-5
                             text-xs
                             font-black
@@ -4136,8 +4136,8 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
                                   ${
                                     selecionado
                                       ? `
-                                        border-[#3483FA]
-                                        bg-[#3483FA]
+                                        border-[var(--ecooy-primary)]
+                                        bg-[var(--ecooy-primary)]
                                         text-white
                                       `
                                       : `
@@ -4171,7 +4171,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
           <motion.div 
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
-            className="bg-white border border-gray-200 rounded-2xl p-6 shadow-md border-t-8 border-t-[#3483FA]"
+            className="bg-white border border-gray-200 rounded-2xl p-6 shadow-md border-t-8 border-t-[var(--ecooy-primary)]"
           >
             <BipScannerForm 
               onBip={handleBipCode} 
@@ -4204,7 +4204,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
           >
             <div className="flex items-center justify-between pb-3 border-b border-gray-100">
               <div className="flex items-center gap-2">
-                <PieChart className="w-5 h-5 text-[#3483FA]" />
+                <PieChart className="w-5 h-5 text-[var(--ecooy-primary)]" />
                 <h3 className="font-bold text-sm text-[#333333]">
                   {modoIndividual ? `Métricas - Modo Individual (${operanteNome})` : 'Métricas de Coleta'}
                 </h3>
@@ -4214,7 +4214,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
             {/* Total de Coletados Card Grande */}
             <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 p-5 rounded-2xl text-center space-y-3 shadow-inner">
               <div>
-                <p className="text-4xl font-black text-[#3483FA] tracking-tighter">{totalColetadosComBrancas}</p>
+                <p className="text-4xl font-black text-[var(--ecooy-primary)] tracking-tighter">{totalColetadosComBrancas}</p>
                 <p className="text-xs font-bold text-gray-700 uppercase tracking-widest mt-1">
                   {modoIndividual ? 'IDs Bipados na Sessão Individual' : 'IDs Coletados'}
                 </p>
@@ -4248,7 +4248,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
                 <button
                   type="button"
                   onClick={handleAbrirVerificar}
-                  className="w-full py-2.5 bg-[#3483FA] hover:bg-blue-600 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all shadow-md active:scale-95 cursor-pointer"
+                  className="w-full py-2.5 bg-[var(--ecooy-primary)] hover:bg-blue-600 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all shadow-md active:scale-95 cursor-pointer"
                 >
                   <CheckSquare className="w-4 h-4" />
                   {modoIndividual ? 'Verificar Lista Individual' : 'Verificar'}
@@ -4266,13 +4266,13 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
           >
             <div className="flex items-center justify-between pb-3 border-b border-gray-100">
               <div className="flex items-center gap-2">
-                <Users className="w-5 h-5 text-[#3483FA]" />
+                <Users className="w-5 h-5 text-[var(--ecooy-primary)]" />
                 <div>
                   <h3 className="font-bold text-sm text-[#333333]">Bips por Operador</h3>
                   <p className="text-[10px] text-gray-400 font-medium">Contagem de bips nesta lista</p>
                 </div>
               </div>
-              <span className="text-[10px] font-extrabold text-[#3483FA] bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-full">
+              <span className="text-[10px] font-extrabold text-[var(--ecooy-primary)] bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-full">
                 {bipsPorOperador.length} {bipsPorOperador.length === 1 ? 'operador' : 'operadores'}
               </span>
             </div>
@@ -4298,7 +4298,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
                         <div className="flex items-center gap-2.5 min-w-0">
                           <div className={`w-8 h-8 rounded-xl font-bold text-xs flex items-center justify-center flex-shrink-0 shadow-xs ${
                             op.isVoce 
-                              ? 'bg-[#3483FA] text-white' 
+                              ? 'bg-[var(--ecooy-primary)] text-white'
                               : 'bg-gray-300 text-gray-700'
                           }`}>
                             {op.nome.slice(0, 2).toUpperCase()}
@@ -4307,7 +4307,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
                             <p className="text-xs font-bold text-[#333333] truncate flex items-center gap-1.5">
                               {op.nome}
                               {op.isVoce && (
-                                <span className="text-[9px] bg-blue-100 text-[#3483FA] px-1.5 py-0.2 rounded font-black uppercase tracking-tight">
+                                <span className="text-[9px] bg-blue-100 text-[var(--ecooy-primary)] px-1.5 py-0.2 rounded font-black uppercase tracking-tight">
                                   VOCÊ
                                 </span>
                               )}
@@ -4329,7 +4329,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
                       <div className="w-full bg-gray-200/80 rounded-full h-1.5 overflow-hidden">
                         <div 
                           className={`h-full rounded-full transition-all duration-300 ${
-                            op.isVoce ? 'bg-[#3483FA]' : 'bg-gray-500'
+                            op.isVoce ? 'bg-[var(--ecooy-primary)]' : 'bg-gray-500'
                           }`}
                           style={{ width: `${Math.max(pct, op.total > 0 ? 3 : 0)}%` }}
                         />
@@ -4354,7 +4354,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
             <div className="flex justify-between items-center mb-4 pb-3 border-b border-gray-100 flex-shrink-0">
               <div>
                 <h3 className="text-base font-bold text-[#333333] flex items-center gap-2">
-                  <CheckSquare className="w-5 h-5 text-[#3483FA]" />
+                  <CheckSquare className="w-5 h-5 text-[var(--ecooy-primary)]" />
                   Verificação de IDs do Ciclo
                 </h3>
                 <p className="text-xs text-gray-500 mt-0.5">
@@ -4393,13 +4393,13 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
                       value={verificarInput}
                       onChange={(e) => setVerificarInput(e.target.value)}
                       placeholder="Bipe ou digite o ID do pacote..."
-                      className="w-full bg-white border border-gray-300 rounded-xl pl-9 pr-3 py-2 text-xs font-mono font-bold text-[#333333] focus:outline-none focus:border-[#3483FA] focus:ring-2 focus:ring-blue-100"
+                      className="w-full bg-white border border-gray-300 rounded-xl pl-9 pr-3 py-2 text-xs font-mono font-bold text-[#333333] focus:outline-none focus:border-[var(--ecooy-primary)] focus:ring-2 focus:ring-blue-100"
                       autoFocus
                     />
                   </div>
                   <button
                     type="submit"
-                    className="px-4 py-2 bg-[#3483FA] hover:bg-blue-600 text-white rounded-xl text-xs font-bold shadow-sm cursor-pointer"
+                    className="px-4 py-2 bg-[var(--ecooy-primary)] hover:bg-blue-600 text-white rounded-xl text-xs font-bold shadow-sm cursor-pointer"
                   >
                     Verificar
                   </button>
@@ -4455,7 +4455,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
                           className={`px-4 py-1.5 rounded-lg shadow-sm flex items-center gap-2 cursor-pointer font-black text-xs transition-all active:scale-95 ${
                             copiedPage === paginaAtualSafe 
                               ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-md ring-2 ring-emerald-300'
-                              : 'bg-[#3483FA] hover:bg-blue-600 text-white'
+                              : 'bg-[var(--ecooy-primary)] hover:bg-blue-600 text-white'
                           }`}
                           title="Copiar IDs para validação no sistema"
                         >
@@ -4504,7 +4504,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
                             setVerificarPagina(paginaAtualSafe + 1);
                             setCopiedPage(null);
                           }}
-                          className="px-2.5 py-1.5 bg-[#3483FA] text-white rounded-md disabled:opacity-40 cursor-pointer font-black hover:bg-blue-600 transition-colors shadow-sm flex items-center gap-1"
+                          className="px-2.5 py-1.5 bg-[var(--ecooy-primary)] text-white rounded-md disabled:opacity-40 cursor-pointer font-black hover:bg-blue-600 transition-colors shadow-sm flex items-center gap-1"
                         >
                           <span>Próximo</span>
                           <ChevronRight className="w-3.5 h-3.5" />
@@ -4550,7 +4550,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
                                   <span 
                                     className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold tracking-tight border ${
                                       (item.responsavel || listaAtiva.responsavel) === operanteNome
-                                        ? 'bg-blue-50 text-[#3483FA] border-blue-200'
+                                        ? 'bg-blue-50 text-[var(--ecooy-primary)] border-blue-200'
                                         : 'bg-gray-100 text-gray-700 border-gray-200'
                                     }`}
                                     title={`Bipado por: ${item.responsavel || listaAtiva.responsavel || 'Operador'}`}
@@ -4624,7 +4624,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
                       <button
                         type="button"
                         onClick={handleConcluirVerificacao}
-                        className="px-4 py-2 bg-[#3483FA] hover:bg-blue-600 text-white rounded-xl text-xs font-bold shadow-sm cursor-pointer flex items-center justify-center gap-1.5"
+                        className="px-4 py-2 bg-[var(--ecooy-primary)] hover:bg-blue-600 text-white rounded-xl text-xs font-bold shadow-sm cursor-pointer flex items-center justify-center gap-1.5"
                         title="Salvar com os itens válidos e retornar para a tela de coleta"
                       >
                         <CheckCircle2 className="w-4 h-4" />
@@ -4646,7 +4646,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
           <div className="bg-white rounded-2xl p-6 max-w-lg w-full shadow-2xl border border-gray-100">
             <div className="flex justify-between items-center mb-4 pb-3 border-b border-gray-100">
               <h3 className="text-base font-bold text-[#333333] flex items-center gap-2">
-                <ListPlus className="w-5 h-5 text-[#3483FA]" />
+                <ListPlus className="w-5 h-5 text-[var(--ecooy-primary)]" />
                 Verificação em Lote
               </h3>
               <button onClick={() => setShowVerificarLoteModal(false)} className="text-gray-400 hover:text-black cursor-pointer">
@@ -4663,7 +4663,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
                     value={verificarLoteText}
                     onChange={(e) => setVerificarLoteText(e.target.value)}
                     rows={8}
-                    className="w-full bg-gray-50 border border-gray-300 rounded-xl p-3 text-xs font-mono focus:outline-none focus:border-[#3483FA] focus:ring-2 focus:ring-blue-100"
+                    className="w-full bg-gray-50 border border-gray-300 rounded-xl p-3 text-xs font-mono focus:outline-none focus:border-[var(--ecooy-primary)] focus:ring-2 focus:ring-blue-100"
                     placeholder="Cole os IDs..."
                     autoFocus
                   />
@@ -4683,7 +4683,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
                 <button
                   type="submit"
                   disabled={!verificarLoteText.trim()}
-                  className="flex-1 py-2.5 bg-[#3483FA] hover:bg-blue-600 disabled:bg-blue-300 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                  className="flex-1 py-2.5 bg-[var(--ecooy-primary)] hover:bg-blue-600 disabled:bg-blue-300 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer flex items-center justify-center gap-1.5"
                 >
                   <CheckCircle2 className="w-4 h-4" />
                   Validar Lote
@@ -4700,7 +4700,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
           <div className="bg-white rounded-2xl p-6 max-w-lg w-full shadow-2xl border border-gray-100">
             <div className="flex justify-between items-center mb-4 pb-3 border-b border-gray-100">
               <h3 className="text-base font-bold text-[#333333] flex items-center gap-2">
-                <ListPlus className="w-5 h-5 text-[#3483FA]" />
+                <ListPlus className="w-5 h-5 text-[var(--ecooy-primary)]" />
                 Adicionar Lote
               </h3>
               <button onClick={() => setShowModalLote(false)} className="text-gray-400 hover:text-black cursor-pointer">
@@ -4710,18 +4710,18 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
 
             {isImporting ? (
               <div className="py-8 space-y-6 text-center">
-                <div className="inline-block p-4 bg-blue-50 text-[#3483FA] rounded-2xl">
+                <div className="inline-block p-4 bg-blue-50 text-[var(--ecooy-primary)] rounded-2xl">
                   <ListPlus className="w-8 h-8 animate-bounce" />
                 </div>
                 <div className="space-y-2">
                   <h4 className="text-sm font-black text-gray-800">{importStatusText}</h4>
                   <div className="w-full bg-gray-100 rounded-full h-3.5 overflow-hidden border border-gray-200 p-0.5">
                     <div 
-                      className="bg-[#3483FA] h-full transition-all duration-300 rounded-full" 
+                      className="bg-[var(--ecooy-primary)] h-full transition-all duration-300 rounded-full"
                       style={{ width: `${importProgress}%` }}
                     />
                   </div>
-                  <p className="text-xs font-black text-[#3483FA]">{importProgress}% Concluído</p>
+                  <p className="text-xs font-black text-[var(--ecooy-primary)]">{importProgress}% Concluído</p>
                 </div>
               </div>
             ) : (
@@ -4734,7 +4734,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
                   onChange={(e) => setLoteText(e.target.value)}
                   placeholder="Cole os IDs..."
                   rows={5}
-                  className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-xs font-mono focus:outline-none focus:border-[#3483FA]"
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-xs font-mono focus:outline-none focus:border-[var(--ecooy-primary)]"
                   required
                 />
 
@@ -4743,7 +4743,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
                   <select
                     value={loteMotivo}
                     onChange={(e) => setLoteMotivo(e.target.value)}
-                    className="w-full bg-white border border-gray-300 text-xs font-bold text-gray-700 rounded-lg p-2 focus:outline-none focus:border-[#3483FA]"
+                    className="w-full bg-white border border-gray-300 text-xs font-bold text-gray-700 rounded-lg p-2 focus:outline-none focus:border-[var(--ecooy-primary)]"
                   >
                     {MOTIVOS_DISPONIVEIS.map((m) => (
                       <option key={m} value={m}>{m}</option>
@@ -4761,7 +4761,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
                   </button>
                   <button
                     type="submit"
-                    className="px-4 py-2 bg-[#3483FA] hover:bg-blue-600 text-white rounded-xl text-xs font-bold shadow-sm cursor-pointer"
+                    className="px-4 py-2 bg-[var(--ecooy-primary)] hover:bg-blue-600 text-white rounded-xl text-xs font-bold shadow-sm cursor-pointer"
                   >
                     Adicionar
                   </button>
@@ -4925,13 +4925,13 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
                           onClick={() => setJuntarComBrancas(false)}
                           className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-1.5 ${
                             !juntarComBrancas
-                              ? 'bg-[#3483FA] text-white border-blue-600 shadow-sm ring-2 ring-blue-300'
+                              ? 'bg-[var(--ecooy-primary)] text-white border-blue-600 shadow-sm ring-2 ring-blue-300'
                               : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'
                           }`}
                         >
                           <div className="flex items-center justify-between">
                             <span className="text-xs font-black flex items-center gap-1.5">
-                              <Square className={`w-4 h-4 ${!juntarComBrancas ? 'text-white' : 'text-[#3483FA]'}`} />
+                              <Square className={`w-4 h-4 ${!juntarComBrancas ? 'text-white' : 'text-[var(--ecooy-primary)]'}`} />
                               Apenas Lista
                             </span>
                             <span className={`text-[10px] font-black px-1.5 py-0.5 rounded ${!juntarComBrancas ? 'bg-white/20 text-white' : 'bg-blue-100 text-blue-800'}`}>
@@ -5007,7 +5007,7 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
         <div className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center z-[9999] animate-in fade-in duration-150">
           <div className="bg-white rounded-2xl p-6 shadow-2xl border border-gray-100 flex flex-col items-center gap-4 max-w-xs w-full text-center">
             <div className="w-14 h-14 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center">
-              <Loader2 className="w-8 h-8 text-[#3483FA] animate-spin" />
+              <Loader2 className="w-8 h-8 text-[var(--ecooy-primary)] animate-spin" />
             </div>
             <div>
               <h4 className="text-base font-bold text-[#333333]">{loadingMessage}</h4>

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Handshake, Eye, EyeOff } from 'lucide-react';
+import { Zap, Eye, EyeOff } from 'lucide-react';
 import { loginUser, signupUser, User } from '../lib/auth';
 
 interface LoginProps {
@@ -80,34 +80,24 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
   };
 
   return (
-    <div className="min-h-screen bg-[#F0F2F5] flex items-center justify-center p-4">
-      <div className="bg-white rounded shadow-sm border border-gray-200 w-full max-w-[400px] overflow-hidden">
-        {/* Header */}
-        <div className="bg-[#F9F9F9] border-b border-gray-200 py-6 flex items-center justify-center">
-          <div className="w-16 h-16 bg-white rounded-full border border-gray-200 flex items-center justify-center relative overflow-hidden shadow-sm">
-             <img 
-               src="https://ok3static.oktacdn.com/fs/bco/1/fs01qr8d9ez620FXA1d8" 
-               alt="Logo" 
-               className="w-12 h-12 object-contain"
-               crossOrigin="anonymous"
-             />
-          </div>
-        </div>
-        
+    <div className="login-page min-h-screen flex items-center justify-center p-4">
+      <div className="login-card bg-white w-full max-w-[420px] overflow-hidden">
+        <div className="login-brand"><span className="brand-mark"><Zap size={23} fill="currentColor" /></span><span>ecooy</span></div>
+        <p className="login-caption">Seu workspace logístico.</p>
         {/* Body */}
         <div className="p-8">
-          <h2 className="text-xl text-gray-700 text-center font-medium mb-6">
-            {mode === 'login' ? 'Login' : 'Criar Usuário'}
+          <h2 className="text-xl text-slate-900 text-center font-semibold mb-6">
+            {mode === 'login' ? 'Bem-vindo de volta' : 'Crie sua conta'}
           </h2>
           
           {errorMsg && (
-            <div className="mb-4 p-2 bg-red-50 border border-red-200 text-red-600 text-xs text-center rounded">
+            <div role="alert" className="mb-4 p-2 bg-red-50 border border-red-200 text-red-600 text-xs text-center rounded">
               {errorMsg}
             </div>
           )}
           
           {successMsg && (
-            <div className="mb-4 p-2 bg-emerald-50 border border-emerald-200 text-emerald-600 text-xs text-center rounded">
+            <div role="status" className="mb-4 p-2 bg-emerald-50 border border-emerald-200 text-emerald-600 text-xs text-center rounded">
               {successMsg}
             </div>
           )}
@@ -118,7 +108,9 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
                 <div className="space-y-1.5">
                   <label className="text-[13px] text-gray-600 font-medium">Usuário ou e-mail</label>
                   <input 
-                    type="text" 
+                    type="text"
+                    aria-label="Usuário ou e-mail"
+                    autoComplete="username"
                     value={username}
                     onChange={e => { setUsername(e.target.value); setErrorMsg(''); setSuccessMsg(''); }}
                     className="w-full bg-white border border-gray-300 rounded px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all outline-none"
@@ -128,7 +120,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
                 <button 
                   type="submit"
                   disabled={!username.trim()}
-                  className="w-full bg-[#3B82F6] hover:bg-blue-600 disabled:bg-blue-300 text-white py-2.5 rounded text-sm font-medium transition-colors"
+                  className="w-full bg-[var(--ecooy-primary)] hover:bg-blue-600 disabled:bg-blue-300 text-white py-2.5 rounded text-sm font-medium transition-colors"
                 >
                   Próximo
                 </button>
@@ -157,7 +149,9 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
                   </div>
                   <div className="relative">
                     <input 
-                      type={showPassword ? "text" : "password"} 
+                      aria-label="Senha"
+                      autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+                      type={showPassword ? "text" : "password"}
                       value={password}
                       onChange={e => { setPassword(e.target.value); setErrorMsg(''); setSuccessMsg(''); }}
                       className="w-full bg-white border border-gray-300 rounded px-3 py-2 pr-10 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all outline-none"
@@ -166,6 +160,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
+                      aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
                       className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600"
                     >
                       {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -175,7 +170,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
                 <button 
                   type="submit"
                   disabled={!password.trim() || isLoading}
-                  className="w-full bg-[#3B82F6] hover:bg-blue-600 disabled:bg-blue-300 text-white py-2.5 rounded text-sm font-medium transition-colors flex items-center justify-center gap-2"
+                  className="w-full bg-[var(--ecooy-primary)] hover:bg-blue-600 disabled:bg-blue-300 text-white py-2.5 rounded text-sm font-medium transition-colors flex items-center justify-center gap-2"
                 >
                   {isLoading ? 'Entrando...' : 'Entrar'}
                 </button>
@@ -186,7 +181,9 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
               <div className="space-y-1.5">
                 <label className="text-[13px] text-gray-600 font-medium">Usuário</label>
                 <input 
-                  type="text" 
+                  type="text"
+                  aria-label="Usuário"
+                  autoComplete="username"
                   value={username}
                   onChange={e => { setUsername(e.target.value); setErrorMsg(''); setSuccessMsg(''); }}
                   className="w-full bg-white border border-gray-300 rounded px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all outline-none"
@@ -196,7 +193,9 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
               <div className="space-y-1.5">
                 <label className="text-[13px] text-gray-600 font-medium">E-mail</label>
                 <input 
-                  type="email" 
+                  type="email"
+                  aria-label="E-mail"
+                  autoComplete="email"
                   value={email}
                   onChange={e => { setEmail(e.target.value); setErrorMsg(''); setSuccessMsg(''); }}
                   className="w-full bg-white border border-gray-300 rounded px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all outline-none"
@@ -206,7 +205,9 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
                 <label className="text-[13px] text-gray-600 font-medium">Senha</label>
                 <div className="relative">
                   <input 
-                    type={showPassword ? "text" : "password"} 
+                    aria-label="Senha"
+                      autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+                      type={showPassword ? "text" : "password"}
                     value={password}
                     onChange={e => { setPassword(e.target.value); setErrorMsg(''); setSuccessMsg(''); }}
                     className="w-full bg-white border border-gray-300 rounded px-3 py-2 pr-10 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all outline-none"
@@ -214,6 +215,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
+                      aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
                     className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600"
                   >
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -223,7 +225,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
               <button 
                 type="submit"
                 disabled={!username.trim() || !password.trim() || !email.trim() || isLoading}
-                className="w-full bg-[#3B82F6] hover:bg-blue-600 disabled:bg-blue-300 text-white py-2.5 rounded text-sm font-medium transition-colors"
+                className="w-full bg-[var(--ecooy-primary)] hover:bg-blue-600 disabled:bg-blue-300 text-white py-2.5 rounded text-sm font-medium transition-colors"
               >
                 {isLoading ? 'Criando...' : 'Criar Conta'}
               </button>

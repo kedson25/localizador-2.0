@@ -276,7 +276,7 @@ CREATE POLICY "Permitir tudo coleta_itens" ON public.coleta_itens FOR ALL USING 
       <div className="bg-white border border-gray-200 p-6 rounded-2xl shadow-sm space-y-5">
         <div className="flex items-center justify-between border-b border-gray-100 pb-4">
           <div className="flex items-center gap-2">
-            <Layers className="w-5 h-5 text-[#3483FA]" />
+            <Layers className="w-5 h-5 text-[var(--ecooy-primary)]" />
             <h3 className="text-sm font-black text-gray-800 uppercase tracking-tight">
               Passo a Passo para Ativar o Supabase
             </h3>
@@ -293,7 +293,7 @@ CREATE POLICY "Permitir tudo coleta_itens" ON public.coleta_itens FOR ALL USING 
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="p-4 bg-gray-50 rounded-xl border border-gray-100 space-y-2">
-            <div className="w-6 h-6 rounded-full bg-[#3483FA] text-white flex items-center justify-center text-xs font-black">
+            <div className="w-6 h-6 rounded-full bg-[var(--ecooy-primary)] text-white flex items-center justify-center text-xs font-black">
               1
             </div>
             <h4 className="text-xs font-bold text-gray-900">Execute o Script SQL</h4>
@@ -303,7 +303,7 @@ CREATE POLICY "Permitir tudo coleta_itens" ON public.coleta_itens FOR ALL USING 
           </div>
 
           <div className="p-4 bg-gray-50 rounded-xl border border-gray-100 space-y-2">
-            <div className="w-6 h-6 rounded-full bg-[#3483FA] text-white flex items-center justify-center text-xs font-black">
+            <div className="w-6 h-6 rounded-full bg-[var(--ecooy-primary)] text-white flex items-center justify-center text-xs font-black">
               2
             </div>
             <h4 className="text-xs font-bold text-gray-900">Copie as Credenciais</h4>
@@ -313,7 +313,7 @@ CREATE POLICY "Permitir tudo coleta_itens" ON public.coleta_itens FOR ALL USING 
           </div>
 
           <div className="p-4 bg-gray-50 rounded-xl border border-gray-100 space-y-2">
-            <div className="w-6 h-6 rounded-full bg-[#3483FA] text-white flex items-center justify-center text-xs font-black">
+            <div className="w-6 h-6 rounded-full bg-[var(--ecooy-primary)] text-white flex items-center justify-center text-xs font-black">
               3
             </div>
             <h4 className="text-xs font-bold text-gray-900">Defina no Ambiente</h4>

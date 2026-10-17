@@ -307,7 +307,7 @@ export const IdLookup: React.FC<IdLookupProps> = ({ rows, onNavigateToUpload }) 
       }`}>
         <div className="flex items-center gap-2 flex-wrap">
           <span>
-            Mostrando <strong className="text-gray-900 font-mono">{filteredMatches.length === 0 ? 0 : startLookupIndex + 1}</strong>–<strong className="text-gray-900 font-mono">{endLookupIndex}</strong> de <strong className="text-[#3483FA] font-mono">{filteredMatches.length.toLocaleString('pt-BR')}</strong> IDs
+            Mostrando <strong className="text-gray-900 font-mono">{filteredMatches.length === 0 ? 0 : startLookupIndex + 1}</strong>–<strong className="text-gray-900 font-mono">{endLookupIndex}</strong> de <strong className="text-[var(--ecooy-primary)] font-mono">{filteredMatches.length.toLocaleString('pt-BR')}</strong> IDs
           </span>
           <span className="text-gray-300 hidden sm:inline">|</span>
           <span className="text-gray-500">
@@ -352,7 +352,7 @@ export const IdLookup: React.FC<IdLookupProps> = ({ rows, onNavigateToUpload }) 
                   onClick={() => { setLookupPage(Number(p)); setJumpLookupPageInput(String(p)); }}
                   className={`min-w-[28px] h-7 px-1.5 rounded text-xs font-mono font-bold transition-all cursor-pointer ${
                     isCurrent
-                      ? 'bg-[#3483FA] text-white shadow-sm'
+                      ? 'bg-[var(--ecooy-primary)] text-white shadow-sm'
                       : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
                   }`}
                 >
@@ -396,7 +396,7 @@ export const IdLookup: React.FC<IdLookupProps> = ({ rows, onNavigateToUpload }) 
                 setLookupPage(1);
                 setJumpLookupPageInput('1');
               }}
-              className="px-2 py-1 bg-white border border-gray-300 rounded text-xs font-bold text-gray-700 outline-none focus:border-[#3483FA] cursor-pointer"
+              className="px-2 py-1 bg-white border border-gray-300 rounded text-xs font-bold text-gray-700 outline-none focus:border-[var(--ecooy-primary)] cursor-pointer"
             >
               <option value={50}>50</option>
               <option value={100}>100</option>
@@ -415,7 +415,7 @@ export const IdLookup: React.FC<IdLookupProps> = ({ rows, onNavigateToUpload }) 
               value={jumpLookupPageInput}
               onChange={(e) => setJumpLookupPageInput(e.target.value)}
               onBlur={handleJump}
-              className="w-12 px-1 py-1 bg-white border border-gray-300 rounded text-xs font-mono font-bold text-center text-gray-800 outline-none focus:border-[#3483FA]"
+              className="w-12 px-1 py-1 bg-white border border-gray-300 rounded text-xs font-mono font-bold text-center text-gray-800 outline-none focus:border-[var(--ecooy-primary)]"
             />
           </form>
         </div>
@@ -770,7 +770,7 @@ export const IdLookup: React.FC<IdLookupProps> = ({ rows, onNavigateToUpload }) 
                                 Detalhes do ID: <span className="text-gray-900 font-mono font-bold text-xs">{match.searchTerm}</span>
                               </div>
                               {match.row.rawFields?.['Lista de Coleta'] && (
-                                <span className="bg-blue-100 text-[#3483FA] text-[10px] font-bold px-2 py-0.5 rounded border border-blue-200">
+                                <span className="bg-blue-100 text-[var(--ecooy-primary)] text-[10px] font-bold px-2 py-0.5 rounded border border-blue-200">
                                   Origem: {match.row.rawFields['Lista de Coleta']}
                                 </span>
                               )}

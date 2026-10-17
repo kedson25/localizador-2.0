@@ -339,7 +339,7 @@ export const RefugoDashboardChart: React.FC<RefugoDashboardChartProps> = ({
               onClick={() => setChartType('area')}
               className={`flex items-center gap-1 px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
                 chartType === 'area'
-                  ? 'bg-white text-[#3483FA] shadow-xs'
+                  ? 'bg-white text-[var(--ecooy-primary)] shadow-xs'
                   : 'hover:text-gray-900 text-gray-500'
               }`}
               title="Gráfico de Área Contínua"
@@ -352,7 +352,7 @@ export const RefugoDashboardChart: React.FC<RefugoDashboardChartProps> = ({
               onClick={() => setChartType('bar')}
               className={`flex items-center gap-1 px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
                 chartType === 'bar'
-                  ? 'bg-white text-[#3483FA] shadow-xs'
+                  ? 'bg-white text-[var(--ecooy-primary)] shadow-xs'
                   : 'hover:text-gray-900 text-gray-500'
               }`}
               title="Gráfico de Barras Comparativas"
@@ -365,7 +365,7 @@ export const RefugoDashboardChart: React.FC<RefugoDashboardChartProps> = ({
               onClick={() => setChartType('percent')}
               className={`flex items-center gap-1 px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
                 chartType === 'percent'
-                  ? 'bg-white text-[#3483FA] shadow-xs'
+                  ? 'bg-white text-[var(--ecooy-primary)] shadow-xs'
                   : 'hover:text-gray-900 text-gray-500'
               }`}
               title="Gráfico de Proporção Percentual (100%)"
