@@ -19,6 +19,7 @@ import { SettingsPage } from './components/SettingsPage';
 import { Login } from './components/Login';
 import { AdminPanel } from './components/AdminPanel';
 import { OperationNavigation } from './components/OperationNavigation';
+import { ReportsBpp } from './components/ReportsBpp';
 import { ExpedicaoPanel } from './components/ExpedicaoPanel';
 import { User, getCurrentUser } from './lib/auth';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -77,6 +78,7 @@ export default function App() {
         location.pathname.startsWith('/remover') ? 'Remover' :
         location.pathname.startsWith('/reporte') ? 'Reporte' :
         location.pathname.startsWith('/expedicao') ? 'Controle de Docas' :
+        location.pathname.startsWith('/reports') ? 'Reports' :
         location.pathname.startsWith('/configuracoes') ? 'Configurações' :
         location.pathname.startsWith('/admin') ? 'Admin' : 'Módulos';
       try {
@@ -139,6 +141,7 @@ export default function App() {
           <Route path="/login" element={isAuthenticated ? <Navigate to="/" replace /> : <Login onLogin={(user) => { setCurrentUser(user); navigate('/'); }} />} />
           {isAuthenticated && <>
             <Route path="/" element={<ToolsHub totalRows={rows.length} groups={groups} onClear={handleClear} currentUser={currentUser} />} />
+            <Route path="/reports" element={dedicatedOperation(<ReportsBpp />)} />
             <Route path="/configuracoes" element={insideDashboard(<SettingsPage currentUser={currentUser} />)} />
             {currentUser?.isAdmin && <Route path="/admin" element={insideDashboard(<AdminPanel currentUser={currentUser} />)} />}
             {(currentUser?.isAdmin || currentUser?.allowedGroups?.includes('consulta')) && <Route path="/consulta" element={insideDashboard(<div className="space-y-4"><StatsSummary totalRows={rows.length} groups={groups} /><IdLookupEnhanced rows={rows} onNavigateToUpload={() => navigate('/upload')} /></div>)} />}
