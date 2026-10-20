@@ -213,6 +213,7 @@ export const ToolsHub: React.FC<ToolsHubProps> = ({
   }, [userDrawerOpen]);
 
   const allBacklogTools: ToolItem[] = [
+    { id: 'reports', path: '/reports', name: 'Reports • BPP', description: 'Cruzar BPP, rotas otimizadas e valores USD.', tag: 'Relatório', icon: BarChart3, iconClass: 'text-blue-600', iconBoxClass: 'bg-blue-50', badgeClass: 'border-blue-200 bg-blue-50 text-blue-700' },
     {
       id: 'listas',
       path: '/listas',
@@ -271,7 +272,7 @@ export const ToolsHub: React.FC<ToolsHubProps> = ({
   ];
 
   const backlogTools = allBacklogTools.filter(
-    tool => currentUser?.isAdmin || currentUser?.allowedGroups?.includes(tool.id)
+    tool => tool.id === 'reports' || currentUser?.isAdmin || currentUser?.allowedGroups?.includes(tool.id)
   );
 
   const canUpload = currentUser?.isAdmin || currentUser?.allowedGroups?.includes('upload');
@@ -362,7 +363,7 @@ export const ToolsHub: React.FC<ToolsHubProps> = ({
             </button>
 
             {currentUser?.isAdmin && (
-              <button type="button" onClick={() => navigate('/admin')} className="flex w-full items-center gap-4 rounded-xl px-4 py-3 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900">
+              <button type="button" onClick={() => navigate('/reports')} className="flex w-full items-center gap-4 rounded-xl px-4 py-3 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900">
                 <BarChart3 className="h-5 w-5" />
                 Relatórios
               </button>
