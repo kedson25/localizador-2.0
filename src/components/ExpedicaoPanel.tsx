@@ -822,11 +822,32 @@ export function ExpedicaoPanel() {
                     <button type="button" onClick={copyMissing} disabled={numbersLoading} className="inline-flex items-center gap-1 border border-slate-300 px-2 py-1 text-[10px] font-black text-slate-700 disabled:opacity-50" title="Copiar IDs faltantes com status e listas"><Copy className="h-3 w-3" />Copiar</button>
                   </div>
                 </div>
-                {!selectedDoca ? (
+                {copiedLabel && <div role="status" className="bg-emerald-50 px-3 py-1.5 text-[10px] font-black text-emerald-800">{copiedLabel}</div>}
+                 {(selectedDoca ? latestNewErrors.filter(item => item.doca === selectedDoca) : latestNewErrors).length > 0 && (
+                   <div className="border-b border-rose-200 bg-rose-50 p-3">
+                     <h4 className="text-[10px] font-black uppercase text-rose-800">Novos erros • última importação</h4>
+                     {(selectedDoca ? latestNewErrors.filter(item => item.doca === selectedDoca) : latestNewErrors).slice(0, 8).map(change => (
+                       <div key={change.id} className="mt-1 text-xs text-rose-900"><b>Vaga {change.doca} • Onda {dockWave(change.doca)}</b> — {change.mensagem}</div>
+                     ))}
+                   </div>
+                 )}
+                 {selectedDoca && Boolean(highValueByDock.get(selectedDoca)?.length) && (
+                   <div className="border-b-2 border-rose-400 bg-rose-50 p-3">
+                     <h4 className="flex items-center gap-1 text-xs font-black text-rose-800"><AlertTriangle className="h-4 w-4" />Pacotes de alto valor nesta vaga</h4>
+                     {highValueByDock.get(selectedDoca)!.map(({ item, status, onda }) => (
+                       <div key={item.pacote} className="mt-2 border border-rose-200 bg-white px-2 py-1.5 text-xs">
+                         <div className="font-mono font-black">{item.pacote}</div>
+                         <div className="text-rose-700">{formatHighValue(item)}</div>
+                         <div className="text-slate-600">{status} • Onda {onda || dockWave(selectedDoca)}</div>
+                       </div>
+                     ))}
+                   </div>
+                 )}
+                 {!selectedDoca ? (
                   <p className="px-4 py-10 text-center text-sm text-slate-500">Selecione uma vaga para visualizar os IDs.</p>
                 ) : selectedDockRows.length ? (
                   <div className="divide-y divide-slate-200">
-                    {selectedDockRows.map(row => {
+                    {orderedDockRows.map(row => {
                       const checked = Boolean(store.localizados?.[row.pacote]);
                       const backlog = backlogById[row.pacote] || [];
                       const found = checked || backlog.length > 0;
@@ -835,7 +856,7 @@ export function ExpedicaoPanel() {
                           <span className="flex items-start gap-3">
                             <input type="checkbox" disabled={syncState !== 'synced'} checked={checked} onChange={() => toggleLocated(row.pacote)} className="mt-1 h-5 w-5 shrink-0 accent-slate-800 disabled:cursor-not-allowed" />
                             <span className="min-w-0 flex-1">
-                              <span className="flex items-start justify-between gap-2"><b className="font-mono text-sm">{row.pacote}</b><span className={`text-[9px] font-black uppercase ${row.classificacao === 'A mais' ? 'text-red-600' : 'text-amber-700'}`}>{row.classificacao}</span></span>
+                              <span className="flex items-start justify-between gap-2"><b className="font-mono text-sm">{row.pacote}{newErrorIds.has(row.pacote) && <span className="ml-1 bg-rose-600 px-1 py-0.5 text-[9px] text-white">NOVO ERRO</span>}</b><span className={`text-[9px] font-black uppercase ${row.classificacao === 'A mais' ? 'text-red-600' : 'text-amber-700'}`}>{row.classificacao}</span></span>
                               <span className="mt-1 block text-[10px] text-slate-600"><b>Aqui:</b> VAGA {row.encontradoDoca}{routeLabel(row.encontradoRota) ? ` • ${routeLabel(row.encontradoRota)}` : ''}</span>
                               {backlog.length > 0 && <span className="mt-1 block text-[10px] font-black text-emerald-700"><CheckCircle2 className="mr-1 inline h-3 w-3" />EM LISTA • {occurrenceLabel(backlog[0])}</span>}
                             </span>
@@ -869,6 +890,7 @@ export function ExpedicaoPanel() {
                   <option value="pendentes">Pendentes</option>
                 </select>
                 {selectedDoca && <button type="button" onClick={() => setSelectedDoca(null)} className="h-9 border border-slate-300 bg-white px-3 text-xs font-black text-slate-600">Todas as vagas</button>}
+                 <button type="button" onClick={copyMissing} disabled={numbersLoading} className="inline-flex h-9 items-center gap-1 border border-slate-300 bg-white px-3 text-xs font-black disabled:opacity-50"><Copy className="h-4 w-4" />Copiar faltantes</button>}
                 {searchBox('ID, rota, placa ou vaga', 'ml-auto')}
               </div>
               <div className="mt-2 text-[10px] font-bold text-slate-500">{filteredAduanaRows.length} resultado(s)</div>
