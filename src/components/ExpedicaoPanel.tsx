@@ -686,6 +686,7 @@ export function ExpedicaoPanel() {
       <input ref={baseInput} className="hidden" type="file" accept=".csv,text/csv" onChange={event => event.target.files?.[0] && importFile(event.target.files[0], 'base')} />
       <input ref={aduanaInput} className="hidden" type="file" accept=".csv,text/csv" onChange={event => event.target.files?.[0] && importFile(event.target.files[0], 'aduana')} />
       <input ref={auditInput} className="hidden" type="file" accept=".csv,text/csv" onChange={event => event.target.files?.[0] && importFile(event.target.files[0], 'auditoria')} />
+      <input ref={highValueInput} className="hidden" type="file" accept=".csv,text/csv" onChange={event => event.target.files?.[0] && importHighValue(event.target.files[0])} />
 
       <section className="border border-slate-300 bg-white p-3 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -734,6 +735,8 @@ export function ExpedicaoPanel() {
             {store.base.length === 0 && upload('Despacho', baseInput)}
             {tab === 'aduana' && upload('Aduana', aduanaInput)}
             {tab === 'auditoria' && upload('Auditoria', auditInput)}
+            <button type="button" onClick={() => setSettingsOpen(value => !value)} className="inline-flex h-9 items-center gap-2 border border-slate-300 bg-white px-3 text-xs font-black hover:bg-slate-50"><Settings2 className="h-4 w-4" />Configurações</button>
+            <label className="inline-flex h-9 items-center gap-2 border border-slate-300 bg-white px-3 text-xs font-bold"><input type="checkbox" checked={voiceEnabled} onChange={event => setVoiceEnabled(event.target.checked)} /><Volume2 className="h-4 w-4" />Avisos por voz</label>
             <button
               type="button"
               onClick={() => setReportOpen(true)}
@@ -753,7 +756,21 @@ export function ExpedicaoPanel() {
         </div>
       </section>
 
-      {error && <div className="border border-amber-300 bg-white px-3 py-2 text-xs font-bold text-amber-900">{error}</div>}
+      {settingsOpen && (
+        <section className="border border-rose-300 bg-white p-4 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="font-black text-slate-900">Alto valor • Controle de Docas</h3>
+              <p className="text-xs text-slate-600">CSV: id, valor br, valor usd. Acima de R$ 300 (ou US$ 300 quando BR não for informado). Compartilhado com os operadores.</p>
+              <p className="mt-1 text-xs text-slate-500">{highValueFilename || 'Nenhum CSV carregado'} • {highValueRows.length} IDs • {highValueById.size} de alto valor</p>
+            </div>
+            <button type="button" disabled={highValueLoading} onClick={() => highValueInput.current?.click()} className="inline-flex h-9 items-center gap-2 bg-rose-700 px-4 text-xs font-black text-white disabled:opacity-50">
+              <UploadCloud className="h-4 w-4" />{highValueLoading ? 'Carregando...' : 'Alto valor'}
+            </button>
+          </div>
+        </section>
+      )}
+      {error && <div className="border border-amber-300 bg-white px-3 py-2 text-xs font-bold text-amber-900">{error}</div>
 
       {tab === 'ranking' ? <RankingAuditores aduana={cycleStore.aduana} auditoria={cycleStore.auditoria} cycle={cycle} /> : tab === 'aduana' ? (
         <>
