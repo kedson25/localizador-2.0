@@ -790,7 +790,7 @@ export function ExpedicaoPanel() {
           </div>
         </section>
       )}
-      {error && <div className="border border-amber-300 bg-white px-3 py-2 text-xs font-bold text-amber-900">{error}</div>
+      {error && <div className="border border-amber-300 bg-white px-3 py-2 text-xs font-bold text-amber-900">{error}</div>}
 
       {tab === 'ranking' ? <RankingAuditores aduana={cycleStore.aduana} auditoria={cycleStore.auditoria} cycle={cycle} /> : tab === 'aduana' ? (
         <>
