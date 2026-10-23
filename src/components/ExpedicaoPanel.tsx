@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
-import { CheckCircle2, Download, FileText, Search, Share2, Trash2, UploadCloud, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Copy, Download, FileText, Search, Settings2, Share2, Trash2, UploadCloud, Volume2, X } from 'lucide-react';
 import { RankingAuditores } from './RankingAuditores';
 import { getLocalValue, setLocalValue } from '../lib/localPersistence';
+import { clearHighValuePackages, listenHighValuePackages, saveHighValuePackages } from '../lib/highValueDocas';
+import { formatHighValue, isHighValue, parseHighValueCsv, type HighValuePackage } from '../lib/highValueParser';
 import {
   listenExpedicaoShared,
   resetExpedicaoShared,
@@ -193,10 +195,18 @@ export function ExpedicaoPanel() {
   const [error, setError] = useState('');
   const [syncState, setSyncState] = useState<SyncState>('connecting');
   const [backlogById, setBacklogById] = useState<Record<string, TodayListOccurrence[]>>({});
+  const [highValueRows, setHighValueRows] = useState<HighValuePackage[]>([]);
+  const [highValueFilename, setHighValueFilename] = useState('');
+  const [highValueLoading, setHighValueLoading] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [copiedLabel, setCopiedLabel] = useState('');
+  const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const announcedImport = useRef<string | null>(null);
 
   const baseInput = useRef<HTMLInputElement>(null);
   const aduanaInput = useRef<HTMLInputElement>(null);
   const auditInput = useRef<HTMLInputElement>(null);
+  const highValueInput = useRef<HTMLInputElement>(null);
   const reportRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -236,6 +246,27 @@ export function ExpedicaoPanel() {
       setError('Sem conexão com a sincronização.');
     });
   }, [hydrated]);
+
+  useEffect(() => listenHighValuePackages(snapshot => {
+    setHighValueRows(snapshot.items);
+    setHighValueFilename(snapshot.filename);
+  }, cause => {
+    console.error('[Controle de Docas] falha ao sincronizar alto valor:', cause);
+    setError('Falha ao carregar os pacotes de alto valor compartilhados.');
+  }), []);
+
+  const importHighValue = async (file: File) => {
+    setHighValueLoading(true);
+    setError('');
+    try {
+      await saveHighValuePackages(parseHighValueCsv(await file.text()), file.name);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Falha ao carregar o CSV de alto valor.');
+    } finally {
+      setHighValueLoading(false);
+      if (highValueInput.current) highValueInput.current.value = '';
+    }
+  };
 
   const importFile = async (file: File, source: FonteImportacaoExpedicao) => {
     setScreenReady(false);
@@ -287,6 +318,7 @@ export function ExpedicaoPanel() {
     setError('');
     try {
       await resetExpedicaoShared();
+      await clearHighValuePackages();
       setSelectedDoca(null);
       setSelectedStreet(null);
       setQuery('');
@@ -331,6 +363,73 @@ export function ExpedicaoPanel() {
   const enriched = useMemo(() => enrichExpedicao(cycleStore), [cycleStore]);
   const aduanaRows = useMemo(() => enriched.filter(row => row.origem === 'aduana'), [enriched]);
   const auditoriaRows = useMemo(() => enriched.filter(row => row.origem === 'auditoria'), [enriched]);
+  const highValueById = useMemo(() => new Map(highValueRows.filter(isHighValue).map(item => [item.pacote, item])), [highValueRows]);
+  const highValueByDock = useMemo(() => {
+    type Entry = { item: HighValuePackage; status: string; onda: string };
+    const docks = new Map<string, Map<string, Entry>>();
+    const lastStatus = new Map([...store.auditoria, ...store.aduana].map(row => [row.pacote, row.estado]));
+    const actualDock = new Map([...auditoriaRows, ...aduanaRows].filter(row => row.vagaOperacional).map(row => [row.pacote, row.vagaOperacional]));
+    const classify = (pacote: string) => {
+      const raw = String(lastStatus.get(pacote) || '').trim();
+      if (/avari/i.test(raw)) return 'Avariado';
+      if (/falt/i.test(raw)) return 'Faltante';
+      if (/a mais|excedent|sobrante/i.test(raw)) return 'A mais';
+      return raw || (store.localizados?.[pacote] ? 'Localizado' : 'Pendente');
+    };
+    const add = (doca: string, pacote: string, onda: string) => {
+      const item = highValueById.get(pacote);
+      if (!doca || !item) return;
+      if (!docks.has(doca)) docks.set(doca, new Map());
+      docks.get(doca)!.set(pacote, { item, status: classify(pacote), onda });
+    };
+    const inBase = new Set<string>();
+    cycleStore.base.forEach(row => {
+      if (!highValueById.has(row.pacote)) return;
+      inBase.add(row.pacote);
+      add(actualDock.get(row.pacote) || row.doca, row.pacote, row.onda || getRouteCycle(row.rotaOtimizada) || '');
+    });
+    [...auditoriaRows, ...aduanaRows].forEach(row => {
+      if (!inBase.has(row.pacote)) add(row.vagaOperacional, row.pacote, row.onda || row.destinoOnda || '');
+    });
+    return new Map([...docks].map(([dock, rows]) => [dock, [...rows.values()]]));
+  }, [cycleStore.base, highValueById, store.auditoria, store.aduana, store.localizados, aduanaRows, auditoriaRows]);
+
+  const dockWave = (doca: string) => {
+    const waves = new Set([
+      ...cycleStore.base.filter(row => row.doca === doca).map(row => row.onda || getRouteCycle(row.rotaOtimizada) || ''),
+      ...aduanaRows.filter(row => row.vagaOperacional === doca).map(row => row.onda || row.destinoOnda || getRouteCycle(row.encontradoRota) || ''),
+    ].filter(Boolean));
+    return [...waves].sort().join(', ') || (cycle === 'todos' ? 'não informada' : cycle);
+  };
+
+  const latestNewErrors = useMemo(() => (store.ultimaComparacao || [])
+    .filter(change => change.tipo === 'novo_erro')
+    .sort((a, b) => b.registradoEm.localeCompare(a.registradoEm)), [store.ultimaComparacao]);
+  const newErrorIds = useMemo(() => new Set(latestNewErrors.map(change => change.pacote)), [latestNewErrors]);
+
+  useEffect(() => {
+    if (!remoteReady) return;
+    const key = store.ultimaImportacao?.registradoEm || '';
+    if (announcedImport.current === null) { announcedImport.current = key; return; }
+    if (!key || key === announcedImport.current) return;
+    announcedImport.current = key;
+    const changes = store.ultimaComparacao || [];
+    if (!voiceEnabled || !changes.length || !('speechSynthesis' in window)) return;
+    const grouped = new Map<string, number>();
+    changes.forEach(item => {
+      if (item.doca) grouped.set(item.doca, (grouped.get(item.doca) || 0) + 1);
+    });
+    if (!grouped.size) return;
+    const message = [...grouped].slice(0, 5).map(([doca, total]) => {
+      const ondas = new Set(store.base.filter(row => row.doca === doca)
+        .map(row => row.onda || getRouteCycle(row.rotaOtimizada) || '').filter(Boolean));
+      return `Vaga ${doca}, onda ${[...ondas].join(', ') || 'não informada'}, ${total} alterações.`;
+    }).join(' ');
+    window.speechSynthesis.cancel();
+    const speech = new SpeechSynthesisUtterance(message);
+    speech.lang = 'pt-BR';
+    window.speechSynthesis.speak(speech);
+  }, [remoteReady, store.ultimaImportacao?.registradoEm, store.ultimaComparacao, store.base, voiceEnabled]);
 
   const aduanaIdsKey = useMemo(() => aduanaRows.map(row => row.pacote).sort().join('|'), [aduanaRows]);
   useEffect(() => {
@@ -439,6 +538,36 @@ export function ExpedicaoPanel() {
     () => selectedDoca ? aduanaRows.filter(row => row.vagaOperacional === selectedDoca) : [],
     [aduanaRows, selectedDoca],
   );
+  const orderedDockRows = useMemo(() => [...selectedDockRows].sort((a, b) =>
+    Number(newErrorIds.has(b.pacote)) - Number(newErrorIds.has(a.pacote))
+  ), [selectedDockRows, newErrorIds]);
+
+  const copyMissing = async () => {
+    const rows = (selectedDoca ? selectedDockRows : filteredAduanaRows).filter(row => row.classificacao === 'Faltante');
+    if (!rows.length) { setCopiedLabel('Nenhum faltante para copiar'); return; }
+    const contents = [
+      `Faltantes • ${selectedDoca ? `Vaga ${selectedDoca} • Onda ${dockWave(selectedDoca)}` : `Ciclo ${cycle}`}`,
+      ...rows.map(row => {
+        const lista = backlogById[row.pacote] || [];
+        const found = Boolean(store.localizados?.[row.pacote]) || lista.length > 0;
+        const error = row.destinoConfirmado && sameRoute(row.encontradoRota, row.destinoRota);
+        return `${row.pacote} | Status: ${error ? 'ERRO DE ALOCAÇÃO' : found ? 'ENCONTRADO' : 'PENDENTE'} | Tipo: Faltante | Lista: ${lista.length ? lista.map(item => item.listaNome).join(', ') : 'NÃO'} | Vaga: ${row.vagaOperacional || 'NÃO LOCALIZADA'} | Onda: ${row.onda || row.destinoOnda || 'não informada'}`;
+      }),
+    ].join('\n');
+    try {
+      if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(contents);
+      else {
+        const element = document.createElement('textarea');
+        element.value = contents;
+        document.body.appendChild(element);
+        element.select();
+        const ok = document.execCommand('copy');
+        element.remove();
+        if (!ok) throw new Error('Área de transferência bloqueada');
+      }
+      setCopiedLabel(`${rows.length} IDs copiados`);
+    } catch { setError('Não foi possível copiar. Verifique as permissões da área de transferência.'); }
+  };
   const totalEmLista = useMemo(
     () => aduanaRows.filter(row => (backlogById[row.pacote]?.length || 0) > 0).length,
     [aduanaRows, backlogById],
