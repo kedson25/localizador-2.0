@@ -815,7 +815,7 @@ export function ExpedicaoPanel() {
                     <div className="mt-2 text-[10px] font-bold text-slate-600">{pendingNumber(`${item.encontrados}/${item.total}`, 'w-14')} encontrados</div>
                     <div className="mt-0.5 text-[9px] font-bold text-slate-400">{pendingNumber(item.emLista)} em lista do dia</div>
                      <div className="mt-1 text-[9px] font-bold text-slate-500">Onda {dockWave(item.doca)}</div>
-                     {Boolean(highValueByDock.get(item.doca)?.length) && <div className="mt-1 inline-flex items-center gap-1 bg-rose-700 px-1.5 py-0.5 text-[9px] font-black text-white"><AlertTriangle className="h-3 w-3" />ALTO VALOR • {highValueByDock.get(item.doca)?.length}</div>
+                     {Boolean(highValueByDock.get(item.doca)?.length) && <div className="mt-1 inline-flex items-center gap-1 bg-rose-700 px-1.5 py-0.5 text-[9px] font-black text-white"><AlertTriangle className="h-3 w-3" />ALTO VALOR • {highValueByDock.get(item.doca)?.length}</div>}
                     {item.rotasEncontradas.length > 0 && (
                       <div className="mt-2">
                         <div className="text-[8px] font-black uppercase tracking-wide text-slate-400">Rotas encontradas</div>
@@ -910,7 +910,7 @@ export function ExpedicaoPanel() {
                   <option value="pendentes">Pendentes</option>
                 </select>
                 {selectedDoca && <button type="button" onClick={() => setSelectedDoca(null)} className="h-9 border border-slate-300 bg-white px-3 text-xs font-black text-slate-600">Todas as vagas</button>}
-                 <button type="button" onClick={copyMissing} disabled={numbersLoading} className="inline-flex h-9 items-center gap-1 border border-slate-300 bg-white px-3 text-xs font-black disabled:opacity-50"><Copy className="h-4 w-4" />Copiar faltantes</button>}
+                 <button type="button" onClick={copyMissing} disabled={numbersLoading} className="inline-flex h-9 items-center gap-1 border border-slate-300 bg-white px-3 text-xs font-black disabled:opacity-50"><Copy className="h-4 w-4" />Copiar faltantes</button>
                 {searchBox('ID, rota, placa ou vaga', 'ml-auto')}
               </div>
               <div className="mt-2 text-[10px] font-bold text-slate-500">{filteredAduanaRows.length} resultado(s)</div>
