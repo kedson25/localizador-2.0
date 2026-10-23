@@ -788,12 +788,14 @@ export function ExpedicaoPanel() {
                     key={item.doca}
                     type="button"
                     onClick={() => setSelectedDoca(selectedDoca === item.doca ? null : item.doca)}
-                    className={`min-h-[128px] border p-3 text-left transition ${item.concluida ? 'border-slate-400 bg-slate-200 text-slate-700' : 'border-slate-300 bg-white'} ${selectedDoca === item.doca ? 'ring-2 ring-slate-900' : ''}`}
+                    className={`min-h-[128px] border p-3 text-left transition ${item.concluida ? 'border-slate-400 bg-slate-200 text-slate-700' : 'border-slate-300 bg-white'} ${highValueByDock.get(item.doca)?.length ? 'outline outline-4 outline-offset-1 outline-rose-600' : ''} ${selectedDoca === item.doca ? 'ring-2 ring-slate-900' : ''}`}
                   >
                     <div className="flex items-center justify-between gap-2"><span className="font-black">VAGA {item.doca}</span><span className="text-sm font-black">{pendingNumber(`${item.percentual}%`)}</span></div>
                     <div className="mt-2 grid grid-cols-2 gap-2 text-xs"><span>A+ <b className="text-red-600">{pendingNumber(item.amais)}</b></span><span>Falt. <b className="text-amber-700">{pendingNumber(item.faltantes)}</b></span></div>
                     <div className="mt-2 text-[10px] font-bold text-slate-600">{pendingNumber(`${item.encontrados}/${item.total}`, 'w-14')} encontrados</div>
                     <div className="mt-0.5 text-[9px] font-bold text-slate-400">{pendingNumber(item.emLista)} em lista do dia</div>
+                     <div className="mt-1 text-[9px] font-bold text-slate-500">Onda {dockWave(item.doca)}</div>
+                     {Boolean(highValueByDock.get(item.doca)?.length) && <div className="mt-1 inline-flex items-center gap-1 bg-rose-700 px-1.5 py-0.5 text-[9px] font-black text-white"><AlertTriangle className="h-3 w-3" />ALTO VALOR • {highValueByDock.get(item.doca)?.length}</div>
                     {item.rotasEncontradas.length > 0 && (
                       <div className="mt-2">
                         <div className="text-[8px] font-black uppercase tracking-wide text-slate-400">Rotas encontradas</div>
@@ -815,7 +817,10 @@ export function ExpedicaoPanel() {
               <aside className="h-[610px] overflow-y-auto border border-slate-300 bg-slate-50 xl:sticky xl:top-20">
                 <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-300 bg-white px-3 py-2.5">
                   <h3 className="font-black text-slate-950">{selectedDoca ? `VAGA ${selectedDoca}` : 'IDs da vaga'}</h3>
-                  <span className="text-[10px] font-black text-slate-500">{selectedDoca ? `${selectedDockRows.length} itens` : 'selecione uma vaga'}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-black text-slate-500">{selectedDoca ? `${selectedDockRows.length} itens • Onda ${dockWave(selectedDoca)}` : 'selecione uma vaga'}</span>
+                    <button type="button" onClick={copyMissing} disabled={numbersLoading} className="inline-flex items-center gap-1 border border-slate-300 px-2 py-1 text-[10px] font-black text-slate-700 disabled:opacity-50" title="Copiar IDs faltantes com status e listas"><Copy className="h-3 w-3" />Copiar</button>
+                  </div>
                 </div>
                 {!selectedDoca ? (
                   <p className="px-4 py-10 text-center text-sm text-slate-500">Selecione uma vaga para visualizar os IDs.</p>
