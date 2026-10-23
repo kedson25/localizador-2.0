@@ -768,6 +768,26 @@ export function ExpedicaoPanel() {
               <UploadCloud className="h-4 w-4" />{highValueLoading ? 'Carregando...' : 'Alto valor'}
             </button>
           </div>
+          <div className="mt-3 max-h-[320px] overflow-auto border border-slate-200">
+            <table className="w-full min-w-[660px] text-left text-xs">
+              <thead className="sticky top-0 bg-slate-100"><tr>
+                {['Onda', 'Vaga', 'ID', 'Valor BR / USD', 'Status'].map(label => <th key={label} className="border-b border-slate-200 px-2 py-2 font-black">{label}</th>)}
+              </tr></thead>
+              <tbody>
+                {[...highValueByDock.entries()].sort(([a], [b]) => a.localeCompare(b, 'pt-BR', { numeric: true }))
+                  .flatMap(([doca, entries]) => entries.map(({ item, onda, status }) => (
+                    <tr key={`${doca}-${item.pacote}`} className="border-b border-slate-100">
+                      <td className="px-2 py-2 font-bold">{onda || dockWave(doca)}</td>
+                      <td className="px-2 py-2 font-black">{doca}</td>
+                      <td className="px-2 py-2 font-mono">{item.pacote}</td>
+                      <td className="px-2 py-2 text-rose-700">{formatHighValue(item)}</td>
+                      <td className="px-2 py-2">{status}</td>
+                    </tr>
+                  )))}
+              </tbody>
+            </table>
+            {!highValueByDock.size && <p className="px-3 py-4 text-xs text-slate-500">Nenhum pacote de alto valor associado a uma vaga no ciclo atual.</p>}
+          </div>
         </section>
       )}
       {error && <div className="border border-amber-300 bg-white px-3 py-2 text-xs font-bold text-amber-900">{error}</div>
