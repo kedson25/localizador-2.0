@@ -10,9 +10,6 @@ import {
   Printer,
   RefreshCw,
   Trash2,
-  Pause,
-  Play,
-  ArrowUpRight,
   Sparkles,
   Link2,
   Calendar,
@@ -23,6 +20,9 @@ import {
   X,
   AlertCircle,
   HelpCircle,
+  Share2,
+  Sliders,
+  CheckCircle2,
 } from 'lucide-react';
 import { QRCodeSVG, QRCodeCanvas } from 'qrcode.react';
 import {
@@ -30,10 +30,9 @@ import {
   listenToDynamicQrs,
   createDynamicQr,
   updateDynamicQrTarget,
-  toggleDynamicQrStatus,
   deleteDynamicQr,
-  getPermanentQrUrl,
   normalizeUrl,
+  getDirectQrUrl,
 } from '../lib/dynamicQr';
 import type { User } from '../lib/auth';
 
@@ -43,11 +42,12 @@ interface DynamicQRsProps {
 
 const CATEGORIES = [
   'Operação',
+  'Rotas & Despacho',
   'Auditoria',
   'Refugo',
   'Docas',
-  'Comunicação',
-  'RH',
+  'WhatsApp & Grupos',
+  'Planilhas',
   'Geral',
 ];
 
@@ -56,38 +56,39 @@ export const DynamicQRs: React.FC<DynamicQRsProps> = ({ currentUser }) => {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('todos');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'paused'>('all');
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  // Gerador Rápido no topo (Live Quick Generator)
+  const [quickUrl, setQuickUrl] = useState('https://docs.google.com/spreadsheets/');
+  const [quickTitle, setQuickTitle] = useState('Planilha Operacional');
+  const [quickCategory, setQuickCategory] = useState('Operação');
+  const [quickSaved, setQuickSaved] = useState(false);
+  const [quickSaving, setQuickSaving] = useState(false);
 
   // Modais
   const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [editingQr, setEditingQr] = useState<DynamicQr | null>(null);
   const [changingTargetQr, setChangingTargetQr] = useState<DynamicQr | null>(null);
   const [viewingQr, setViewingQr] = useState<DynamicQr | null>(null);
 
-  // Form states
+  // Formulário de Criação Completo
   const [formTitle, setFormTitle] = useState('');
   const [formTargetUrl, setFormTargetUrl] = useState('');
-  const [formCustomCode, setFormCustomCode] = useState('');
   const [formCategory, setFormCategory] = useState('Operação');
   const [formDescription, setFormDescription] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  // Troca de link rápido
+  // Modal de Troca de Link Direto
   const [newTargetInput, setNewTargetInput] = useState('');
   const [targetError, setTargetError] = useState<string | null>(null);
 
-  // Notificações
+  // Notificações / Toast
   const [toast, setToast] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(null), 3500);
   };
-
-  // Canvas ref para exportação de PNG em alta resolução
-  const hiddenCanvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     const unsubscribe = listenToDynamicQrs(
@@ -103,14 +104,15 @@ export const DynamicQRs: React.FC<DynamicQRsProps> = ({ currentUser }) => {
     return () => unsubscribe();
   }, []);
 
-  const handleCopyLink = (code: string, id: string) => {
-    const url = getPermanentQrUrl(code);
-    navigator.clipboard.writeText(url).then(() => {
+  // Copiar link direto para o clipboard
+  const handleCopyDirectLink = (url: string, id: string) => {
+    const directUrl = normalizeUrl(url);
+    navigator.clipboard.writeText(directUrl).then(() => {
       setCopiedId(id);
-      showToast('Link permanente copiado para a área de transferência!');
+      showToast('Link direto copiado com sucesso!');
       setTimeout(() => setCopiedId(null), 2000);
     }).catch(() => {
-      showToast('Link: ' + url);
+      showToast('Link: ' + directUrl);
     });
   };
 
@@ -118,14 +120,13 @@ export const DynamicQRs: React.FC<DynamicQRsProps> = ({ currentUser }) => {
   const openCreateModal = () => {
     setFormTitle('');
     setFormTargetUrl('');
-    setFormCustomCode('');
     setFormCategory('Operação');
     setFormDescription('');
     setFormError(null);
     setIsCreateOpen(true);
   };
 
-  // Salvar novo QR Code
+  // Salvar novo QR direto no catálogo
   const handleSaveNew = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formTitle.trim()) {
@@ -133,7 +134,7 @@ export const DynamicQRs: React.FC<DynamicQRsProps> = ({ currentUser }) => {
       return;
     }
     if (!formTargetUrl.trim()) {
-      setFormError('Informe a URL ou link de destino.');
+      setFormError('Informe a URL ou link direto.');
       return;
     }
 
@@ -145,32 +146,57 @@ export const DynamicQRs: React.FC<DynamicQRsProps> = ({ currentUser }) => {
         targetUrl: formTargetUrl,
         category: formCategory,
         description: formDescription,
-        customCode: formCustomCode,
         createdBy: currentUser?.username || 'Operador',
       });
 
       setIsCreateOpen(false);
-      showToast('QR Code Dinâmico criado com sucesso!');
+      showToast('QR Code Direto salvo com sucesso!');
     } catch (err: any) {
       console.error('Erro ao criar QR:', err);
-      setFormError(err.message || 'Falha ao criar QR Code.');
+      setFormError(err.message || 'Falha ao salvar QR Code.');
     } finally {
       setSaving(false);
     }
   };
 
-  // Abrir modal de troca rápida de link
+  // Salvar do Gerador Rápido no catálogo
+  const handleSaveQuick = async () => {
+    if (!quickUrl.trim()) {
+      showToast('Digite uma URL antes de salvar.');
+      return;
+    }
+    try {
+      setQuickSaving(true);
+      await createDynamicQr({
+        title: quickTitle.trim() || 'QR Direto',
+        targetUrl: quickUrl.trim(),
+        category: quickCategory,
+        description: 'Gerado via gerador direto rápido',
+        createdBy: currentUser?.username || 'Operador',
+      });
+      setQuickSaved(true);
+      showToast('QR Code salvo no seu catálogo!');
+      setTimeout(() => setQuickSaved(false), 3000);
+    } catch (err: any) {
+      showToast('Erro ao salvar QR: ' + err.message);
+    } finally {
+      setQuickSaving(false);
+    }
+  };
+
+  // Abrir modal de troca de link
   const openChangeTargetModal = (item: DynamicQr) => {
     setChangingTargetQr(item);
     setNewTargetInput(item.targetUrl);
     setTargetError(null);
   };
 
+  // Salvar novo link no QR Code
   const handleSaveNewTarget = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!changingTargetQr) return;
     if (!newTargetInput.trim()) {
-      setTargetError('Informe o novo link de destino.');
+      setTargetError('Informe o novo link direto.');
       return;
     }
 
@@ -179,7 +205,7 @@ export const DynamicQRs: React.FC<DynamicQRsProps> = ({ currentUser }) => {
       setTargetError(null);
       await updateDynamicQrTarget(changingTargetQr.id, newTargetInput);
       setChangingTargetQr(null);
-      showToast(`Link de destino atualizado! O QR Code permanece idêntico.`);
+      showToast(`Link atualizado com sucesso! O QR Code foi atualizado para o novo destino direto.`);
     } catch (err: any) {
       setTargetError(err.message || 'Falha ao atualizar link.');
     } finally {
@@ -187,82 +213,83 @@ export const DynamicQRs: React.FC<DynamicQRsProps> = ({ currentUser }) => {
     }
   };
 
-  // Alternar status
-  const handleToggleStatus = async (item: DynamicQr) => {
-    try {
-      await toggleDynamicQrStatus(item.id, item.status);
-      showToast(item.status === 'active' ? 'QR Code pausado.' : 'QR Code ativado!');
-    } catch (err: any) {
-      showToast('Erro ao alternar status do QR.');
-    }
-  };
-
   // Excluir QR
   const handleDelete = async (item: DynamicQr) => {
     const confirm = window.confirm(
-      `Tem certeza que deseja excluir o QR "${item.title}"? O link permanente deixará de funcionar imediatamente.`
+      `Tem certeza que deseja excluir o QR "${item.title}"?`
     );
     if (!confirm) return;
 
     try {
       await deleteDynamicQr(item.id);
-      showToast('QR Code excluído com sucesso.');
+      showToast('QR Code removido do catálogo.');
     } catch (err: any) {
       showToast('Erro ao excluir QR.');
     }
   };
 
-  // Download do QR em PNG
-  const downloadQrPng = (item: DynamicQr) => {
-    const canvas = document.getElementById(`qr-canvas-${item.code}`) as HTMLCanvasElement;
-    if (!canvas) {
-      showToast('Preparando imagem...');
-      return;
+  // Download do QR em PNG Alta Resolução
+  const downloadQrPng = (url: string, filenameTitle: string, elementId?: string) => {
+    let canvas: HTMLCanvasElement | null = null;
+    if (elementId) {
+      canvas = document.getElementById(elementId) as HTMLCanvasElement;
     }
-    const url = canvas.toDataURL('image/png');
+    if (!canvas) {
+      // Cria canvas temporário se necessário
+      canvas = document.createElement('canvas');
+      canvas.width = 1024;
+      canvas.height = 1024;
+    }
+
+    const dataUrl = canvas.toDataURL('image/png');
+    const safeName = filenameTitle.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
     const a = document.createElement('a');
-    a.href = url;
-    a.download = `qrcode-${item.code}-${item.title.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase()}.png`;
+    a.href = dataUrl;
+    a.download = `qrcode-direto-${safeName}.png`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-    showToast('Download do PNG iniciado!');
+    showToast('Download do PNG (1024px) concluído!');
   };
 
   // Download do QR em SVG
-  const downloadQrSvg = (item: DynamicQr) => {
-    const svg = document.getElementById(`qr-svg-${item.code}`) as unknown as SVGSVGElement;
-    if (!svg) return;
+  const downloadQrSvg = (elementId: string, filenameTitle: string) => {
+    const svg = document.getElementById(elementId) as unknown as SVGSVGElement;
+    if (!svg) {
+      showToast('Erro ao capturar imagem SVG.');
+      return;
+    }
     const svgData = new XMLSerializer().serializeToString(svg);
     const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
-    const url = URL.createObjectURL(svgBlob);
+    const blobUrl = URL.createObjectURL(svgBlob);
+    const safeName = filenameTitle.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
     const a = document.createElement('a');
-    a.href = url;
-    a.download = `qrcode-${item.code}.svg`;
+    a.href = blobUrl;
+    a.download = `qrcode-direto-${safeName}.svg`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    showToast('Download do SVG iniciado!');
+    URL.revokeObjectURL(blobUrl);
+    showToast('Download do SVG vetorial concluído!');
   };
 
-  // Imprimir etiqueta
-  const handlePrintLabel = (item: DynamicQr) => {
-    const permanentUrl = getPermanentQrUrl(item.code);
+  // Imprimir Etiqueta Direta
+  const handlePrintLabel = (title: string, category: string, directUrl: string, svgElementId: string, description?: string) => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
       showToast('Por favor, permita pop-ups para imprimir a etiqueta.');
       return;
     }
 
-    const svgElement = document.getElementById(`qr-svg-${item.code}`);
+    const svgElement = document.getElementById(svgElementId);
     const svgHtml = svgElement ? svgElement.outerHTML : '';
+    const normalized = normalizeUrl(directUrl);
 
     printWindow.document.write(`
       <!DOCTYPE html>
       <html>
         <head>
-          <title>Etiqueta QR - ${item.title}</title>
+          <title>Etiqueta QR Direto - ${title}</title>
           <style>
             @page { size: auto; margin: 10mm; }
             body {
@@ -311,15 +338,20 @@ export const DynamicQRs: React.FC<DynamicQRsProps> = ({ currentUser }) => {
               justify-content: center;
               margin: 14px 0;
             }
-            .short-link {
+            .qr-box svg {
+              width: 180px;
+              height: 180px;
+            }
+            .direct-link {
               font-family: monospace;
-              font-size: 13px;
+              font-size: 11px;
               font-weight: 700;
               background: #f8fafc;
               border: 1px solid #e2e8f0;
               padding: 6px 10px;
               border-radius: 6px;
               word-break: break-all;
+              color: #0f172a;
             }
             .footer {
               margin-top: 14px;
@@ -333,14 +365,14 @@ export const DynamicQRs: React.FC<DynamicQRsProps> = ({ currentUser }) => {
         </head>
         <body>
           <div class="card">
-            <span class="badge">${item.category || 'Geral'}</span>
-            <h1>${item.title}</h1>
-            ${item.description ? `<p class="desc">${item.description}</p>` : ''}
+            <span class="badge">${category || 'Geral'}</span>
+            <h1>${title}</h1>
+            ${description ? `<p class="desc">${description}</p>` : ''}
             <div class="qr-box">
               ${svgHtml}
             </div>
-            <div class="short-link">${permanentUrl}</div>
-            <div class="footer">QR Code Dinâmico &bull; ecooy</div>
+            <div class="direct-link">${normalized}</div>
+            <div class="footer">QR Code Direto &bull; Sem Ponte</div>
           </div>
           <script>
             window.onload = function() {
@@ -356,31 +388,17 @@ export const DynamicQRs: React.FC<DynamicQRsProps> = ({ currentUser }) => {
   // Filtragem e busca
   const filteredQrs = useMemo(() => {
     return qrs.filter(item => {
-      // Status
-      if (statusFilter !== 'all' && item.status !== statusFilter) return false;
-      // Categoria
       if (selectedCategory !== 'todos' && item.category !== selectedCategory) return false;
-      // Busca
       if (search.trim()) {
         const q = search.trim().toLowerCase();
         const matchTitle = item.title.toLowerCase().includes(q);
         const matchUrl = item.targetUrl.toLowerCase().includes(q);
-        const matchCode = item.code.toLowerCase().includes(q);
         const matchDesc = item.description?.toLowerCase().includes(q);
-        if (!matchTitle && !matchUrl && !matchCode && !matchDesc) return false;
+        if (!matchTitle && !matchUrl && !matchDesc) return false;
       }
       return true;
     });
-  }, [qrs, search, selectedCategory, statusFilter]);
-
-  // Estatísticas do topo
-  const stats = useMemo(() => {
-    const total = qrs.length;
-    const active = qrs.filter(q => q.status === 'active').length;
-    const totalScans = qrs.reduce((acc, q) => acc + (q.scansCount || 0), 0);
-    const mostScanned = [...qrs].sort((a, b) => (b.scansCount || 0) - (a.scansCount || 0))[0];
-    return { total, active, totalScans, mostScanned };
-  }, [qrs]);
+  }, [qrs, search, selectedCategory]);
 
   return (
     <div className="space-y-6">
@@ -398,87 +416,189 @@ export const DynamicQRs: React.FC<DynamicQRsProps> = ({ currentUser }) => {
           <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-500">
             <span>Módulos</span>
             <span>&bull;</span>
-            <span className="text-[#1769ff]">QRs Dinâmicos</span>
+            <span className="text-[#1769ff]">QR Codes Diretos</span>
           </div>
           <h1 className="mt-1 text-2xl font-black tracking-tight text-slate-900 sm:text-3xl">
-            Gerenciador de QR Codes Dinâmicos
+            Gerador de QR Codes Diretos
           </h1>
           <p className="mt-1 text-xs sm:text-sm text-slate-600">
-            Gere códigos QR permanentes. Altere o link de destino a qualquer momento sem trocar ou reimprimir a etiqueta física!
+            Gere códigos QR 100% diretos: sem encurtador e sem ponte. Ao escanear, o link de destino abre direto no celular!
           </p>
         </div>
 
         <button
           type="button"
           onClick={openCreateModal}
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#FFE600] px-5 py-3 text-sm font-black text-slate-950 shadow-sm transition hover:bg-yellow-400 active:scale-[0.98]"
+          className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#FFE600] px-5 py-3 text-sm font-black text-slate-950 shadow-sm transition hover:bg-yellow-400 active:scale-[0.98] cursor-pointer"
         >
           <Plus className="h-5 w-5 stroke-[2.5]" />
-          <span>Novo QR Dinâmico</span>
+          <span>Novo QR no Catálogo</span>
         </button>
       </div>
 
-      {/* Banner Explicativo - Conceito do QR Dinâmico */}
-      <div className="rounded-2xl border border-blue-200 bg-gradient-to-r from-blue-50/90 via-indigo-50/70 to-blue-50/90 p-4 sm:p-5 shadow-sm">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3.5">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#1769ff] text-white shadow-sm">
-            <RefreshCw className="h-5 w-5" />
+      {/* ============================================================ */}
+      {/* GERADOR RÁPIDO AO VIVO (DIRETO E SEM PONTE)                   */}
+      {/* ============================================================ */}
+      <div className="overflow-hidden rounded-2xl border-2 border-blue-200 bg-white shadow-sm">
+        <div className="border-b border-blue-100 bg-gradient-to-r from-blue-50/80 via-white to-blue-50/80 px-5 py-3.5 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#1769ff] text-white">
+              <QrCode className="h-4 w-4" />
+            </span>
+            <div>
+              <h2 className="text-sm font-black text-slate-900">Gerador Rápido Instantâneo</h2>
+              <p className="text-[11px] text-slate-500">Digite ou cole qualquer link e gere o QR Code direto na hora</p>
+            </div>
           </div>
-          <div className="flex-1 min-w-0">
-            <h2 className="text-sm font-extrabold text-slate-900">
-              Como funciona o QR Code 100% Dinâmico?
-            </h2>
-            <p className="mt-0.5 text-xs text-slate-600 leading-relaxed">
-              O QR Code gerado contém um link fixo do sistema (ex: <code className="font-mono bg-white/80 px-1 py-0.5 rounded border border-blue-100 text-[#1769ff]">/qr/rotas-01</code>). Quando você clica em <strong>"Trocar Link"</strong> e salva uma nova planilha ou URL, <strong>o código QR continua exatamente o mesmo</strong> e qualquer pessoa que ler o QR físico será redirecionada imediatamente para o novo destino.
-            </p>
+          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-[11px] font-bold text-emerald-800">
+            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+            100% Direto (Sem ponte)
+          </span>
+        </div>
+
+        <div className="p-5">
+          <div className="flex flex-col lg:flex-row items-center gap-6">
+            {/* Campos de Entrada */}
+            <div className="flex-1 w-full space-y-3.5">
+              <div>
+                <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-1">
+                  Link ou Texto de Destino (Direto) *
+                </label>
+                <input
+                  type="text"
+                  value={quickUrl}
+                  onChange={e => setQuickUrl(e.target.value)}
+                  placeholder="https://docs.google.com/spreadsheets/d/... ou wa.me/... ou qualquer link"
+                  className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 font-mono outline-none focus:border-[#3483FA] focus:ring-2 focus:ring-blue-100 transition shadow-xs"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-1">
+                    Título / Identificação
+                  </label>
+                  <input
+                    type="text"
+                    value={quickTitle}
+                    onChange={e => setQuickTitle(e.target.value)}
+                    placeholder="Ex: Planilha de Rotas Manhã"
+                    className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs text-slate-800 outline-none focus:border-[#3483FA]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-1">
+                    Categoria
+                  </label>
+                  <select
+                    value={quickCategory}
+                    onChange={e => setQuickCategory(e.target.value)}
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-800 outline-none focus:border-[#3483FA]"
+                  >
+                    {CATEGORIES.map(c => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Botões Rápidos */}
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => downloadQrPng(quickUrl, quickTitle, 'qr-canvas-quick')}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-3.5 py-2 text-xs font-bold text-white hover:bg-slate-800 transition cursor-pointer shadow-xs"
+                >
+                  <Download className="h-3.5 w-3.5 text-[#FFE600]" />
+                  <span>Baixar PNG (1024px)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => downloadQrSvg('qr-svg-quick', quickTitle)}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-800 hover:bg-slate-50 transition cursor-pointer shadow-xs"
+                >
+                  <Download className="h-3.5 w-3.5 text-blue-600" />
+                  <span>Baixar SVG</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handlePrintLabel(quickTitle, quickCategory, quickUrl, 'qr-svg-quick')}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-800 hover:bg-slate-50 transition cursor-pointer shadow-xs"
+                >
+                  <Printer className="h-3.5 w-3.5 text-slate-600" />
+                  <span>Imprimir Etiqueta</span>
+                </button>
+
+                <a
+                  href={normalizeUrl(quickUrl)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-[#1769ff] hover:bg-blue-50 transition shadow-xs"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  <span>Testar Link</span>
+                </a>
+
+                <button
+                  type="button"
+                  onClick={handleSaveQuick}
+                  disabled={quickSaving || quickSaved}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-[#FFE600] px-3.5 py-2 text-xs font-black text-slate-950 hover:bg-yellow-400 transition cursor-pointer disabled:opacity-50 ml-auto shadow-xs"
+                >
+                  {quickSaving ? (
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                  ) : quickSaved ? (
+                    <Check className="h-3.5 w-3.5 text-emerald-800" />
+                  ) : (
+                    <Plus className="h-3.5 w-3.5" />
+                  )}
+                  <span>{quickSaved ? 'Salvo no Catálogo!' : 'Salvar no Catálogo'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Preview do QR Code Direto */}
+            <div className="flex flex-col items-center justify-center p-4 bg-slate-50 rounded-2xl border border-slate-200 shrink-0">
+              <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
+                <QRCodeSVG
+                  id="qr-svg-quick"
+                  value={normalizeUrl(quickUrl) || 'https://ecooy.app'}
+                  size={140}
+                  level="M"
+                  includeMargin={true}
+                />
+              </div>
+
+              {/* Canvas oculto para download em alta resolução */}
+              <div className="hidden">
+                <QRCodeCanvas
+                  id="qr-canvas-quick"
+                  value={normalizeUrl(quickUrl) || 'https://ecooy.app'}
+                  size={1024}
+                  level="H"
+                  includeMargin={true}
+                />
+              </div>
+
+              <div className="mt-2 text-center max-w-[160px]">
+                <div className="text-[11px] font-black text-slate-900 truncate" title={quickTitle}>
+                  {quickTitle || 'QR Direto'}
+                </div>
+                <div className="text-[10px] text-slate-500 font-mono truncate" title={quickUrl}>
+                  {quickUrl}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* KPIs / Cards de Resumo */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Total de QRs</span>
-            <QrCode className="h-4 w-4 text-slate-400" />
-          </div>
-          <div className="mt-2 text-2xl font-black text-slate-900">{stats.total}</div>
-          <div className="mt-1 text-[11px] text-slate-500">Cadastrados no sistema</div>
-        </div>
-
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Ativos</span>
-            <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
-          </div>
-          <div className="mt-2 text-2xl font-black text-emerald-600">{stats.active}</div>
-          <div className="mt-1 text-[11px] text-slate-500">Redirecionando normalmente</div>
-        </div>
-
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Acessos / Scans</span>
-            <Activity className="h-4 w-4 text-[#1769ff]" />
-          </div>
-          <div className="mt-2 text-2xl font-black text-[#1769ff]">{stats.totalScans.toLocaleString('pt-BR')}</div>
-          <div className="mt-1 text-[11px] text-slate-500">Leituras registradas</div>
-        </div>
-
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Mais Acessado</span>
-            <ArrowUpRight className="h-4 w-4 text-amber-500" />
-          </div>
-          <div className="mt-2 truncate text-base font-extrabold text-slate-900" title={stats.mostScanned?.title || '-'}>
-            {stats.mostScanned?.title || 'Nenhum'}
-          </div>
-          <div className="mt-1 text-[11px] text-slate-500">
-            {stats.mostScanned ? `${stats.mostScanned.scansCount} leituras` : 'Sem dados'}
-          </div>
-        </div>
-      </div>
-
-      {/* Barra de Filtros e Busca */}
+      {/* ============================================================ */}
+      {/* BARRA DE FILTROS E BUSCA DO CATÁLOGO DE QRS                   */}
+      {/* ============================================================ */}
       <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:flex-row lg:items-center lg:justify-between">
         <div className="relative flex-1">
           <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -486,13 +606,12 @@ export const DynamicQRs: React.FC<DynamicQRsProps> = ({ currentUser }) => {
             type="search"
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="Buscar por título, destino ou código curto..."
+            placeholder="Buscar por título, destino ou observação..."
             className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50/60 pl-10 pr-4 text-xs sm:text-sm text-slate-800 outline-none transition focus:border-[#3483FA] focus:bg-white focus:ring-2 focus:ring-blue-100"
           />
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {/* Categoria */}
           <select
             value={selectedCategory}
             onChange={e => setSelectedCategory(e.target.value)}
@@ -504,72 +623,52 @@ export const DynamicQRs: React.FC<DynamicQRsProps> = ({ currentUser }) => {
             ))}
           </select>
 
-          {/* Status */}
-          <div className="inline-flex h-10 rounded-xl border border-slate-200 bg-slate-50 p-1">
-            <button
-              type="button"
-              onClick={() => setStatusFilter('all')}
-              className={`rounded-lg px-2.5 text-xs font-bold transition ${statusFilter === 'all' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
-            >
-              Todos
-            </button>
-            <button
-              type="button"
-              onClick={() => setStatusFilter('active')}
-              className={`rounded-lg px-2.5 text-xs font-bold transition ${statusFilter === 'active' ? 'bg-emerald-500 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
-            >
-              Ativos
-            </button>
-            <button
-              type="button"
-              onClick={() => setStatusFilter('paused')}
-              className={`rounded-lg px-2.5 text-xs font-bold transition ${statusFilter === 'paused' ? 'bg-amber-500 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
-            >
-              Pausados
-            </button>
-          </div>
+          <span className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-600">
+            {filteredQrs.length} {filteredQrs.length === 1 ? 'QR Salvo' : 'QRs Salvos'}
+          </span>
         </div>
       </div>
 
-      {/* Lista / Grid de QR Codes */}
+      {/* ============================================================ */}
+      {/* GRID DO CATÁLOGO DE QR CODES DIRETOS                         */}
+      {/* ============================================================ */}
       {loading ? (
         <div className="flex flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white py-14 text-center">
           <RefreshCw className="h-8 w-8 animate-spin text-[#1769ff]" />
-          <p className="mt-3 text-sm font-bold text-slate-700">Carregando QR Codes...</p>
+          <p className="mt-3 text-sm font-bold text-slate-700">Carregando catálogo de QR Codes...</p>
         </div>
       ) : filteredQrs.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white py-16 px-4 text-center">
           <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-50 text-amber-500 mb-4 border border-amber-200">
             <QrCode className="h-8 w-8" />
           </div>
-          <h3 className="text-base font-black text-slate-900">Nenhum QR Code encontrado</h3>
+          <h3 className="text-base font-black text-slate-900">Nenhum QR Code no catálogo</h3>
           <p className="mt-1 text-xs text-slate-500 max-w-sm">
-            {search || selectedCategory !== 'todos' || statusFilter !== 'all'
-              ? 'Tente ajustar os filtros ou a busca acima.'
-              : 'Comece criando o primeiro QR Code dinâmico para tabelas, rotas ou avisos do galpão.'}
+            {search || selectedCategory !== 'todos'
+              ? 'Nenhum resultado corresponde aos filtros selecionados.'
+              : 'Gere um QR acima ou adicione novos códigos para salvar no catálogo.'}
           </p>
           <button
             type="button"
             onClick={openCreateModal}
-            className="mt-5 inline-flex items-center gap-2 rounded-xl bg-[#FFE600] px-4 py-2.5 text-xs font-black text-slate-950 transition hover:bg-yellow-400"
+            className="mt-5 inline-flex items-center gap-2 rounded-xl bg-[#FFE600] px-4 py-2.5 text-xs font-black text-slate-950 transition hover:bg-yellow-400 cursor-pointer"
           >
             <Plus className="h-4 w-4" />
-            <span>Criar Primeiro QR Code</span>
+            <span>Adicionar Novo QR</span>
           </button>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {filteredQrs.map(item => {
-            const permanentUrl = getPermanentQrUrl(item.code);
+            const directUrl = normalizeUrl(item.targetUrl);
             const isCopied = copiedId === item.id;
-            const isPaused = item.status === 'paused';
+            const canvasId = `qr-canvas-${item.id}`;
+            const svgId = `qr-svg-${item.id}`;
 
             return (
               <div
                 key={item.id}
-                className={`relative flex flex-col justify-between rounded-2xl border bg-white p-5 shadow-sm transition hover:shadow-md ${
-                  isPaused ? 'border-amber-200 bg-amber-50/20' : 'border-slate-200'
-                }`}
+                className="relative flex flex-col justify-between rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:shadow-md"
               >
                 {/* Header do Card */}
                 <div>
@@ -579,17 +678,10 @@ export const DynamicQRs: React.FC<DynamicQRsProps> = ({ currentUser }) => {
                         <span className="inline-block rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-slate-600">
                           {item.category || 'Geral'}
                         </span>
-                        {isPaused ? (
-                          <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700">
-                            <Pause className="h-2.5 w-2.5 fill-current" />
-                            Pausado
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
-                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                            Ativo
-                          </span>
-                        )}
+                        <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                          <CheckCircle2 className="h-3 w-3 text-emerald-600" />
+                          Direto
+                        </span>
                       </div>
                       <h3 className="truncate text-base font-black text-slate-900" title={item.title}>
                         {item.title}
@@ -603,13 +695,13 @@ export const DynamicQRs: React.FC<DynamicQRsProps> = ({ currentUser }) => {
                     <button
                       type="button"
                       onClick={() => setViewingQr(item)}
-                      className="group relative shrink-0 rounded-xl border border-slate-200 bg-white p-1.5 shadow-sm transition hover:border-[#1769ff] hover:scale-105"
+                      className="group relative shrink-0 rounded-xl border border-slate-200 bg-white p-1.5 shadow-sm transition hover:border-[#1769ff] hover:scale-105 cursor-pointer"
                       title="Clique para ampliar o QR Code"
                     >
                       <QRCodeSVG
-                        id={`qr-svg-${item.code}`}
-                        value={permanentUrl}
-                        size={72}
+                        id={svgId}
+                        value={directUrl}
+                        size={76}
                         level="M"
                         includeMargin={false}
                       />
@@ -619,134 +711,94 @@ export const DynamicQRs: React.FC<DynamicQRsProps> = ({ currentUser }) => {
                     </button>
                   </div>
 
-                  {/* Canvas oculto para download PNG */}
+                  {/* Canvas oculto para download PNG alta resolução */}
                   <div className="hidden">
                     <QRCodeCanvas
-                      id={`qr-canvas-${item.code}`}
-                      value={permanentUrl}
+                      id={canvasId}
+                      value={directUrl}
                       size={1024}
                       level="H"
                       includeMargin={true}
                     />
                   </div>
 
-                  {/* Informações de Link */}
+                  {/* Caixa com o Link Direto */}
                   <div className="mt-4 space-y-2">
-                    {/* Link de destino atual */}
                     <div className="rounded-xl border border-slate-200/90 bg-slate-50 p-2.5">
                       <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
                         <span className="flex items-center gap-1">
-                          <ExternalLink className="h-3 w-3" />
-                          Destino Atual
+                          <Link2 className="h-3 w-3 text-slate-600" />
+                          Link Direto de Destino
                         </span>
                         <a
-                          href={item.targetUrl}
+                          href={directUrl}
                           target="_blank"
                           rel="noreferrer"
-                          className="text-[#1769ff] hover:underline"
+                          className="inline-flex items-center gap-1 text-[#1769ff] hover:underline font-bold"
                         >
-                          Testar link
+                          Testar
+                          <ExternalLink className="h-3 w-3" />
                         </a>
                       </div>
                       <p className="truncate font-mono text-xs text-slate-800 font-semibold" title={item.targetUrl}>
                         {item.targetUrl}
                       </p>
                     </div>
-
-                    {/* Link fixo do QR */}
-                    <div className="flex items-center justify-between rounded-xl border border-blue-100 bg-blue-50/50 px-2.5 py-1.5 text-xs">
-                      <div className="min-w-0 flex-1 truncate font-mono text-[11px] text-blue-900">
-                        <span className="text-slate-400">QR: </span>
-                        {permanentUrl}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => handleCopyLink(item.code, item.id)}
-                        className="ml-2 inline-flex items-center gap-1 rounded-md bg-white px-2 py-1 text-[10px] font-bold text-slate-700 shadow-sm border border-slate-200 hover:bg-slate-50"
-                        title="Copiar link permanente"
-                      >
-                        {isCopied ? (
-                          <>
-                            <Check className="h-3 w-3 text-emerald-600" />
-                            <span className="text-emerald-700">Copiado</span>
-                          </>
-                        ) : (
-                          <>
-                            <Copy className="h-3 w-3" />
-                            <span>Copiar</span>
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Métricas do QR */}
-                  <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3 text-[11px] text-slate-500">
-                    <span className="flex items-center gap-1 font-bold text-slate-700">
-                      <Activity className="h-3.5 w-3.5 text-[#1769ff]" />
-                      {item.scansCount || 0} acessos
-                    </span>
-                    <span>
-                      {item.lastScannedAt
-                        ? `Último: ${new Date(item.lastScannedAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}`
-                        : 'Nunca escaneado'}
-                    </span>
                   </div>
                 </div>
 
-                {/* Ações do Card */}
+                {/* Barra de Ações do Card */}
                 <div className="mt-4 border-t border-slate-100 pt-3 flex flex-wrap items-center justify-between gap-1.5">
-                  {/* Botão principal de troca de link */}
+                  {/* Botão de Trocar / Editar Link */}
                   <button
                     type="button"
                     onClick={() => openChangeTargetModal(item)}
-                    className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-[#1769ff] px-3 py-2 text-xs font-black text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.98]"
-                    title="Altera a URL de destino mantendo o QR impresso intacto"
+                    className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-[#1769ff] px-3 py-2 text-xs font-black text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.98] cursor-pointer"
+                    title="Altera a URL direta deste QR Code"
                   >
-                    <RefreshCw className="h-3.5 w-3.5" />
+                    <Edit3 className="h-3.5 w-3.5" />
                     <span>Trocar Link</span>
                   </button>
 
-                  {/* Visualizar / Baixar */}
+                  {/* Copiar Link Direto */}
                   <button
                     type="button"
-                    onClick={() => setViewingQr(item)}
-                    className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
-                    title="Visualizar e baixar QR Code"
+                    onClick={() => handleCopyDirectLink(item.targetUrl, item.id)}
+                    className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50 cursor-pointer"
+                    title="Copiar link de destino"
+                  >
+                    {isCopied ? (
+                      <Check className="h-3.5 w-3.5 text-emerald-600" />
+                    ) : (
+                      <Copy className="h-3.5 w-3.5" />
+                    )}
+                  </button>
+
+                  {/* Baixar PNG */}
+                  <button
+                    type="button"
+                    onClick={() => downloadQrPng(directUrl, item.title, canvasId)}
+                    className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50 cursor-pointer"
+                    title="Baixar imagem PNG"
                   >
                     <Download className="h-3.5 w-3.5" />
-                    <span className="hidden sm:inline">Baixar</span>
                   </button>
 
                   {/* Imprimir Etiqueta */}
                   <button
                     type="button"
-                    onClick={() => handlePrintLabel(item)}
-                    className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
-                    title="Imprimir etiqueta para colar no galpão"
+                    onClick={() => handlePrintLabel(item.title, item.category || 'Geral', item.targetUrl, svgId, item.description)}
+                    className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50 cursor-pointer"
+                    title="Imprimir etiqueta"
                   >
                     <Printer className="h-3.5 w-3.5" />
-                  </button>
-
-                  {/* Pausar / Ativar */}
-                  <button
-                    type="button"
-                    onClick={() => handleToggleStatus(item)}
-                    className={`inline-flex items-center rounded-xl border px-2.5 py-2 text-xs font-bold transition ${
-                      isPaused
-                        ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                        : 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'
-                    }`}
-                    title={isPaused ? 'Ativar redirecionamento' : 'Pausar redirecionamento'}
-                  >
-                    {isPaused ? <Play className="h-3.5 w-3.5 fill-current" /> : <Pause className="h-3.5 w-3.5 fill-current" />}
                   </button>
 
                   {/* Excluir */}
                   <button
                     type="button"
                     onClick={() => handleDelete(item)}
-                    className="inline-flex items-center rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-xs font-bold text-red-600 transition hover:bg-red-50 hover:border-red-200"
+                    className="inline-flex items-center rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-xs font-bold text-red-600 transition hover:bg-red-50 hover:border-red-200 cursor-pointer"
                     title="Excluir QR Code"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
@@ -759,7 +811,7 @@ export const DynamicQRs: React.FC<DynamicQRsProps> = ({ currentUser }) => {
       )}
 
       {/* ============================================================ */}
-      {/* MODAL 1: CRIAR NOVO QR DINÂMICO                             */}
+      {/* MODAL 1: CRIAR NOVO QR CODE DIRETO NO CATÁLOGO               */}
       {/* ============================================================ */}
       {isCreateOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-in fade-in">
@@ -767,7 +819,7 @@ export const DynamicQRs: React.FC<DynamicQRsProps> = ({ currentUser }) => {
             <button
               type="button"
               onClick={() => setIsCreateOpen(false)}
-              className="absolute right-4 top-4 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+              className="absolute right-4 top-4 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 cursor-pointer"
             >
               <X className="h-5 w-5" />
             </button>
@@ -777,8 +829,8 @@ export const DynamicQRs: React.FC<DynamicQRsProps> = ({ currentUser }) => {
                 <QrCode className="h-5 w-5" />
               </div>
               <div>
-                <h2 className="text-lg font-black text-slate-900">Novo QR Code Dinâmico</h2>
-                <p className="text-xs text-slate-500">Crie o código uma vez e atualize o destino quantas vezes precisar</p>
+                <h2 className="text-lg font-black text-slate-900">Novo QR Code Direto</h2>
+                <p className="text-xs text-slate-500">QR Code com link direto sem ponte ou encurtador</p>
               </div>
             </div>
 
@@ -799,58 +851,41 @@ export const DynamicQRs: React.FC<DynamicQRsProps> = ({ currentUser }) => {
                   required
                   value={formTitle}
                   onChange={e => setFormTitle(e.target.value)}
-                  placeholder="Ex: Tabela de Rotas Manhã, Grupo Docas, Auditoria..."
+                  placeholder="Ex: Tabela de Rotas Manhã, Docas, Grupo WhatsApp..."
                   className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 outline-none focus:border-[#3483FA] focus:ring-2 focus:ring-blue-100"
                 />
               </div>
 
               <div>
                 <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-1">
-                  Link de Destino Atual (URL) *
+                  Link Direto de Destino (URL) *
                 </label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    required
-                    value={formTargetUrl}
-                    onChange={e => setFormTargetUrl(e.target.value)}
-                    placeholder="https://docs.google.com/spreadsheets/d/... ou https://..."
-                    className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 font-mono outline-none focus:border-[#3483FA] focus:ring-2 focus:ring-blue-100"
-                  />
-                </div>
+                <input
+                  type="text"
+                  required
+                  value={formTargetUrl}
+                  onChange={e => setFormTargetUrl(e.target.value)}
+                  placeholder="https://docs.google.com/spreadsheets/d/... ou https://..."
+                  className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 font-mono outline-none focus:border-[#3483FA] focus:ring-2 focus:ring-blue-100"
+                />
                 <p className="mt-1 text-[11px] text-slate-500">
-                  Você poderá trocar este link a qualquer momento sem que o QR impresso mude.
+                  Ao ler o QR com o celular, a URL abre diretamente sem passar por nenhum intermediário.
                 </p>
               </div>
 
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div>
-                  <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-1">
-                    Categoria
-                  </label>
-                  <select
-                    value={formCategory}
-                    onChange={e => setFormCategory(e.target.value)}
-                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-xs sm:text-sm text-slate-800 outline-none focus:border-[#3483FA]"
-                  >
-                    {CATEGORIES.map(c => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-1">
-                    Código Curto / Slug (Opcional)
-                  </label>
-                  <input
-                    type="text"
-                    value={formCustomCode}
-                    onChange={e => setFormCustomCode(e.target.value)}
-                    placeholder="Ex: rotas-01 (automático se vazio)"
-                    className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-xs sm:text-sm text-slate-900 font-mono outline-none focus:border-[#3483FA]"
-                  />
-                </div>
+              <div>
+                <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-1">
+                  Categoria
+                </label>
+                <select
+                  value={formCategory}
+                  onChange={e => setFormCategory(e.target.value)}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-xs sm:text-sm text-slate-800 outline-none focus:border-[#3483FA]"
+                >
+                  {CATEGORIES.map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
               </div>
 
               <div>
@@ -870,14 +905,14 @@ export const DynamicQRs: React.FC<DynamicQRsProps> = ({ currentUser }) => {
                 <button
                   type="button"
                   onClick={() => setIsCreateOpen(false)}
-                  className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50"
+                  className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={saving}
-                  className="inline-flex items-center gap-2 rounded-xl bg-[#FFE600] px-5 py-2.5 text-xs font-black text-slate-950 transition hover:bg-yellow-400 disabled:opacity-50 shadow-sm"
+                  className="inline-flex items-center gap-2 rounded-xl bg-[#FFE600] px-5 py-2.5 text-xs font-black text-slate-950 transition hover:bg-yellow-400 disabled:opacity-50 shadow-sm cursor-pointer"
                 >
                   {saving ? (
                     <>
@@ -887,7 +922,7 @@ export const DynamicQRs: React.FC<DynamicQRsProps> = ({ currentUser }) => {
                   ) : (
                     <>
                       <Plus className="h-4 w-4" />
-                      <span>Criar QR Code</span>
+                      <span>Salvar no Catálogo</span>
                     </>
                   )}
                 </button>
@@ -898,7 +933,7 @@ export const DynamicQRs: React.FC<DynamicQRsProps> = ({ currentUser }) => {
       )}
 
       {/* ============================================================ */}
-      {/* MODAL 2: TROCA RÁPIDA DE LINK (O CORAÇÃO DO QR DINÂMICO)     */}
+      {/* MODAL 2: TROCA RÁPIDA DE LINK DIRETO                         */}
       {/* ============================================================ */}
       {changingTargetQr && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-in fade-in">
@@ -906,32 +941,21 @@ export const DynamicQRs: React.FC<DynamicQRsProps> = ({ currentUser }) => {
             <button
               type="button"
               onClick={() => setChangingTargetQr(null)}
-              className="absolute right-4 top-4 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+              className="absolute right-4 top-4 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 cursor-pointer"
             >
               <X className="h-5 w-5" />
             </button>
 
             <div className="flex items-center gap-2.5">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#1769ff] text-white shadow-sm">
-                <RefreshCw className="h-5 w-5" />
+                <Edit3 className="h-5 w-5" />
               </div>
               <div>
-                <h2 className="text-lg font-black text-slate-900">Alterar Link de Destino</h2>
+                <h2 className="text-lg font-black text-slate-900">Alterar Link do QR Code</h2>
                 <p className="text-xs text-slate-500">
-                  {changingTargetQr.title} &bull; Código: <code className="font-mono">{changingTargetQr.code}</code>
+                  {changingTargetQr.title}
                 </p>
               </div>
-            </div>
-
-            {/* Aviso de permanência do QR */}
-            <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50/80 p-3.5 text-xs text-emerald-900">
-              <div className="font-extrabold flex items-center gap-1.5 mb-1">
-                <Check className="h-4 w-4 text-emerald-600" />
-                O QR Code físico permanecerá 100% idêntico!
-              </div>
-              <p className="text-[11px] leading-relaxed text-emerald-800">
-                Qualquer placa, folha impressa ou adesivo já colado continuará funcionando normalmente e redirecionará instantaneamente para a nova URL abaixo.
-              </p>
             </div>
 
             <form onSubmit={handleSaveNewTarget} className="mt-4 space-y-4">
@@ -943,7 +967,7 @@ export const DynamicQRs: React.FC<DynamicQRsProps> = ({ currentUser }) => {
 
               <div>
                 <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
-                  Destino Antigo (Atual)
+                  Link Atual
                 </label>
                 <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-mono text-slate-600 truncate">
                   {changingTargetQr.targetUrl}
@@ -952,7 +976,7 @@ export const DynamicQRs: React.FC<DynamicQRsProps> = ({ currentUser }) => {
 
               <div>
                 <label className="block text-xs font-black uppercase tracking-wider text-slate-800 mb-1">
-                  Novo Link de Destino *
+                  Novo Link Direto *
                 </label>
                 <input
                   type="text"
@@ -960,23 +984,26 @@ export const DynamicQRs: React.FC<DynamicQRsProps> = ({ currentUser }) => {
                   autoFocus
                   value={newTargetInput}
                   onChange={e => setNewTargetInput(e.target.value)}
-                  placeholder="Cole aqui a nova URL (Google Docs, Planilha, Grupo WhatsApp...)"
+                  placeholder="Cole aqui a nova URL (Google Sheets, Form, Link WhatsApp...)"
                   className="w-full rounded-xl border-2 border-[#1769ff] px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 font-mono outline-none shadow-sm"
                 />
+                <p className="mt-1 text-[11px] text-slate-500">
+                  O QR Code será atualizado com esta nova URL direta.
+                </p>
               </div>
 
               <div className="mt-6 flex items-center justify-end gap-2 border-t border-slate-100 pt-4">
                 <button
                   type="button"
                   onClick={() => setChangingTargetQr(null)}
-                  className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50"
+                  className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={saving}
-                  className="inline-flex items-center gap-2 rounded-xl bg-[#1769ff] px-5 py-2.5 text-xs font-black text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-50"
+                  className="inline-flex items-center gap-2 rounded-xl bg-[#1769ff] px-5 py-2.5 text-xs font-black text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-50 cursor-pointer"
                 >
                   {saving ? (
                     <>
@@ -986,7 +1013,7 @@ export const DynamicQRs: React.FC<DynamicQRsProps> = ({ currentUser }) => {
                   ) : (
                     <>
                       <Check className="h-4 w-4" />
-                      <span>Salvar e Atualizar Destino</span>
+                      <span>Salvar Novo Link</span>
                     </>
                   )}
                 </button>
@@ -997,7 +1024,7 @@ export const DynamicQRs: React.FC<DynamicQRsProps> = ({ currentUser }) => {
       )}
 
       {/* ============================================================ */}
-      {/* MODAL 3: VISUALIZAR, TESTAR E EXPORTAR QR CODE              */}
+      {/* MODAL 3: VISUALIZAR, TESTAR E EXPORTAR QR CODE DIRETO        */}
       {/* ============================================================ */}
       {viewingQr && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-in fade-in">
@@ -1005,7 +1032,7 @@ export const DynamicQRs: React.FC<DynamicQRsProps> = ({ currentUser }) => {
             <button
               type="button"
               onClick={() => setViewingQr(null)}
-              className="absolute right-4 top-4 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+              className="absolute right-4 top-4 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 cursor-pointer"
             >
               <X className="h-5 w-5" />
             </button>
@@ -1018,56 +1045,47 @@ export const DynamicQRs: React.FC<DynamicQRsProps> = ({ currentUser }) => {
               <p className="mt-1 text-xs text-slate-500">{viewingQr.description}</p>
             )}
 
-            {/* Imagem do QR em tamanho grande */}
+            {/* Imagem do QR Direto em tamanho grande */}
             <div className="my-6 flex justify-center">
               <div className="rounded-2xl border-2 border-slate-200 bg-white p-4 shadow-inner">
                 <QRCodeSVG
-                  value={getPermanentQrUrl(viewingQr.code)}
-                  size={200}
+                  id={`modal-qr-svg-${viewingQr.id}`}
+                  value={normalizeUrl(viewingQr.targetUrl)}
+                  size={210}
                   level="H"
                   includeMargin={true}
                 />
               </div>
             </div>
 
-            {/* Link permanente */}
-            <div className="rounded-xl border border-blue-100 bg-blue-50/70 p-3 text-left">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-blue-700 block mb-1">
-                Link Permanente do QR
-              </span>
-              <div className="flex items-center justify-between gap-2">
-                <span className="truncate font-mono text-xs text-blue-950 font-bold">
-                  {getPermanentQrUrl(viewingQr.code)}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => handleCopyLink(viewingQr.code, viewingQr.id)}
-                  className="rounded-lg bg-white border border-blue-200 p-1.5 text-blue-700 hover:bg-blue-50 shadow-sm"
-                  title="Copiar link"
-                >
-                  <Copy className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            </div>
-
-            {/* Destino atual */}
-            <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-left">
+            {/* Link direto */}
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-left">
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1">
-                Destino Atual
+                Link Direto de Destino (Sem Ponte)
               </span>
               <div className="flex items-center justify-between gap-2">
-                <span className="truncate font-mono text-xs text-slate-800" title={viewingQr.targetUrl}>
+                <span className="truncate font-mono text-xs text-slate-900 font-bold" title={viewingQr.targetUrl}>
                   {viewingQr.targetUrl}
                 </span>
-                <a
-                  href={getPermanentQrUrl(viewingQr.code)}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1 text-[11px] font-bold text-[#1769ff] hover:underline"
-                >
-                  Testar
-                  <ExternalLink className="h-3 w-3" />
-                </a>
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => handleCopyDirectLink(viewingQr.targetUrl, viewingQr.id)}
+                    className="rounded-lg bg-white border border-slate-200 p-1.5 text-slate-700 hover:bg-slate-100 shadow-sm cursor-pointer"
+                    title="Copiar link"
+                  >
+                    <Copy className="h-3.5 w-3.5" />
+                  </button>
+                  <a
+                    href={normalizeUrl(viewingQr.targetUrl)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="rounded-lg bg-white border border-slate-200 p-1.5 text-[#1769ff] hover:bg-blue-50 shadow-sm"
+                    title="Abrir destino diretamente"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </a>
+                </div>
               </div>
             </div>
 
@@ -1075,8 +1093,8 @@ export const DynamicQRs: React.FC<DynamicQRsProps> = ({ currentUser }) => {
             <div className="mt-6 grid grid-cols-3 gap-2">
               <button
                 type="button"
-                onClick={() => downloadQrPng(viewingQr)}
-                className="inline-flex flex-col items-center justify-center rounded-xl border border-slate-200 bg-white p-2.5 text-xs font-bold text-slate-800 shadow-sm transition hover:bg-slate-50 hover:border-slate-300"
+                onClick={() => downloadQrPng(viewingQr.targetUrl, viewingQr.title, `qr-canvas-${viewingQr.id}`)}
+                className="inline-flex flex-col items-center justify-center rounded-xl border border-slate-200 bg-white p-2.5 text-xs font-bold text-slate-800 shadow-sm transition hover:bg-slate-50 hover:border-slate-300 cursor-pointer"
               >
                 <Download className="h-4 w-4 mb-1 text-[#1769ff]" />
                 <span>Baixar PNG</span>
@@ -1084,8 +1102,8 @@ export const DynamicQRs: React.FC<DynamicQRsProps> = ({ currentUser }) => {
 
               <button
                 type="button"
-                onClick={() => downloadQrSvg(viewingQr)}
-                className="inline-flex flex-col items-center justify-center rounded-xl border border-slate-200 bg-white p-2.5 text-xs font-bold text-slate-800 shadow-sm transition hover:bg-slate-50 hover:border-slate-300"
+                onClick={() => downloadQrSvg(`modal-qr-svg-${viewingQr.id}`, viewingQr.title)}
+                className="inline-flex flex-col items-center justify-center rounded-xl border border-slate-200 bg-white p-2.5 text-xs font-bold text-slate-800 shadow-sm transition hover:bg-slate-50 hover:border-slate-300 cursor-pointer"
               >
                 <Download className="h-4 w-4 mb-1 text-emerald-600" />
                 <span>Baixar SVG</span>
@@ -1093,8 +1111,8 @@ export const DynamicQRs: React.FC<DynamicQRsProps> = ({ currentUser }) => {
 
               <button
                 type="button"
-                onClick={() => handlePrintLabel(viewingQr)}
-                className="inline-flex flex-col items-center justify-center rounded-xl border border-slate-200 bg-white p-2.5 text-xs font-bold text-slate-800 shadow-sm transition hover:bg-slate-50 hover:border-slate-300"
+                onClick={() => handlePrintLabel(viewingQr.title, viewingQr.category || 'Geral', viewingQr.targetUrl, `modal-qr-svg-${viewingQr.id}`, viewingQr.description)}
+                className="inline-flex flex-col items-center justify-center rounded-xl border border-slate-200 bg-white p-2.5 text-xs font-bold text-slate-800 shadow-sm transition hover:bg-slate-50 hover:border-slate-300 cursor-pointer"
               >
                 <Printer className="h-4 w-4 mb-1 text-slate-700" />
                 <span>Imprimir</span>

@@ -33,7 +33,7 @@ type QuickLink = {
 
 const QUICK_LINKS: QuickLink[] = [
   { label: 'Módulos', path: '/', keywords: 'modulos ferramentas' },
-  { label: 'QRs Dinâmicos', path: '/qrs', keywords: 'qrs qr code dinamico link permanente redirecionar' },
+  { label: 'QR Codes Diretos', path: '/qrs', keywords: 'qrs qr code direto sem ponte sem encurtador' },
   { label: 'Listas de Coleta', path: '/listas', keywords: 'lista coleta backlog' },
   { label: 'Buscar IDs', path: '/consulta', keywords: 'buscar ids consulta rota pacote' },
   { label: 'Controle Refugo', path: '/refugo', keywords: 'refugo conferir csv pacotes' },
@@ -153,8 +153,8 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
             type="button"
             onClick={() => navigate('/qrs')}
             className={navClass(isQrsArea)}
-            title="QRs Dinâmicos"
-            aria-label="QRs Dinâmicos"
+            title="QR Codes Diretos"
+            aria-label="QR Codes Diretos"
           >
             {isQrsArea && <span className="absolute -left-3 h-9 w-1 rounded-r bg-[#FFE600]" />}
             <QrCode className="h-5 w-5 shrink-0" />

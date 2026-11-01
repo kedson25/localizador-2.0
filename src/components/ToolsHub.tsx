@@ -330,9 +330,9 @@ export const ToolsHub: React.FC<ToolsHubProps> = ({
   const qrsTools: ToolItem[] = [{
     id: 'qrs',
     path: '/qrs',
-    name: 'QR Codes Dinâmicos',
-    description: 'Crie e gerencie QR codes onde você troca o link de destino e o QR permanece idêntico.',
-    tag: 'Dinâmico',
+    name: 'QR Codes Diretos',
+    description: 'Gere códigos QR 100% diretos: sem encurtador e sem ponte. Destino abre direto no celular.',
+    tag: 'Direto',
     icon: QrCode,
     iconClass: 'text-amber-600',
     iconBoxClass: 'bg-amber-50',

@@ -59,17 +59,26 @@ export function generateShortCode(length = 6): string {
   return result;
 }
 
-// Normaliza URL garantindo protocolo http/https
+// Normaliza URL garantindo protocolo se for endereço web, ou preserva links especiais
 export function normalizeUrl(url: string): string {
-  const trimmed = url.trim();
+  const trimmed = (url || '').trim();
   if (!trimmed) return '';
-  if (/^https?:\/\//i.test(trimmed)) {
+  if (/^(https?:\/\/|mailto:|tel:|sms:|whatsapp:\/\/)/i.test(trimmed)) {
     return trimmed;
   }
-  return `https://${trimmed}`;
+  // Se contiver ponto ou barra, assume protocolo web https://
+  if (trimmed.includes('.') || trimmed.includes('/')) {
+    return `https://${trimmed}`;
+  }
+  return trimmed;
 }
 
-// Constrói a URL pública permanente que é gravada na imagem do QR Code
+// Retorna a URL direta do QR Code (100% sem ponte / sem intermediário)
+export function getDirectQrUrl(targetUrl: string): string {
+  return normalizeUrl(targetUrl);
+}
+
+// Helper mantido por compatibilidade
 export function getPermanentQrUrl(code: string): string {
   const origin = typeof window !== 'undefined' && window.location?.origin
     ? window.location.origin
