@@ -8,6 +8,66 @@
     <meta name="description" content="Carregue relatórios CSV, identifique grupos de IDs automaticamente e consulte o grupo de qualquer ID colado." />
     <meta property="og:title" content="Localizador" />
     <meta property="og:description" content="Carregue relatórios CSV, identifique grupos de IDs automaticamente e consulte o grupo de qualquer ID colado." />
+    <script>
+      (function() {
+        try {
+          var rawFetch = window.fetch;
+          var _currentFetch = rawFetch ? rawFetch.bind(window) : undefined;
+          Object.defineProperty(window, 'fetch', {
+            get: function() {
+              return _currentFetch;
+            },
+            set: function(val) {
+              _currentFetch = val;
+            },
+            configurable: true,
+            enumerable: true
+          });
+        } catch (e) {
+          try {
+            window.fetch = window.fetch;
+          } catch (_) {}
+        }
+
+        var isExtError = function(e) {
+          if (!e) return false;
+          var s = '';
+          if (typeof e === 'string') s = e;
+          else if (e.filename) s = e.filename;
+          else if (e.message) s = e.message;
+          if (e.error && e.error.stack) s += ' ' + e.error.stack;
+          if (e.reason) {
+            if (typeof e.reason === 'string') s += ' ' + e.reason;
+            else if (e.reason.stack) s += ' ' + e.reason.stack;
+            else if (e.reason.message) s += ' ' + e.reason.message;
+          }
+          return s.indexOf('chrome-extension://') !== -1 ||
+                 s.indexOf('moz-extension://') !== -1 ||
+                 s.indexOf('safari-extension://') !== -1;
+        };
+
+        window.addEventListener('error', function(ev) {
+          if (isExtError(ev)) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            if (typeof ev.stopImmediatePropagation === 'function') {
+              ev.stopImmediatePropagation();
+            }
+            return true;
+          }
+        }, true);
+
+        window.addEventListener('unhandledrejection', function(ev) {
+          if (isExtError(ev)) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            if (typeof ev.stopImmediatePropagation === 'function') {
+              ev.stopImmediatePropagation();
+            }
+          }
+        }, true);
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

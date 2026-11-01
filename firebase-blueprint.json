@@ -160,6 +160,26 @@
         "runId": { "type": "string" }
       },
       "required": ["cicloTentativa", "resultado", "dataRegistro"]
+    },
+    "DynamicQr": {
+      "title": "DynamicQr",
+      "description": "QR Code dinâmico com link de redirecionamento atualizável",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "code": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "targetUrl": { "type": "string" },
+        "category": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "paused"] },
+        "scansCount": { "type": "number" },
+        "lastScannedAt": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" },
+        "createdBy": { "type": "string" }
+      },
+      "required": ["id", "code", "title", "targetUrl", "status"]
     }
   },
   "firestore": {
@@ -198,6 +218,10 @@
     "/packages/{packageId}/movimentacoes/{movId}": {
       "schema": "PackageMovimentacao",
       "description": "Subcoleção cronológica de histórico de tentativas de um pacote"
+    },
+    "/dynamic_qrs/{qrId}": {
+      "schema": "DynamicQr",
+      "description": "Coleção de QR Codes dinâmicos com contadores de acesso e link de destino editável"
     }
   }
 }

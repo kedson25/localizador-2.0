@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { AlertTriangle, CheckCircle2, Copy, Download, FileText, Search, Settings2, Share2, Trash2, UploadCloud, Volume2, X } from 'lucide-react';
 import { RankingAuditores } from './RankingAuditores';
+import { DocasTentativas } from './DocasTentativas';
 import { getLocalValue, setLocalValue } from '../lib/localPersistence';
 import { clearHighValuePackages, listenHighValuePackages, saveHighValuePackages } from '../lib/highValueDocas';
 import { formatHighValue, isHighValue, parseHighValueCsv, type HighValuePackage } from '../lib/highValueParser';
@@ -38,7 +39,7 @@ function getRouteCycle(value: string): CycleFilter | null {
   return null;
 }
 
-type ViewTab = 'aduana' | 'auditoria' | 'ranking';
+type ViewTab = 'aduana' | 'auditoria' | 'ranking' | 'tentativas';
 type TipoFilter = 'todos' | 'A mais' | 'Faltante';
 type ListaFilter = 'todos' | 'em-lista' | 'fora-lista' | 'encontrados' | 'pendentes';
 type SyncState = 'connecting' | 'syncing' | 'synced' | 'error';
@@ -715,11 +716,25 @@ export function ExpedicaoPanel() {
                 setFilter('todos');
                 setListaFilter('todos');
               }}
-              className={`px-4 py-2 text-sm font-black ${tab === 'auditoria' ? 'bg-slate-900 text-white' : 'border border-slate-300 bg-white'}`}
+              className={`px-4 py-2 text-sm font-black cursor-pointer ${tab === 'auditoria' ? 'bg-slate-900 text-white' : 'border border-slate-300 bg-white'}`}
             >
               Auditoria • pacotes
             </button>
-            <button type="button" onClick={() => setTab('ranking')} className={`px-4 py-2 text-sm font-black ${tab === 'ranking' ? 'bg-slate-900 text-white' : 'border border-slate-300 bg-white'}`}>Ranking auditores</button>
+            <button
+              type="button"
+              onClick={() => {
+                setTab('tentativas');
+                setSelectedDoca(null);
+                setSelectedStreet(null);
+                setQuery('');
+                setFilter('todos');
+                setListaFilter('todos');
+              }}
+              className={`px-4 py-2 text-sm font-black cursor-pointer ${tab === 'tentativas' ? 'bg-slate-900 text-white' : 'border border-slate-300 bg-white'}`}
+            >
+              Tentativas
+            </button>
+            <button type="button" onClick={() => setTab('ranking')} className={`px-4 py-2 text-sm font-black cursor-pointer ${tab === 'ranking' ? 'bg-slate-900 text-white' : 'border border-slate-300 bg-white'}`}>Ranking auditores</button>
           </div>
 
           <div className="flex flex-wrap gap-2">
@@ -792,7 +807,23 @@ export function ExpedicaoPanel() {
       )}
       {error && <div className="border border-amber-300 bg-white px-3 py-2 text-xs font-bold text-amber-900">{error}</div>}
 
-      {tab === 'ranking' ? <RankingAuditores aduana={cycleStore.aduana} auditoria={cycleStore.auditoria} cycle={cycle} /> : tab === 'aduana' ? (
+      {tab === 'ranking' ? (
+        <RankingAuditores aduana={cycleStore.aduana} auditoria={cycleStore.auditoria} cycle={cycle} />
+      ) : tab === 'tentativas' ? (
+        <DocasTentativas
+          store={store}
+          cycleStore={cycleStore}
+          enriched={enriched}
+          aduanaRows={aduanaRows}
+          auditoriaRows={auditoriaRows}
+          backlogById={backlogById}
+          cycle={cycle}
+          onNavigateToAduana={vaga => {
+            setTab('aduana');
+            if (vaga) setSelectedDoca(vaga);
+          }}
+        />
+      ) : tab === 'aduana' ? (
         <>
           <section className="border border-slate-300 bg-white p-3 shadow-sm">
             <div className="mb-3 flex flex-wrap justify-end gap-2 text-[10px] font-black">

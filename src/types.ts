@@ -26,12 +26,30 @@ export interface GroupSummary {
   rows: CsvRow[];
 }
 
+export interface PacoteMovimento {
+  tipo: 'refugo' | 'lista' | 'vaga' | 'base_csv';
+  titulo: string;
+  localizacao: string;
+  vaga?: string;
+  rota?: string;
+  placa?: string;
+  motivo?: string;
+  saida?: string;
+  responsavel?: string;
+  status?: string;
+  detalhe?: string;
+  dataHora: string;
+  timestamp: number;
+}
+
 export interface LookupMatch {
   searchTerm: string;
   cleanSearchTerm: string;
   found: boolean;
   row?: CsvRow;
   matchedGroup?: string;
+  ultimoMovimento?: PacoteMovimento;
+  movimentos?: PacoteMovimento[];
 }
 
 export interface RefugoRow {

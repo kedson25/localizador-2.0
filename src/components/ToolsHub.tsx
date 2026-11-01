@@ -17,6 +17,7 @@ import {
   LogOut,
   MessageSquare,
   PackageOpen,
+  QrCode,
   Search,
   Settings,
   Trash2,
@@ -183,6 +184,7 @@ export const ToolsHub: React.FC<ToolsHubProps> = ({
   const [isBrancasOpen, setIsBrancasOpen] = useState(false);
   const [isCorrelacaoOpen, setIsCorrelacaoOpen] = useState(false);
   const [isExpedicaoOpen, setIsExpedicaoOpen] = useState(false);
+  const [isQrsOpen, setIsQrsOpen] = useState(false);
   const [userDrawerOpen, setUserDrawerOpen] = useState(false);
   const userDrawerRef = useRef<HTMLDivElement>(null);
 
@@ -325,6 +327,18 @@ export const ToolsHub: React.FC<ToolsHubProps> = ({
     badgeClass: 'border-indigo-200 bg-indigo-50 text-indigo-700',
   }];
 
+  const qrsTools: ToolItem[] = [{
+    id: 'qrs',
+    path: '/qrs',
+    name: 'QR Codes Dinâmicos',
+    description: 'Crie e gerencie QR codes onde você troca o link de destino e o QR permanece idêntico.',
+    tag: 'Dinâmico',
+    icon: QrCode,
+    iconClass: 'text-amber-600',
+    iconBoxClass: 'bg-amber-50',
+    badgeClass: 'border-amber-300 bg-amber-50 text-amber-700',
+  }];
+
   const matchesQuery = (tool: ToolItem) => {
     const normalized = query.trim().toLowerCase();
     if (!normalized) return true;
@@ -336,6 +350,7 @@ export const ToolsHub: React.FC<ToolsHubProps> = ({
   const filteredBrancas = useMemo(() => brancasTools.filter(tool => (currentUser?.isAdmin || currentUser?.allowedGroups?.includes(tool.id)) && matchesQuery(tool)), [query, currentUser?.isAdmin, currentUser?.allowedGroups]);
   const filteredCorrelacao = useMemo(() => correlacaoTools.filter(tool => (currentUser?.isAdmin || currentUser?.allowedGroups?.includes(tool.id)) && matchesQuery(tool)), [query, currentUser?.isAdmin, currentUser?.allowedGroups]);
   const filteredExpedicao = useMemo(() => expedicaoTools.filter(tool => (currentUser?.isAdmin || currentUser?.allowedGroups?.includes(tool.id)) && matchesQuery(tool)), [query, currentUser?.isAdmin, currentUser?.allowedGroups]);
+  const filteredQrs = useMemo(() => qrsTools.filter(tool => (currentUser?.isAdmin || !currentUser?.allowedGroups?.length || currentUser?.allowedGroups?.includes(tool.id)) && matchesQuery(tool)), [query, currentUser?.isAdmin, currentUser?.allowedGroups]);
 
   const logout = async () => {
     const auth = await import('../lib/auth');
@@ -359,6 +374,11 @@ export const ToolsHub: React.FC<ToolsHubProps> = ({
               <span className="absolute -left-4 h-9 w-1 rounded-r bg-[#FFE600]" />
               <Boxes className="h-5 w-5" />
               Módulos
+            </button>
+
+            <button type="button" onClick={() => navigate('/qrs')} className="flex w-full items-center gap-4 rounded-xl px-4 py-3 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900">
+              <QrCode className="h-5 w-5" />
+              QRs
             </button>
 
             {currentUser?.isAdmin && (
@@ -529,6 +549,7 @@ export const ToolsHub: React.FC<ToolsHubProps> = ({
 
           <div className="mb-5 flex gap-2 overflow-x-auto pb-1 lg:hidden">
             <button onClick={() => navigate('/')} className="rounded-xl bg-[#fff5bd] px-4 py-2 text-xs font-bold text-slate-900">Módulos</button>
+            <button onClick={() => navigate('/qrs')} className="rounded-xl bg-white px-4 py-2 text-xs font-bold text-slate-600 shadow-sm">QRs</button>
             {currentUser?.isAdmin && (
               <button onClick={() => navigate('/admin')} className="rounded-xl bg-white px-4 py-2 text-xs font-bold text-slate-600 shadow-sm">Relatórios</button>
             )}
@@ -619,6 +640,17 @@ export const ToolsHub: React.FC<ToolsHubProps> = ({
               onToggle={() => setIsExpedicaoOpen(value => !value)}
               onOpenTool={navigate}
               status={<span className="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-[10px] font-black uppercase text-indigo-700">Novo</span>}
+            />
+            <ModuleGroup
+              title="QRs Dinâmicos"
+              count={qrsTools.length}
+              accent="yellow"
+              icon={QrCode}
+              tools={filteredQrs}
+              isOpen={isQrsOpen}
+              onToggle={() => setIsQrsOpen(value => !value)}
+              onOpenTool={navigate}
+              status={<span className="rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-[10px] font-black uppercase text-amber-700">Novo</span>}
             />
           </div>
         </main>

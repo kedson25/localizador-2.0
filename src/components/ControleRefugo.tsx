@@ -1087,12 +1087,6 @@ export function ControleRefugo({
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Histórico de Leitura</span>
-                    {pendingSyncCount > 0 && (
-                      <span className="bg-amber-50 text-amber-700 px-2 py-0.5 rounded-md text-[11px] font-medium border border-amber-200 flex items-center gap-1 animate-pulse">
-                        <RefreshCw className="w-3 h-3 animate-spin text-amber-600" />
-                        Sincronizando ({pendingSyncCount})
-                      </span>
-                    )}
                   </div>
                   <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap justify-start sm:justify-end">
                     <span className="bg-yellow-100 text-yellow-800 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-md font-mono text-[11px] sm:text-xs font-bold border border-yellow-300 flex items-center gap-1 shadow-2xs">
@@ -1104,14 +1098,6 @@ export function ControleRefugo({
                     <span className="bg-red-100 text-red-800 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-md font-mono text-[11px] sm:text-xs font-bold border border-red-200 flex items-center gap-1">
                       <XCircle className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-red-600 shrink-0" /> Sem Rota: {stats.notFound}
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => setShowRotasColetaModal(true)}
-                      className="bg-indigo-100 hover:bg-indigo-200 text-indigo-900 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-md font-mono text-[11px] sm:text-xs font-bold border border-indigo-300 flex items-center gap-1 cursor-pointer transition-colors"
-                      title="Ver detalhamento da quantidade encontrada de rota em coleta"
-                    >
-                      <Truck className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-indigo-700 shrink-0" /> Rota em Coleta: {rotasEmColetaStats.totalRotasEmColeta}
-                    </button>
                     <span className="bg-blue-100 text-blue-800 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-md font-mono text-[11px] sm:text-xs font-bold border border-blue-200">
                       Total: {scannedItems.length}
                     </span>
@@ -1130,11 +1116,6 @@ export function ControleRefugo({
                       <span>Mapa Refugo</span>
                     </button>
                   )}
-                  <label className="cursor-pointer bg-[#3483FA] hover:bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm transition-colors flex items-center gap-1.5 min-h-[36px] sm:min-h-0">
-                    <UploadCloud className="w-4 h-4" />
-                    <span>Carregar Base</span>
-                    <input type="file" accept=".csv" className="hidden" onChange={handleFileUpload} />
-                  </label>
                   <button
                     onClick={clearData}
                     disabled={busy}

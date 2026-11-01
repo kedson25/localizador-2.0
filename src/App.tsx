@@ -20,6 +20,8 @@ import { Login } from './components/Login';
 import { AdminPanel } from './components/AdminPanel';
 import { OperationNavigation } from './components/OperationNavigation';
 import { ExpedicaoPanel } from './components/ExpedicaoPanel';
+import { DynamicQRs } from './components/DynamicQRs';
+import { DynamicQrRedirect } from './components/DynamicQrRedirect';
 import { User, getCurrentUser } from './lib/auth';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { saveToColetor, loadFromColetor, clearColetor } from './lib/firebase';
@@ -77,6 +79,7 @@ export default function App() {
         location.pathname.startsWith('/remover') ? 'Remover' :
         location.pathname.startsWith('/reporte') ? 'Reporte' :
         location.pathname.startsWith('/expedicao') ? 'Controle de Docas' :
+        location.pathname.startsWith('/qrs') ? 'QRs Dinâmicos' :
         location.pathname.startsWith('/configuracoes') ? 'Configurações' :
         location.pathname.startsWith('/admin') ? 'Admin' : 'Módulos';
       try {
@@ -136,9 +139,14 @@ export default function App() {
       {notification && <div className="fixed left-1/2 top-4 z-[100] w-[min(92vw,720px)] -translate-x-1/2 rounded-lg border border-gray-700 bg-[#111827] px-3.5 py-2.5 text-xs text-white shadow-xl">{notification}</div>}
       <ErrorBoundary>
         <Routes>
+          {/* Rotas Públicas de Redirecionamento Dinâmico (qualquer câmera/scanner de celular) */}
+          <Route path="/qr/:code" element={<DynamicQrRedirect />} />
+          <Route path="/r/:code" element={<DynamicQrRedirect />} />
+
           <Route path="/login" element={isAuthenticated ? <Navigate to="/" replace /> : <Login onLogin={(user) => { setCurrentUser(user); navigate('/'); }} />} />
           {isAuthenticated && <>
             <Route path="/" element={<ToolsHub totalRows={rows.length} groups={groups} onClear={handleClear} currentUser={currentUser} />} />
+            <Route path="/qrs" element={insideDashboard(<DynamicQRs currentUser={currentUser} />)} />
             <Route path="/configuracoes" element={insideDashboard(<SettingsPage currentUser={currentUser} />)} />
             {currentUser?.isAdmin && <Route path="/admin" element={insideDashboard(<AdminPanel currentUser={currentUser} />)} />}
             {(currentUser?.isAdmin || currentUser?.allowedGroups?.includes('consulta')) && <Route path="/consulta" element={insideDashboard(<div className="space-y-4"><StatsSummary totalRows={rows.length} groups={groups} /><IdLookupEnhanced rows={rows} onNavigateToUpload={() => navigate('/upload')} /></div>)} />}

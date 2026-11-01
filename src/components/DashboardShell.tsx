@@ -7,6 +7,7 @@ import {
   CircleHelp,
   LogOut,
   PackageOpen,
+  QrCode,
   Search,
   Settings,
   UserCheck,
@@ -32,6 +33,7 @@ type QuickLink = {
 
 const QUICK_LINKS: QuickLink[] = [
   { label: 'Módulos', path: '/', keywords: 'modulos ferramentas' },
+  { label: 'QRs Dinâmicos', path: '/qrs', keywords: 'qrs qr code dinamico link permanente redirecionar' },
   { label: 'Listas de Coleta', path: '/listas', keywords: 'lista coleta backlog' },
   { label: 'Buscar IDs', path: '/consulta', keywords: 'buscar ids consulta rota pacote' },
   { label: 'Controle Refugo', path: '/refugo', keywords: 'refugo conferir csv pacotes' },
@@ -87,6 +89,7 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
   const isAdminArea = location.pathname.startsWith('/admin');
   const isSettings = location.pathname.startsWith('/configuracoes');
   const isModulesArea = location.pathname === '/';
+  const isQrsArea = location.pathname.startsWith('/qrs');
   const isExpedicao = location.pathname.startsWith('/expedicao');
 
   const results = useMemo(() => {
@@ -144,6 +147,17 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
           >
             {isModulesArea && <span className="absolute -left-3 h-9 w-1 rounded-r bg-[#FFE600]" />}
             <Boxes className="h-5 w-5 shrink-0" />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => navigate('/qrs')}
+            className={navClass(isQrsArea)}
+            title="QRs Dinâmicos"
+            aria-label="QRs Dinâmicos"
+          >
+            {isQrsArea && <span className="absolute -left-3 h-9 w-1 rounded-r bg-[#FFE600]" />}
+            <QrCode className="h-5 w-5 shrink-0" />
           </button>
 
           {currentUser?.isAdmin && (
