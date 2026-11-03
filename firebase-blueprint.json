@@ -180,6 +180,23 @@
         "createdBy": { "type": "string" }
       },
       "required": ["id", "code", "title", "targetUrl", "status"]
+    },
+    "SavedCode": {
+      "title": "SavedCode",
+      "description": "Trecho de código ou HTML salvo pelo usuário",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "code": { "type": "string" },
+        "language": { "type": "string" },
+        "category": { "type": "string" },
+        "description": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" },
+        "createdBy": { "type": "string" }
+      },
+      "required": ["id", "title", "code"]
     }
   },
   "firestore": {
@@ -222,6 +239,10 @@
     "/dynamic_qrs/{qrId}": {
       "schema": "DynamicQr",
       "description": "Coleção de QR Codes dinâmicos com contadores de acesso e link de destino editável"
+    },
+    "/saved_codes/{codeId}": {
+      "schema": "SavedCode",
+      "description": "Coleção de códigos e trechos HTML salvos pelo usuário"
     }
   }
 }

@@ -58,7 +58,7 @@ const ACCESS_TABS = [
   { id: 'correlacao', label: 'Correlação' },
   { id: 'baixas', label: 'Baixas' },
   { id: 'expedicao', label: 'Controle de Docas' },
-  { id: 'qrs', label: 'QR Codes Diretos' },
+  { id: 'codes', label: 'Codes' },
   { id: 'remover', label: 'Remover IDs' },
   { id: 'reporte', label: 'Reporte' },
   { id: 'upload', label: 'Importar CSV' },

@@ -34,7 +34,7 @@ const COLLECTION_NAME = 'dynamic_qrs';
 const LOCAL_STORAGE_KEY = 'ecooy_dynamic_qrs_cache';
 
 // Helper de persistência local para fallback instantâneo
-function getLocalCache(): DynamicQr[] {
+export function getLocalCache(): DynamicQr[] {
   try {
     const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
     return raw ? JSON.parse(raw) : [];

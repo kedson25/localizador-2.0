@@ -9,6 +9,7 @@ import {
   ChevronDown,
   ChevronRight,
   CircleHelp,
+  Code2,
   FileSearch,
   Truck,
   Folder,
@@ -184,7 +185,7 @@ export const ToolsHub: React.FC<ToolsHubProps> = ({
   const [isBrancasOpen, setIsBrancasOpen] = useState(false);
   const [isCorrelacaoOpen, setIsCorrelacaoOpen] = useState(false);
   const [isExpedicaoOpen, setIsExpedicaoOpen] = useState(false);
-  const [isQrsOpen, setIsQrsOpen] = useState(false);
+  const [isCodesOpen, setIsCodesOpen] = useState(false);
   const [userDrawerOpen, setUserDrawerOpen] = useState(false);
   const userDrawerRef = useRef<HTMLDivElement>(null);
 
@@ -327,16 +328,16 @@ export const ToolsHub: React.FC<ToolsHubProps> = ({
     badgeClass: 'border-indigo-200 bg-indigo-50 text-indigo-700',
   }];
 
-  const qrsTools: ToolItem[] = [{
-    id: 'qrs',
-    path: '/qrs',
-    name: 'QR Codes Diretos',
-    description: 'Gere códigos QR 100% diretos: sem encurtador e sem ponte. Destino abre direto no celular.',
-    tag: 'Direto',
-    icon: QrCode,
-    iconClass: 'text-amber-600',
-    iconBoxClass: 'bg-amber-50',
-    badgeClass: 'border-amber-300 bg-amber-50 text-amber-700',
+  const codesTools: ToolItem[] = [{
+    id: 'codes',
+    path: '/codes',
+    name: 'Codes',
+    description: 'Guarde seus códigos e trechos HTML.',
+    tag: 'HTML',
+    icon: Code2,
+    iconClass: 'text-[#1769ff]',
+    iconBoxClass: 'bg-blue-50',
+    badgeClass: 'border-blue-200 bg-blue-50 text-blue-700',
   }];
 
   const matchesQuery = (tool: ToolItem) => {
@@ -350,7 +351,7 @@ export const ToolsHub: React.FC<ToolsHubProps> = ({
   const filteredBrancas = useMemo(() => brancasTools.filter(tool => (currentUser?.isAdmin || currentUser?.allowedGroups?.includes(tool.id)) && matchesQuery(tool)), [query, currentUser?.isAdmin, currentUser?.allowedGroups]);
   const filteredCorrelacao = useMemo(() => correlacaoTools.filter(tool => (currentUser?.isAdmin || currentUser?.allowedGroups?.includes(tool.id)) && matchesQuery(tool)), [query, currentUser?.isAdmin, currentUser?.allowedGroups]);
   const filteredExpedicao = useMemo(() => expedicaoTools.filter(tool => (currentUser?.isAdmin || currentUser?.allowedGroups?.includes(tool.id)) && matchesQuery(tool)), [query, currentUser?.isAdmin, currentUser?.allowedGroups]);
-  const filteredQrs = useMemo(() => qrsTools.filter(tool => (currentUser?.isAdmin || !currentUser?.allowedGroups?.length || currentUser?.allowedGroups?.includes(tool.id)) && matchesQuery(tool)), [query, currentUser?.isAdmin, currentUser?.allowedGroups]);
+  const filteredCodes = useMemo(() => codesTools.filter(tool => (currentUser?.isAdmin || !currentUser?.allowedGroups?.length || currentUser?.allowedGroups?.includes(tool.id)) && matchesQuery(tool)), [query, currentUser?.isAdmin, currentUser?.allowedGroups]);
 
   const logout = async () => {
     const auth = await import('../lib/auth');
@@ -549,7 +550,7 @@ export const ToolsHub: React.FC<ToolsHubProps> = ({
 
           <div className="mb-5 flex gap-2 overflow-x-auto pb-1 lg:hidden">
             <button onClick={() => navigate('/')} className="rounded-xl bg-[#fff5bd] px-4 py-2 text-xs font-bold text-slate-900">Módulos</button>
-            <button onClick={() => navigate('/qrs')} className="rounded-xl bg-white px-4 py-2 text-xs font-bold text-slate-600 shadow-sm">QRs</button>
+            <button onClick={() => navigate('/codes')} className="rounded-xl bg-white px-4 py-2 text-xs font-bold text-slate-600 shadow-sm">Codes</button>
             {currentUser?.isAdmin && (
               <button onClick={() => navigate('/admin')} className="rounded-xl bg-white px-4 py-2 text-xs font-bold text-slate-600 shadow-sm">Relatórios</button>
             )}
@@ -642,15 +643,15 @@ export const ToolsHub: React.FC<ToolsHubProps> = ({
               status={<span className="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-[10px] font-black uppercase text-indigo-700">Novo</span>}
             />
             <ModuleGroup
-              title="QRs Dinâmicos"
-              count={qrsTools.length}
-              accent="yellow"
-              icon={QrCode}
-              tools={filteredQrs}
-              isOpen={isQrsOpen}
-              onToggle={() => setIsQrsOpen(value => !value)}
+              title="Codes"
+              count={codesTools.length}
+              accent="blue"
+              icon={Code2}
+              tools={filteredCodes}
+              isOpen={isCodesOpen}
+              onToggle={() => setIsCodesOpen(value => !value)}
               onOpenTool={navigate}
-              status={<span className="rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-[10px] font-black uppercase text-amber-700">Novo</span>}
+              status={<span className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[10px] font-black uppercase text-blue-700">HTML</span>}
             />
           </div>
         </main>

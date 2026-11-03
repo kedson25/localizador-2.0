@@ -20,7 +20,7 @@ import { Login } from './components/Login';
 import { AdminPanel } from './components/AdminPanel';
 import { OperationNavigation } from './components/OperationNavigation';
 import { ExpedicaoPanel } from './components/ExpedicaoPanel';
-import { DynamicQRs } from './components/DynamicQRs';
+import { CodesPanel } from './components/CodesPanel';
 import { DynamicQrRedirect } from './components/DynamicQrRedirect';
 import { User, getCurrentUser } from './lib/auth';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -146,7 +146,8 @@ export default function App() {
           <Route path="/login" element={isAuthenticated ? <Navigate to="/" replace /> : <Login onLogin={(user) => { setCurrentUser(user); navigate('/'); }} />} />
           {isAuthenticated && <>
             <Route path="/" element={<ToolsHub totalRows={rows.length} groups={groups} onClear={handleClear} currentUser={currentUser} />} />
-            <Route path="/qrs" element={insideDashboard(<DynamicQRs currentUser={currentUser} />)} />
+            <Route path="/codes" element={insideDashboard(<CodesPanel currentUser={currentUser} />)} />
+            <Route path="/qrs" element={<Navigate to="/codes" replace />} />
             <Route path="/configuracoes" element={insideDashboard(<SettingsPage currentUser={currentUser} />)} />
             {currentUser?.isAdmin && <Route path="/admin" element={insideDashboard(<AdminPanel currentUser={currentUser} />)} />}
             {(currentUser?.isAdmin || currentUser?.allowedGroups?.includes('consulta')) && <Route path="/consulta" element={insideDashboard(<div className="space-y-4"><StatsSummary totalRows={rows.length} groups={groups} /><IdLookupEnhanced rows={rows} onNavigateToUpload={() => navigate('/upload')} /></div>)} />}

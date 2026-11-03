@@ -5,6 +5,7 @@ import {
   Boxes,
   ChevronDown,
   CircleHelp,
+  Code2,
   LogOut,
   PackageOpen,
   QrCode,
@@ -33,7 +34,7 @@ type QuickLink = {
 
 const QUICK_LINKS: QuickLink[] = [
   { label: 'Módulos', path: '/', keywords: 'modulos ferramentas' },
-  { label: 'QR Codes Diretos', path: '/qrs', keywords: 'qrs qr code direto sem ponte sem encurtador' },
+  { label: 'Codes', path: '/codes', keywords: 'codes codigos html colar' },
   { label: 'Listas de Coleta', path: '/listas', keywords: 'lista coleta backlog' },
   { label: 'Buscar IDs', path: '/consulta', keywords: 'buscar ids consulta rota pacote' },
   { label: 'Controle Refugo', path: '/refugo', keywords: 'refugo conferir csv pacotes' },
@@ -89,7 +90,7 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
   const isAdminArea = location.pathname.startsWith('/admin');
   const isSettings = location.pathname.startsWith('/configuracoes');
   const isModulesArea = location.pathname === '/';
-  const isQrsArea = location.pathname.startsWith('/qrs');
+  const isCodesArea = location.pathname.startsWith('/codes') || location.pathname.startsWith('/qrs');
   const isExpedicao = location.pathname.startsWith('/expedicao');
 
   const results = useMemo(() => {
@@ -151,13 +152,13 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
 
           <button
             type="button"
-            onClick={() => navigate('/qrs')}
-            className={navClass(isQrsArea)}
-            title="QR Codes Diretos"
-            aria-label="QR Codes Diretos"
+            onClick={() => navigate('/codes')}
+            className={navClass(isCodesArea)}
+            title="Codes"
+            aria-label="Codes"
           >
-            {isQrsArea && <span className="absolute -left-3 h-9 w-1 rounded-r bg-[#FFE600]" />}
-            <QrCode className="h-5 w-5 shrink-0" />
+            {isCodesArea && <span className="absolute -left-3 h-9 w-1 rounded-r bg-[#FFE600]" />}
+            <Code2 className="h-5 w-5 shrink-0" />
           </button>
 
           {currentUser?.isAdmin && (
