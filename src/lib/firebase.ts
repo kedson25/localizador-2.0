@@ -395,77 +395,54 @@ export function listenToRefugo(callback: (data: RefugoData | null) => void): () 
 }
 
 /**
- * Consulta IDs apenas nas listas do dia atual.
- * Histórico continua visível nas telas de listas, mas IDs de dias anteriores
- * não são retornados na consulta operacional.
+ * Consulta IDs nas listas de coleta (por padrão nas listas do dia atual, ou incluindo antigas se solicitado).
  */
 export async function searchItemsAcrossAllListas(
-  terms: string[]
+  terms: string[],
+  options?: { includeOldLists?: boolean }
 ): Promise<Map<string, { item: ColetaItem; listaId: string }>> {
   const results = new Map<string, { item: ColetaItem; listaId: string }>();
   if (!terms || terms.length === 0) return results;
 
-  await ensureTodayListasCache();
-
-  const allowedListaIds = new Set(todayListasCache.map(lista => lista.id));
-  if (allowedListaIds.size === 0) return results;
-
   try {
-    const coreResults = await searchItemsAcrossAllListasCore(terms);
-    coreResults.forEach((value, key) => {
-      if (allowedListaIds.has(value.listaId)) {
-        results.set(key, value);
-      }
-    });
+    return await searchItemsAcrossAllListasCore(terms, options);
   } catch (error) {
-    console.warn('Busca global indisponível; conferindo diretamente as listas de hoje:', error);
+    console.warn('Busca remota indisponível; consultando cache local das listas:', error);
   }
+
+  await ensureTodayListasCache();
+  const includeOldLists = options?.includeOldLists === true;
+  const cachedAll = (await getLocalValue<ColetaLista[]>(LOCAL_LISTAS_KEY)) || [];
+  const targetListas = includeOldLists ? cachedAll : todayListasCache;
 
   const normalizedTerms = terms
     .map(normalizeLookupCode)
     .filter(term => term.upper || term.digits);
 
-  const missingTerms = normalizedTerms.filter(term => {
-    return !results.has(term.upper) && (!term.digits || !results.has(term.digits));
-  });
-
-  if (missingTerms.length === 0) return results;
-
   const wanted = new Set<string>();
-  missingTerms.forEach(term => {
+  normalizedTerms.forEach(term => {
     if (term.upper) wanted.add(term.upper);
     if (term.digits) wanted.add(term.digits);
   });
 
-  const listaIds = Array.from(allowedListaIds);
-  const listasResults = await Promise.allSettled(
-    listaIds.map(async listaId => ({
-      listaId,
-      itens: await getAllItemsForExportCore(listaId),
-    }))
+  await Promise.all(
+    targetListas.map(async lista => {
+      const localItens = (await getLocalValue<ColetaItem[]>(localListaItensKey(lista.id))) || [];
+      for (const rawItem of localItens) {
+        const codigo = String(rawItem.codigo || '').trim();
+        if (!codigo) continue;
+        const normalized = normalizeLookupCode(codigo);
+        if (!wanted.has(normalized.upper) && (!normalized.digits || !wanted.has(normalized.digits))) continue;
+        const item: ColetaItem = {
+          ...rawItem,
+          codigo,
+          codigoClean: rawItem.codigoClean || normalized.digits,
+        };
+        if (normalized.upper && !results.has(normalized.upper)) results.set(normalized.upper, { item, listaId: lista.id });
+        if (normalized.digits && !results.has(normalized.digits)) results.set(normalized.digits, { item, listaId: lista.id });
+      }
+    })
   );
-
-  listasResults.forEach(listaResult => {
-    if (listaResult.status !== 'fulfilled') return;
-
-    const { listaId, itens } = listaResult.value;
-    for (const rawItem of itens || []) {
-      const codigo = String(rawItem.codigo || '').trim();
-      if (!codigo) continue;
-
-      const normalized = normalizeLookupCode(codigo);
-      if (!wanted.has(normalized.upper) && (!normalized.digits || !wanted.has(normalized.digits))) continue;
-
-      const item: ColetaItem = {
-        ...rawItem,
-        codigo,
-        codigoClean: rawItem.codigoClean || normalized.digits,
-      };
-
-      if (normalized.upper) results.set(normalized.upper, { item, listaId });
-      if (normalized.digits) results.set(normalized.digits, { item, listaId });
-    }
-  });
 
   return results;
 }
@@ -528,6 +505,7 @@ export async function addRefugoScan(scan: Omit<RefugoScan, 'firestoreId'>): Prom
     ...(current || []).filter(item => item.normalizedId !== normalized.normalizedId),
   ]);
   await addRefugoScanCore(normalized);
+  schedulePermanentBackfill([normalized]);
 }
 
 export async function deleteRefugoScan(normalizedId: string): Promise<void> {
@@ -594,7 +572,6 @@ export function listenToRefugoScansIncremental(
         const normalizedInitial = (initialScans || []).map(normalizeRefugoRouteStatus);
         if (normalizedInitial.length > 0) {
           void setLocalValue(LOCAL_REFUGO_SCANS_KEY, normalizedInitial);
-          schedulePermanentBackfill(normalizedInitial);
         } else {
           void deleteLocalValue(LOCAL_REFUGO_SCANS_KEY);
         }
@@ -663,7 +640,6 @@ export function listenToRefugoScans(
   const unsubTransient = listenToTransientRefugoScans(scans => {
     transientScans = scans.map(normalizeScanForDashboard);
     void setLocalValue(LOCAL_REFUGO_SCANS_KEY, transientScans);
-    schedulePermanentBackfill(transientScans);
     emit();
   });
 

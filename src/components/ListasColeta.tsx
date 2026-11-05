@@ -2382,41 +2382,37 @@ export const ListasColeta: React.FC<ListasColetaProps> = ({ currentUser }) => {
         animate={{ opacity: 1, y: 0 }}
         className="w-full space-y-6 pb-12"
       >
-        {/* Header Principal */}
-        <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <div className="p-3 bg-[#3483FA]/10 text-[#3483FA] rounded-xl">
-              <Package className="w-8 h-8" />
-            </div>
-            <div>
-              <h2 className="text-xl font-bold text-[#333333]">Listas de Coleta</h2>
-              <p className="text-xs text-gray-500">Crie listas reais e abra a tela de coleta para bipar pacotes.</p>
-            </div>
-          </div>
+        {/* TABELA DE LISTAS */}
+        <div className="bg-white border border-gray-200 rounded-xl p-4 sm:p-5 shadow-sm space-y-4">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pb-3 border-b border-gray-200">
+            <div className="flex items-center justify-between sm:justify-start gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 bg-[#3483FA]/10 text-[#3483FA] flex items-center justify-center border border-[#3483FA]/20">
+                  <Package className="w-4 h-4" />
+                </div>
+                <h2 className="text-sm font-black text-slate-900 uppercase tracking-wider">Listas de Coleta</h2>
+                <span className="bg-slate-100 text-slate-700 font-mono text-xs font-bold px-2 py-0.5 border border-slate-200">
+                  {listas.length}
+                </span>
+              </div>
 
-          <button
-            onClick={() => setShowModalNovaLista(true)}
-            className="w-full sm:w-auto bg-[#3483FA] hover:bg-blue-600 text-white font-bold px-5 py-2.5 rounded-xl text-sm flex items-center justify-center gap-2 transition-colors shadow-sm cursor-pointer"
-          >
-            <Plus className="w-5 h-5" />
-            Criar Nova Lista
-          </button>
-        </div>
-
-
-
-        {/* TABELA DE LISTAS (EXIBIÇÃO EM LISTA E NÃO EM BLOCOS) */}
-        <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-gray-100">
-            <div className="flex items-center gap-2">
-              <Layers className="w-5 h-5 text-[#3483FA]" />
-              <h3 className="text-base font-bold text-[#333333]">Lista</h3>
-              <span className="bg-gray-100 text-gray-700 font-mono text-xs font-bold px-2.5 py-0.5 rounded-full">
-                {listas.length}
-              </span>
+              <button
+                onClick={() => setShowModalNovaLista(true)}
+                className="sm:hidden bg-[#3483FA] hover:bg-blue-600 text-white font-bold px-3 py-1.5 text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Nova Lista</span>
+              </button>
             </div>
 
-            <div className="flex items-center gap-2 w-full sm:w-auto">
+            <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto">
+              <button
+                onClick={() => setShowModalNovaLista(true)}
+                className="hidden sm:inline-flex bg-[#3483FA] hover:bg-blue-600 text-white font-bold px-3.5 py-1.5 text-xs items-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Criar Nova Lista</span>
+              </button>
               <button
                 onClick={() => handleSincronizarContadores()}
                 disabled={isReconciling}

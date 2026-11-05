@@ -39,6 +39,21 @@ function cycleShort(value: string): string {
   return cycleKey(value) || value || '-';
 }
 
+function stripDateFromLabel(value?: string): string {
+  if (!value) return '';
+  return String(value)
+    .replace(/\s*[-–—]\s*\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}(\s*[-–—]\s*\d+)?/g, '')
+    .replace(/\b\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}\b/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/^[\s\-–—]+|[\s\-–—]+$/g, '')
+    .trim();
+}
+
+function isRealRoute(value?: string): boolean {
+  const trimmed = String(value || '').trim().toLowerCase();
+  return Boolean(trimmed) && !['sem rota', 'geral', 'multirotas / grupos', 'multirotas', '-', '—'].includes(trimmed);
+}
+
 function effectiveTodayCycle(lista: ColetaLista): Cycle | '' {
   const nameCycle = cycleKey(lista.nome);
   const configuredCycle = cycleKey(lista.saidaPadrao);
@@ -132,25 +147,28 @@ export const IdLookupEnhanced: React.FC<IdLookupEnhancedProps> = (props) => {
     return () => root.removeEventListener('click', handleClickCapture, true);
   }, []);
 
-  // Acompanha o textarea controlado do IdLookup inclusive quando IDs entram via
-  // importação de grupo, não apenas quando o usuário digita manualmente.
+  // Acompanha os termos pesquisados no IdLookup via evento sincronizado (sem polling de DOM a cada 300ms).
   useEffect(() => {
-    let lastValue = '';
-
-    const readSearch = () => {
+    const readInitial = () => {
       const textarea = rootRef.current?.querySelector(
         'textarea[placeholder*="Cole os IDs aqui"]'
       ) as HTMLTextAreaElement | null;
-
       const value = textarea?.value || '';
-      if (value === lastValue) return;
-      lastValue = value;
-      setTerms(parseTerms(value));
+      if (value) {
+        setTerms(parseTerms(value));
+      }
     };
 
-    readSearch();
-    const interval = window.setInterval(readSearch, 300);
-    return () => window.clearInterval(interval);
+    const handleTermsEvent = (event: Event) => {
+      const customEvent = event as CustomEvent<string[]>;
+      if (Array.isArray(customEvent.detail)) {
+        setTerms(Array.from(new Set(customEvent.detail)));
+      }
+    };
+
+    readInitial();
+    window.addEventListener('idlookup-search-terms', handleTermsEvent);
+    return () => window.removeEventListener('idlookup-search-terms', handleTermsEvent);
   }, []);
 
   useEffect(() => {
@@ -284,9 +302,6 @@ export const IdLookupEnhanced: React.FC<IdLookupEnhancedProps> = (props) => {
             </div>
             <div className="min-w-0">
               <h3 className="text-sm font-black text-gray-900">Importar grupo de hoje</h3>
-              <p className="text-[11px] text-gray-500">
-                Somente listas da data atual. O ciclo de cada lista aparece ao lado.
-              </p>
             </div>
           </div>
           <button
@@ -314,7 +329,7 @@ export const IdLookupEnhanced: React.FC<IdLookupEnhancedProps> = (props) => {
                     <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 bg-gray-50 px-4 py-2.5">
                       <div className="min-w-0">
                         <p className="truncate text-xs font-black text-gray-800" title={lista.nome}>
-                          {lista.nome}
+                          {stripDateFromLabel(lista.nome) || lista.nome}
                         </p>
                         <p className="mt-0.5 text-[10px] text-gray-500">{lista.data}</p>
                       </div>
@@ -374,11 +389,8 @@ export const IdLookupEnhanced: React.FC<IdLookupEnhancedProps> = (props) => {
               </div>
               <div>
                 <h3 className="text-xs font-black uppercase tracking-wide text-purple-950">
-                  IDs em múltiplas listas do dia
+                  IDs em múltiplas listas
                 </h3>
-                <p className="text-[10px] font-medium text-purple-700">
-                  Mostra todos os grupos e todas as saídas encontradas para o mesmo ID.
-                </p>
               </div>
             </div>
 
@@ -423,10 +435,10 @@ export const IdLookupEnhanced: React.FC<IdLookupEnhancedProps> = (props) => {
                           <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0">
                               <p className="truncate text-[11px] font-black text-gray-800" title={item.listaNome}>
-                                {item.listaNome}
+                                {stripDateFromLabel(item.listaNome) || item.listaNome}
                               </p>
                               <p className="mt-0.5 text-[10px] font-medium text-gray-500">
-                                {item.grupoNome || 'Sem grupo'}
+                                {item.grupoNome || 'Lista Comum'}
                               </p>
                             </div>
                             <span className="shrink-0 rounded-md border border-blue-200 bg-white px-2 py-0.5 text-[10px] font-black text-blue-700">
@@ -437,7 +449,7 @@ export const IdLookupEnhanced: React.FC<IdLookupEnhancedProps> = (props) => {
                           <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-gray-500">
                             {item.listaData && <span>{item.listaData}</span>}
                             {item.item.motivo && <span>Motivo: {item.item.motivo}</span>}
-                            {item.item.rota && <span>Rota: {item.item.rota}</span>}
+                            {isRealRoute(item.item.rota) && <span>Rota: {item.item.rota}</span>}
                           </div>
                         </div>
                       ))}

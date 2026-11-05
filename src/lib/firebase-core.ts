@@ -22,17 +22,17 @@ const firebaseConfig = {
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 export const auth = getAuth(app);
 
-// Suporte a detecção automática ou long polling configurável via variável de ambiente VITE_FIREBASE_AUTO_DETECT_POLLING.
-// Por padrão, experimentalForceLongPolling: true é mantido para garantir máxima compatibilidade com proxies/firewalls corporativos.
-const useAutoDetect = typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_FIREBASE_AUTO_DETECT_POLLING === 'true';
+// Usa detecção automática de WebSocket/long-polling por padrão para máxima velocidade,
+// permitindo forçar long-polling apenas se VITE_FIREBASE_FORCE_LONG_POLLING === 'true'.
+const forceLongPolling = typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_FIREBASE_FORCE_LONG_POLLING === 'true';
 
 let firestoreInstance;
 try {
   firestoreInstance = initializeFirestore(app, {
     localCache: memoryLocalCache(),
-    ...(useAutoDetect
-      ? { experimentalAutoDetectLongPolling: true }
-      : { experimentalForceLongPolling: true })
+    ...(forceLongPolling
+      ? { experimentalForceLongPolling: true }
+      : { experimentalAutoDetectLongPolling: true })
   });
 } catch (_) {
   firestoreInstance = getFirestore(app);
@@ -588,9 +588,17 @@ export function getListaSortTimestamp(lista: ColetaLista): number {
   return 0;
 }
 
+// Cache em memória de metadados de listas e itens por lista para consultas instantâneas
+let listasMetadataCache: ColetaLista[] = [];
+export const listaItensCache = new Map<string, ColetaItem[]>();
+const listaItensCacheTimestamp = new Map<string, number>();
+
+export function getCachedListasMetadata(): ColetaLista[] {
+  return listasMetadataCache;
+}
+
 /**
  * Escuta todas as listas (apenas metadados) em tempo real diretamente do Firestore.
- * Zero uso de LocalStorage ou cache em RAM como fonte.
  */
 export function listenToListas(callback: (listas: ColetaLista[]) => void): () => void {
   const colRef = collection(db, COLETA_LISTAS_COLLECTION);
@@ -614,18 +622,15 @@ export function listenToListas(callback: (listas: ColetaLista[]) => void): () =>
       return (b.id || '').localeCompare(a.id || '');
     });
 
+    listasMetadataCache = remoteListas;
     callback(remoteListas);
   }, (error) => {
     console.error('Erro ao escutar listas de coleta no Firestore:', error);
   });
 }
 
-// Cache em memória de itens por lista para abertura instantânea (0ms)
-const listaItensCache = new Map<string, ColetaItem[]>();
-
 /**
- * Escuta os itens de uma lista específica em tempo real.
- * Por padrão carrega todos os itens da lista para garantir integridade total dos totais e grupos.
+ * Escuta os itens de uma lista específica em tempo real (apenas onSnapshot, sem getDocs duplicado).
  */
 export function listenToListaItens(
   listaId: string,
@@ -650,30 +655,20 @@ export function listenToListaItens(
 
   let hasDeliveredFromServer = false;
 
-  // Busca inicial paralela via getDocs para entregar em altíssima velocidade
-  getDocs(q).then((snap) => {
-    if (!hasDeliveredFromServer && !snap.empty) {
-      const items = snap.docs.map(d => ({ ...d.data(), id: d.id } as ColetaItem));
-      listaItensCache.set(listaId, items);
-      callback(items);
-    }
-  }).catch((err) => {
-    console.warn('Busca inicial de itens via getDocs falhou, aguardando onSnapshot:', err);
-  });
-
   return onSnapshot(q, (snap) => {
     hasDeliveredFromServer = true;
     const items = snap.docs.map(d => ({ ...d.data(), id: d.id } as ColetaItem));
     listaItensCache.set(listaId, items);
+    listaItensCacheTimestamp.set(listaId, Date.now());
     callback(items);
   }, (err) => {
     console.error('Erro ao escutar itens da lista:', err);
-    // Fallback em caso de erro na query ordenada por timestamp: tentar buscar sem ordenação
     if (!hasDeliveredFromServer) {
       getDocs(colRef).then((fallbackSnap) => {
         const items = fallbackSnap.docs.map(d => ({ ...d.data(), id: d.id } as ColetaItem));
         items.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
         listaItensCache.set(listaId, items);
+        listaItensCacheTimestamp.set(listaId, Date.now());
         callback(items);
       }).catch(e => console.error('Fallback getDocs também falhou:', e));
     }
@@ -764,8 +759,8 @@ export async function flushSaveLista(listaId: string): Promise<boolean> {
 }
 
 /**
- * Adiciona um único item na subcoleção `itens` do servidor e atualiza os contadores de metadados.
- * "O servidor é a única fonte da verdade. Servidor confirma, depois exibe."
+ * Adiciona um único item na subcoleção `itens` do servidor e atualiza os contadores de metadados
+ * em uma única transação/batch de rede, evitando 3 round-trips sequenciais.
  */
 export async function addItemToLista(
   listaId: string,
@@ -792,19 +787,14 @@ export async function addItemToLista(
     timestamp
   };
 
-  // 1. Verifica se o item já existe para não inflar contadores
-  let isNewItem = true;
-  try {
-    const existingSnap = await getDoc(itemDocRef);
-    if (existingSnap.exists()) {
-      isNewItem = false;
-    }
-  } catch (_) {}
+  // Verifica em memória se o item já existe no cache da lista ativa (0ms)
+  const cachedItems = listaItensCache.get(listaId) || [];
+  const isNewItem = !cachedItems.some(existing => existing.id === itemId);
 
-  // 2. Grava o documento individual do pacote no servidor
-  await setDoc(itemDocRef, cleanUndefined(itemToSave));
+  // Atualiza cache em memória imediatamente
+  listaItensCache.set(listaId, [itemToSave, ...cachedItems.filter(existing => existing.id !== itemId)]);
+  listaItensCacheTimestamp.set(listaId, Date.now());
 
-  // 3. Atualiza contadores no documento pai no servidor
   const op = item.responsavel || 'Operador';
   const saida = item.saida || 'Ciclo 2 - Saída PM';
   const motivo = normalizeMotivo(item.motivo || 'Pendente');
@@ -824,10 +814,17 @@ export async function addItemToLista(
     updatePayload.totalValidados = increment(1);
   }
 
+  // Executa gravação do item e atualização dos contadores em 1 único batch de rede
   try {
-    await updateDoc(listaDocRef, updatePayload);
+    const batch = writeBatch(db);
+    batch.set(itemDocRef, cleanUndefined(itemToSave));
+    batch.update(listaDocRef, updatePayload);
+    await batch.commit();
   } catch (_) {
-    await setDoc(listaDocRef, updatePayload, { merge: true });
+    await Promise.all([
+      setDoc(itemDocRef, cleanUndefined(itemToSave)),
+      setDoc(listaDocRef, updatePayload, { merge: true })
+    ]);
   }
 
   return itemToSave;
@@ -846,10 +843,10 @@ export async function updateItemInLista(
     const itemDocRef = doc(db, COLETA_LISTAS_COLLECTION, listaId, 'itens', itemId);
     const listaDocRef = doc(db, COLETA_LISTAS_COLLECTION, listaId);
 
-    await updateDoc(itemDocRef, cleanUndefined({
+    await setDoc(itemDocRef, cleanUndefined({
       ...updates,
       updatedAt: serverTimestamp()
-    }));
+    }), { merge: true });
 
     // Sincroniza contadores agregados se motivo, saída ou validação foram alterados
     const metaUpdates: Record<string, any> = {
@@ -1194,17 +1191,92 @@ export async function searchItemsInLista(
   }
 }
 
+export function isListaFromTodayCore(lista: Partial<ColetaLista> & Record<string, any>, now = new Date()): boolean {
+  const day = String(now.getDate()).padStart(2, '0');
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const year = String(now.getFullYear());
+  const br = `${day}/${month}/${year}`;
+  const iso = `${year}-${month}-${day}`;
+  const rawData = String(lista.data || '').trim();
+
+  if (rawData) {
+    return (
+      rawData === br ||
+      rawData === iso ||
+      rawData.startsWith(`${br} `) ||
+      rawData.startsWith(`${iso}T`)
+    );
+  }
+
+  const createdAt: any = lista.createdAt;
+  let createdDate: Date | null = null;
+
+  try {
+    if (createdAt?.toDate && typeof createdAt.toDate === 'function') {
+      createdDate = createdAt.toDate();
+    } else if (createdAt?.seconds) {
+      createdDate = new Date(Number(createdAt.seconds) * 1000);
+    } else if (createdAt) {
+      const parsed = new Date(createdAt);
+      if (!Number.isNaN(parsed.getTime())) createdDate = parsed;
+    }
+  } catch (_) {
+    createdDate = null;
+  }
+
+  if (!createdDate || Number.isNaN(createdDate.getTime())) return false;
+
+  return (
+    createdDate.getFullYear() === now.getFullYear() &&
+    createdDate.getMonth() === now.getMonth() &&
+    createdDate.getDate() === now.getDate()
+  );
+}
+
+const inFlightListaFetch = new Map<string, Promise<ColetaItem[]>>();
+
+export async function fetchOrGetCachedListaItens(listaId: string, ttlMs = 30000): Promise<ColetaItem[]> {
+  const cached = listaItensCache.get(listaId);
+  const ts = listaItensCacheTimestamp.get(listaId) || 0;
+  if (cached && Date.now() - ts < ttlMs) {
+    return cached;
+  }
+
+  const existingPromise = inFlightListaFetch.get(listaId);
+  if (existingPromise) {
+    return existingPromise;
+  }
+
+  const fetchPromise = (async () => {
+    try {
+      const itensRef = collection(db, COLETA_LISTAS_COLLECTION, listaId, 'itens');
+      const snap = await getDocs(itensRef);
+      const items = snap.docs.map(d => ({ ...d.data(), id: d.id } as ColetaItem));
+      listaItensCache.set(listaId, items);
+      listaItensCacheTimestamp.set(listaId, Date.now());
+      return items;
+    } finally {
+      inFlightListaFetch.delete(listaId);
+    }
+  })();
+
+  inFlightListaFetch.set(listaId, fetchPromise);
+  return fetchPromise;
+}
+
 /**
- * Pesquisa múltiplos IDs diretamente no servidor em todas as listas.
- * A consulta por lista não depende de índice global COLLECTION_GROUP e também
- * cobre documentos antigos que ainda mantêm o array `itens` no documento pai.
+ * Pesquisa múltiplos IDs nas listas de coleta.
+ * Por padrão busca apenas nas listas de hoje (options.includeOldLists = false),
+ * podendo incluir listas antigas sob demanda.
  */
 export async function searchItemsAcrossAllListas(
-  terms: string[]
+  terms: string[],
+  options?: { includeOldLists?: boolean }
 ): Promise<Map<string, { item: ColetaItem; listaId: string }>> {
   const results = new Map<string, { item: ColetaItem; listaId: string }>();
   if (!terms || terms.length === 0) return results;
 
+  const includeOldLists = options?.includeOldLists === true;
   const uniqueTerms = Array.from(new Set(terms.map(t => t.trim().toUpperCase()).filter(Boolean)));
   if (uniqueTerms.length === 0) return results;
 
@@ -1218,40 +1290,71 @@ export async function searchItemsAcrossAllListas(
     if (!codigo || (!wantedTerms.has(codigoUpper) && !wantedTerms.has(codigoClean))) return;
 
     const item: ColetaItem = { ...rawItem, codigo, codigoClean };
-    results.set(codigoUpper, { item, listaId });
-    if (codigoClean) results.set(codigoClean, { item, listaId });
+    if (!results.has(codigoUpper)) {
+      results.set(codigoUpper, { item, listaId });
+    }
+    if (codigoClean && !results.has(codigoClean)) {
+      results.set(codigoClean, { item, listaId });
+    }
   };
 
-  // Se a pessoa acabou de abrir uma lista/grupo, os itens já estão em memória e
-  // podem ser encontrados até quando o Firestore estiver temporariamente sem cota.
-  listaItensCache.forEach((items, listaId) => {
-    items.forEach(item => addIfMatch(item, listaId));
-  });
-
-  const allTermsFoundInCache = uniqueTerms.every(term => {
-    const cleanTerm = cleanDigits(term);
-    return results.has(term) || Boolean(cleanTerm && results.has(cleanTerm));
-  });
-  if (allTermsFoundInCache) return results;
-
   try {
-    const listasSnapshot = await getDocs(collection(db, COLETA_LISTAS_COLLECTION));
-    const chunkSize = 30;
+    let allListas = listasMetadataCache;
+    if (allListas.length === 0) {
+      const listasSnapshot = await getDocs(collection(db, COLETA_LISTAS_COLLECTION));
+      allListas = listasSnapshot.docs.map(docSnap => {
+        const data = docSnap.data();
+        return {
+          ...data,
+          id: docSnap.id,
+          itens: Array.isArray(data.itens) ? data.itens : [],
+          totalItens: typeof data.totalItens === 'number' ? data.totalItens : 0,
+          totalValidados: typeof data.totalValidados === 'number' ? data.totalValidados : 0
+        } as ColetaLista;
+      });
+      allListas.sort((a, b) => getListaSortTimestamp(b) - getListaSortTimestamp(a));
+      listasMetadataCache = allListas;
+    }
+
+    const targetListas = includeOldLists
+      ? allListas
+      : allListas.filter(lista => isListaFromTodayCore(lista));
+
+    if (targetListas.length === 0) return results;
+
     let successfulQueries = 0;
     let failedQueries = 0;
 
-    await Promise.all(listasSnapshot.docs.map(async listaDoc => {
-      const listaId = listaDoc.id;
-      const listaData = listaDoc.data();
+    await Promise.all(targetListas.map(async lista => {
+      const listaId = lista.id;
 
-      if (Array.isArray(listaData.itens)) {
-        listaData.itens.forEach((item: ColetaItem) => addIfMatch(item, listaId));
+      if (Array.isArray(lista.itens) && lista.itens.length > 0) {
+        lista.itens.forEach((item: ColetaItem) => addIfMatch(item, listaId));
+      }
+
+      // Quando há cache recente ou muitos termos (ex: lote > 25 IDs), carregar a subcoleção
+      // uma única vez com cache compartilhado evita dezenas de queries "in" fragmentadas por lista
+      const cached = listaItensCache.get(listaId);
+      const cacheAge = Date.now() - (listaItensCacheTimestamp.get(listaId) || 0);
+      if ((cached && cacheAge < 30000) || uniqueTerms.length > 25 || (lista.totalItens || 0) <= 1500) {
+        try {
+          const items = await fetchOrGetCachedListaItens(listaId, 30000);
+          successfulQueries += 1;
+          items.forEach(item => addIfMatch(item, listaId));
+          return;
+        } catch (_) {
+          failedQueries += 1;
+        }
       }
 
       const itensRef = collection(db, COLETA_LISTAS_COLLECTION, listaId, 'itens');
+      const chunkSize = 30;
       for (let index = 0; index < uniqueTerms.length; index += chunkSize) {
         const codigoChunk = uniqueTerms.slice(index, index + chunkSize);
-        const cleanChunk = Array.from(new Set(codigoChunk.map(cleanDigits).filter(Boolean)));
+        const codigoSet = new Set(codigoChunk);
+        const cleanChunk = Array.from(
+          new Set(codigoChunk.map(cleanDigits).filter(d => d && !codigoSet.has(d)))
+        );
         const searches = [getDocs(query(itensRef, where('codigo', 'in', codigoChunk)))];
         if (cleanChunk.length > 0) {
           searches.push(getDocs(query(itensRef, where('codigoClean', 'in', cleanChunk))));
@@ -1275,7 +1378,7 @@ export async function searchItemsAcrossAllListas(
       throw new Error('O Firestore não respondeu à busca das listas. Verifique a cota do projeto.');
     }
   } catch (error) {
-    console.error('Erro ao pesquisar itens em todas as listas no servidor:', error);
+    console.error('Erro ao pesquisar itens nas listas no servidor:', error);
     if (results.size === 0) throw error;
   }
 

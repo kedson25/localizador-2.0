@@ -166,13 +166,10 @@ export const CodesPanel: React.FC<CodesPanelProps> = ({ currentUser }) => {
 
       {/* Cabeçalho minimalista */}
       <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-        <div>
-          <h1 className="text-xl font-black text-slate-900 flex items-center gap-2">
-            <Code2 className="h-5 w-5 text-[#1769ff]" />
-            <span>Codes</span>
-          </h1>
-          <p className="text-xs text-slate-500">Cole seu código HTML abaixo para guardar.</p>
-        </div>
+        <h1 className="text-base font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
+          <Code2 className="h-4 w-4 text-[#1769ff]" />
+          <span>Codes</span>
+        </h1>
         <span className="text-xs font-mono font-bold text-slate-500">
           {codes.length} {codes.length === 1 ? 'salvo' : 'salvos'}
         </span>

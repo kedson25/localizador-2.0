@@ -951,10 +951,7 @@ export function ControleRefugo({
           <div className="w-16 h-16 bg-[#E3F2FD] rounded-2xl flex items-center justify-center mb-4">
             <UploadCloud className="w-8 h-8 text-[#3483FA]" />
           </div>
-          <h2 className="text-xl font-bold text-[#333333] mb-2">Controle de Refugo</h2>
-          <p className="text-gray-500 mb-6 max-w-md">
-            Importe a lista de pacotes faltantes em CSV para começar a bipar e dar baixa.
-          </p>
+          <h2 className="text-lg font-black text-slate-900 uppercase tracking-wide mb-4">Controle de Refugo</h2>
           <label className="cursor-pointer bg-[#3483FA] hover:bg-blue-600 text-white px-6 py-3 rounded-xl text-sm font-bold shadow-sm transition-colors flex items-center gap-2">
             <UploadCloud className="w-5 h-5" />
             Carregar Base CSV
@@ -981,7 +978,7 @@ export function ControleRefugo({
                     <div>
                       <div className="flex items-center justify-between mb-2 sm:mb-3">
                         <label className="block text-xs sm:text-sm font-bold text-gray-700">
-                          Bipe o ID do pacote (Leitura Instantânea)
+                          ID do Pacote
                         </label>
                         <button
                           type="button"
@@ -1033,9 +1030,6 @@ export function ControleRefugo({
                           spellCheck="false"
                         />
                       </div>
-                      <p className="text-[11px] sm:text-xs text-gray-400 mt-2.5 text-center font-medium">
-                        {isLocked ? 'Desbloqueie para voltar a ler pacotes.' : 'Resposta imediata do bip com gravação em segundo plano.'}
-                      </p>
                     </div>
                     <button type="submit" className="hidden" disabled={isLocked}>Verificar</button>
                   </form>

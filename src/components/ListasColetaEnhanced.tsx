@@ -117,8 +117,8 @@ export const ListasColetaEnhanced: React.FC<ListasColetaEnhancedProps> = ({ curr
     }
   }, [activeListaId]);
 
-  // Descobre o cabeçalho real da lista. A correção automática só roda nas listas
-  // do DIA ATUAL. Isso impede que abrir um histórico altere AM/PM/SD antigo.
+  // Descobre o cabeçalho real da lista sem observar todo o document.body continuamente.
+  // A correção automática só roda nas listas do DIA ATUAL.
   useEffect(() => {
     if (!activeListaId) {
       setHeaderHost(null);
@@ -127,7 +127,6 @@ export const ListasColetaEnhanced: React.FC<ListasColetaEnhancedProps> = ({ curr
     }
 
     let disposed = false;
-    let timer: number | null = null;
 
     const inspectHeader = () => {
       if (disposed) return;
@@ -157,8 +156,6 @@ export const ListasColetaEnhanced: React.FC<ListasColetaEnhancedProps> = ({ curr
       void normalizeSaida(cycle, { force: false, updateName: false }).then(result => {
         if (!result?.metadataRepaired) return;
 
-        // O componente principal mantém selectedSaida em estado. Recarregar uma vez
-        // garante que lote/bip local também passem a usar o ciclo corrigido.
         const reloadKey = `coleta_cycle_reloaded:${activeListaId}:${cycle}`;
         try {
           if (sessionStorage.getItem(reloadKey) !== '1') {
@@ -169,28 +166,22 @@ export const ListasColetaEnhanced: React.FC<ListasColetaEnhancedProps> = ({ curr
       });
     };
 
-    const schedule = () => {
-      if (timer !== null) window.clearTimeout(timer);
-      timer = window.setTimeout(inspectHeader, 180);
-    };
-
-    const observer = new MutationObserver(schedule);
-    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
-    schedule();
+    const t1 = window.setTimeout(inspectHeader, 150);
+    const t2 = window.setTimeout(inspectHeader, 600);
+    const t3 = window.setTimeout(inspectHeader, 1500);
 
     return () => {
       disposed = true;
-      observer.disconnect();
-      if (timer !== null) window.clearTimeout(timer);
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+      window.clearTimeout(t3);
     };
   }, [activeListaId, normalizeSaida]);
 
-  // Se a lista de HOJE disser SD no cabeçalho e alguma linha ainda estiver PM/AM,
-  // força a correção. Listas antigas são apenas exibidas e nunca alteradas aqui.
+  // Verifica pontualmente na abertura da lista se há divergência de ciclo nas linhas visíveis,
+  // sem manter um MutationObserver global em document.body a cada tecla digitada.
   useEffect(() => {
     if (!activeListaId) return;
-
-    let inspectTimer: number | null = null;
 
     const getOperationalInfo = () => {
       const candidates = Array.from(document.querySelectorAll('span'));
@@ -233,24 +224,12 @@ export const ListasColetaEnhanced: React.FC<ListasColetaEnhancedProps> = ({ curr
       void normalizeSaida(info.cycle, { force: true, updateName: false });
     };
 
-    const scheduleInspect = () => {
-      if (inspectTimer !== null) window.clearTimeout(inspectTimer);
-      inspectTimer = window.setTimeout(inspect, 320);
-    };
-
-    const observer = new MutationObserver(scheduleInspect);
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true,
-      characterData: true,
-    });
-
-    const initialTimer = window.setTimeout(inspect, 700);
+    const t1 = window.setTimeout(inspect, 800);
+    const t2 = window.setTimeout(inspect, 2200);
 
     return () => {
-      observer.disconnect();
-      window.clearTimeout(initialTimer);
-      if (inspectTimer !== null) window.clearTimeout(inspectTimer);
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
     };
   }, [activeListaId, normalizeSaida]);
 
@@ -375,32 +354,39 @@ export const ListasColetaEnhanced: React.FC<ListasColetaEnhancedProps> = ({ curr
         });
 
         const updatedActiveIndex = getActiveIndex(updatedCards);
-        setRail({ panel, scroller, activeIndex: updatedActiveIndex, total: updatedCards.length });
+        setRail(current => {
+          if (
+            current?.panel === panel &&
+            current.scroller === scroller &&
+            current.activeIndex === updatedActiveIndex &&
+            current.total === updatedCards.length
+          ) return current;
+          return { panel, scroller, activeIndex: updatedActiveIndex, total: updatedCards.length };
+        });
         scheduleFocus(scroller, 'smooth');
       });
 
       observer.observe(scroller, {
         childList: true,
-        subtree: true,
         attributes: true,
         attributeFilter: ['class'],
       });
     };
 
-    const pageObserver = new MutationObserver(enhanceGroups);
-    pageObserver.observe(document.body, { childList: true, subtree: true });
-
     enhanceGroups();
-    const initialTimer = window.setTimeout(enhanceGroups, 250);
+    const t1 = window.setTimeout(enhanceGroups, 200);
+    const t2 = window.setTimeout(enhanceGroups, 700);
+    const t3 = window.setTimeout(enhanceGroups, 1500);
 
     return () => {
       disposed = true;
-      pageObserver.disconnect();
       observer?.disconnect();
-      window.clearTimeout(initialTimer);
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+      window.clearTimeout(t3);
       if (focusTimerRef.current !== null) window.clearTimeout(focusTimerRef.current);
     };
-  }, [focusActiveGroup]);
+  }, [activeListaId, focusActiveGroup]);
 
   const scrollByCard = (direction: -1 | 1) => {
     if (!rail) return;

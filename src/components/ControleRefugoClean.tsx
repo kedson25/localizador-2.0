@@ -66,10 +66,6 @@ export function ControleRefugoClean({ currentUser, initialTab }: ControleRefugoC
               <span>Mapa Refugo</span>
             </button>
           </div>
-
-          <div className="hidden sm:flex items-center text-[11px] font-bold text-slate-500 uppercase tracking-wide px-2">
-            {activeTab === 'leitura' ? 'Modo Bipagem & Auditoria' : 'Modo Visão de Rotas & Passagem'}
-          </div>
         </div>
       </div>
 

@@ -1,6 +1,11 @@
-import { collection, getDocs, query, where } from 'firebase/firestore';
-import type { ColetaItem, ColetaLista } from '../types';
-import { db } from './firebase-core';
+import { collection, getDocs } from 'firebase/firestore';
+import type { ColetaItem } from '../types';
+import {
+  db,
+  fetchOrGetCachedListaItens,
+  getCachedListasMetadata,
+  isListaFromTodayCore,
+} from './firebase-core';
 
 export type ListaCycle = 'AM' | 'PM' | 'SD';
 
@@ -39,54 +44,10 @@ function canonicalSaida(cycle: ListaCycle): string {
   return 'Ciclo 2 - Saída PM';
 }
 
-function isListaFromToday(lista: Partial<ColetaLista> & Record<string, any>, now = new Date()): boolean {
-  const day = String(now.getDate()).padStart(2, '0');
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const year = String(now.getFullYear());
-  const br = `${day}/${month}/${year}`;
-  const iso = `${year}-${month}-${day}`;
-  const rawData = String(lista.data || '').trim();
-
-  if (rawData) {
-    return (
-      rawData === br ||
-      rawData === iso ||
-      rawData.startsWith(`${br} `) ||
-      rawData.startsWith(`${iso}T`)
-    );
-  }
-
-  const createdAt: any = lista.createdAt;
-  let createdDate: Date | null = null;
-
-  try {
-    if (createdAt?.toDate && typeof createdAt.toDate === 'function') {
-      createdDate = createdAt.toDate();
-    } else if (createdAt?.seconds) {
-      createdDate = new Date(Number(createdAt.seconds) * 1000);
-    } else if (createdAt) {
-      const parsed = new Date(createdAt);
-      if (!Number.isNaN(parsed.getTime())) createdDate = parsed;
-    }
-  } catch (_) {
-    createdDate = null;
-  }
-
-  if (!createdDate || Number.isNaN(createdDate.getTime())) return false;
-
-  return (
-    createdDate.getFullYear() === now.getFullYear() &&
-    createdDate.getMonth() === now.getMonth() &&
-    createdDate.getDate() === now.getDate()
-  );
-}
-
 function resolveTodayListaSaida(lista: Record<string, any>, item?: Partial<ColetaItem>): string {
   const nameCycle = cycleKey(lista.nome);
   const configuredCycle = cycleKey(lista.saidaPadrao);
 
-  // Nas listas do dia, o nome operacional foi gerado no momento da criação e
-  // serve como proteção visual para o legado PM/SD até o reparo do metadado rodar.
   if (nameCycle && configuredCycle && nameCycle !== configuredCycle) {
     return canonicalSaida(nameCycle);
   }
@@ -107,9 +68,8 @@ function groupNameFor(lista: Record<string, any>, grupoId?: string): string {
 }
 
 /**
- * Busca TODAS as ocorrências de cada ID somente nas listas do dia atual.
- * Diferente da busca antiga, não sobrescreve uma ocorrência quando o mesmo ID
- * está em duas ou mais listas/grupos.
+ * Busca TODAS as ocorrências de cada ID somente nas listas do dia atual,
+ * compartilhando o cache em memória e requisições em voo com o searchItemsAcrossAllListas.
  */
 export async function searchTodayListOccurrences(
   terms: string[]
@@ -161,44 +121,29 @@ export async function searchTodayListOccurrences(
     });
   };
 
-  const listasSnapshot = await getDocs(collection(db, 'coleta_listas'));
-  const todayListas = listasSnapshot.docs.filter(docSnap => isListaFromToday(docSnap.data() as any));
-  const CHUNK_SIZE = 30;
+  let allListas: Array<Record<string, any> & { id: string }> = getCachedListasMetadata();
+  if (allListas.length === 0) {
+    const listasSnapshot = await getDocs(collection(db, 'coleta_listas'));
+    allListas = listasSnapshot.docs.map(docSnap => ({
+      ...(docSnap.data() as Record<string, any>),
+      id: docSnap.id,
+    }));
+  }
 
-  await Promise.all(todayListas.map(async listaDoc => {
-    const listaId = listaDoc.id;
-    const lista = listaDoc.data() as Record<string, any>;
+  const todayListas = allListas.filter(lista => isListaFromTodayCore(lista));
 
-    if (Array.isArray(lista.itens)) {
+  await Promise.all(todayListas.map(async lista => {
+    const listaId = lista.id;
+
+    if (Array.isArray(lista.itens) && lista.itens.length > 0) {
       lista.itens.forEach((item: ColetaItem) => addOccurrence(item, listaId, lista));
     }
 
-    const itensRef = collection(db, 'coleta_listas', listaId, 'itens');
-
-    for (let i = 0; i < uniqueUpper.length; i += CHUNK_SIZE) {
-      const chunk = uniqueUpper.slice(i, i + CHUNK_SIZE);
-      if (chunk.length === 0) continue;
-      try {
-        const snap = await getDocs(query(itensRef, where('codigo', 'in', chunk)));
-        snap.docs.forEach(itemDoc => {
-          addOccurrence({ ...itemDoc.data(), id: itemDoc.id } as ColetaItem, listaId, lista);
-        });
-      } catch (error) {
-        console.warn(`[Busca multi-lista] Falha por código na lista ${listaId}:`, error);
-      }
-    }
-
-    for (let i = 0; i < uniqueDigits.length; i += CHUNK_SIZE) {
-      const chunk = uniqueDigits.slice(i, i + CHUNK_SIZE);
-      if (chunk.length === 0) continue;
-      try {
-        const snap = await getDocs(query(itensRef, where('codigoClean', 'in', chunk)));
-        snap.docs.forEach(itemDoc => {
-          addOccurrence({ ...itemDoc.data(), id: itemDoc.id } as ColetaItem, listaId, lista);
-        });
-      } catch (error) {
-        console.warn(`[Busca multi-lista] Falha por código limpo na lista ${listaId}:`, error);
-      }
+    try {
+      const items = await fetchOrGetCachedListaItens(listaId, 30000);
+      items.forEach(item => addOccurrence(item, listaId, lista));
+    } catch (error) {
+      console.warn(`[Busca multi-lista] Falha ao consultar itens da lista ${listaId}:`, error);
     }
   }));
 

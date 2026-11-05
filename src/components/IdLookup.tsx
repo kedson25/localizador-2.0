@@ -42,6 +42,36 @@ function cycleOnly(value?: string): string {
   return match?.[1] || text || '—';
 }
 
+function stripDateFromLabel(value?: string): string {
+  if (!value) return '';
+  return String(value)
+    .replace(/\s*[-–—]\s*\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}(\s*[-–—]\s*\d+)?/g, '')
+    .replace(/\b\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}\b/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/^[\s\-–—]+|[\s\-–—]+$/g, '')
+    .trim();
+}
+
+function cleanListOriginLabel(listaNome?: string, grupoNome?: string, listaTipo?: string): string {
+  const cleanGrupo = stripDateFromLabel(grupoNome);
+  if (cleanGrupo) return cleanGrupo;
+
+  const cleanNome = stripDateFromLabel(listaNome);
+  if (!cleanNome || /^(sa[ií]da\s+(am|pm|sd)|ciclo\s*\d+(\s*-\s*sa[ií]da\s+(am|pm|sd))?)$/i.test(cleanNome)) {
+    return listaTipo === 'grupos' ? 'Sem Grupo' : 'Lista Comum';
+  }
+  return cleanNome;
+}
+
+function cleanRouteValue(value?: string): string {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return '';
+  if (['sem rota', 'geral', 'multirotas / grupos', 'multirotas', '-', '—', 'n/a', 'null', 'undefined'].includes(trimmed.toLowerCase())) {
+    return '';
+  }
+  return trimmed;
+}
+
 export function parseFlexibleTimestamp(value: unknown): number {
   if (!value) return 0;
   if (typeof value === 'number') {
@@ -112,6 +142,7 @@ export function formatFriendlyDate(timestampOrStr: number | string): string {
 
 export const IdLookup: React.FC<IdLookupProps> = ({ rows, onNavigateToUpload }) => {
   const [inputText, setInputText] = useState<string>('');
+  const [includeOldLists, setIncludeOldLists] = useState<boolean>(false);
   const [saidaFilter, setSaidaFilter] = useState<string>('');
   const [movimentoFilter, setMovimentoFilter] = useState<'todos' | 'vaga' | 'refugo' | 'lista' | 'base_csv' | 'nao_localizado'>('todos');
   const [copied, setCopied] = useState<boolean>(false);
@@ -170,12 +201,13 @@ export const IdLookup: React.FC<IdLookupProps> = ({ rows, onNavigateToUpload }) 
     };
   }, []);
 
-  // Busca diretamente no servidor Firestore quando os termos de pesquisa mudam
+  // Busca diretamente no servidor Firestore quando os termos de pesquisa ou alcance mudam
   useEffect(() => {
     if (!inputText || !inputText.trim()) {
       setServerFoundMap(new Map());
       setIsSearchingLists(false);
       setListSearchError('');
+      window.dispatchEvent(new CustomEvent('idlookup-search-terms', { detail: [] }));
       return;
     }
     const rawTerms = inputText
@@ -183,14 +215,18 @@ export const IdLookup: React.FC<IdLookupProps> = ({ rows, onNavigateToUpload }) 
       .map((t) => t.trim())
       .filter((t) => t.length > 0);
 
-    if (rawTerms.length === 0) return;
+    if (rawTerms.length === 0) {
+      window.dispatchEvent(new CustomEvent('idlookup-search-terms', { detail: [] }));
+      return;
+    }
 
     let cancelled = false;
     setIsSearchingLists(true);
     setListSearchError('');
     const timer = setTimeout(async () => {
+      window.dispatchEvent(new CustomEvent('idlookup-search-terms', { detail: rawTerms }));
       try {
-        const results = await searchItemsAcrossAllListas(rawTerms);
+        const results = await searchItemsAcrossAllListas(rawTerms, { includeOldLists });
         if (cancelled) return;
         setServerFoundMap(results);
       } catch (error) {
@@ -201,13 +237,48 @@ export const IdLookup: React.FC<IdLookupProps> = ({ rows, onNavigateToUpload }) 
       } finally {
         if (!cancelled) setIsSearchingLists(false);
       }
-    }, 250);
+    }, 300);
 
     return () => {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [inputText]);
+  }, [inputText, includeOldLists]);
+
+  // Indexação O(1) das linhas CSV carregadas para evitar busca linear O(N*M)
+  const csvRowMap = useMemo(() => {
+    const map = new Map<string, CsvRow>();
+    if (!rows || rows.length === 0) return map;
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      if (r.id) {
+        map.set(r.id, r);
+        map.set(r.id.toUpperCase(), r);
+      }
+      if (r.originalId) {
+        map.set(r.originalId, r);
+        map.set(r.originalId.toUpperCase(), r);
+      }
+      if (r.cleanId) {
+        map.set(r.cleanId, r);
+      }
+      if (r.concat) {
+        map.set(r.concat, r);
+        const cleanConcat = cleanDigits(r.concat);
+        if (cleanConcat) map.set(cleanConcat, r);
+      }
+    }
+    return map;
+  }, [rows]);
+
+  // Indexação O(1) de Listas de Coleta por ID
+  const listasById = useMemo(() => {
+    const map = new Map<string, ColetaLista>();
+    for (let i = 0; i < listas.length; i++) {
+      map.set(listas[i].id, listas[i]);
+    }
+    return map;
+  }, [listas]);
 
   // Indexação de scans de Refugo
   const refugoMap = useMemo(() => {
@@ -281,21 +352,17 @@ export const IdLookup: React.FC<IdLookupProps> = ({ rows, onNavigateToUpload }) 
       const termUpper = term.toUpperCase();
       const movimentos: PacoteMovimento[] = [];
 
-      // 1. Procurar nas linhas da base carregada via CSV (se houver)
-      const matchedRow = rows && rows.length > 0 ? rows.find((r) => {
-        if (r.id === term || r.originalId === term) return true;
-        if (cleanTerm.length > 0 && r.cleanId === cleanTerm) return true;
-        if (r.id.includes(term)) return true;
-        if (r.concat && (r.concat === term || cleanDigits(r.concat) === cleanTerm)) return true;
-        return false;
-      }) : undefined;
+      // 1. Procurar nas linhas da base carregada via CSV em O(1)
+      const matchedRow = csvRowMap.size > 0
+        ? (csvRowMap.get(term) || csvRowMap.get(termUpper) || (cleanTerm ? csvRowMap.get(cleanTerm) : undefined))
+        : undefined;
 
-      // 2. Procurar nos resultados do servidor Firestore (Listas de Coleta)
+      // 2. Procurar nos resultados do servidor Firestore (Listas de Coleta) em O(1)
       const foundEntry = serverFoundMap.get(termUpper) || (cleanTerm ? serverFoundMap.get(cleanTerm) : undefined);
       let foundInLista: { item: ColetaItem; lista: ColetaLista; grupoNome?: string } | null = null;
 
       if (foundEntry) {
-        const lista = listas.find(l => l.id === foundEntry.listaId);
+        const lista = listasById.get(foundEntry.listaId);
         if (lista) {
           let grupoNome = '';
           if (foundEntry.item.grupoId && lista.grupos) {
@@ -306,14 +373,17 @@ export const IdLookup: React.FC<IdLookupProps> = ({ rows, onNavigateToUpload }) 
         }
       }
 
-      // Extrair dados da lista de coleta encontrada
+      // Extrair dados da lista de coleta encontrada (sem datas ou rotas genéricas repetidas)
       const motivoLista = foundInLista?.item.motivo || foundInLista?.lista.motivoPadrao || '';
       const saidaLista = foundInLista?.item.saida || foundInLista?.lista.saidaPadrao || '';
-      const grupoLista = foundInLista?.grupoNome || '';
-      const nomeLista = foundInLista?.lista.nome || '';
+      const grupoLista = stripDateFromLabel(foundInLista?.grupoNome || '');
+      const nomeLista = stripDateFromLabel(foundInLista?.lista.nome || '');
+      const origemLista = foundInLista
+        ? cleanListOriginLabel(foundInLista.lista.nome, foundInLista.grupoNome, foundInLista.lista.tipo)
+        : '';
       const bipadoPor = foundInLista?.item.responsavel || foundInLista?.lista.responsavel || '';
       const horarioBip = foundInLista?.item.scannedAt || '';
-      const rotaLista = foundInLista?.item.rota || foundInLista?.lista.rota || '';
+      const rotaLista = cleanRouteValue(foundInLista?.item.rota || foundInLista?.lista.rota || '');
 
       // --- LEVANTAMENTO DE TODOS OS MOVIMENTOS REGISTRADOS ---
 
@@ -323,13 +393,13 @@ export const IdLookup: React.FC<IdLookupProps> = ({ rows, onNavigateToUpload }) 
         const tsRefugo = refugoScan.timestamp || parseFlexibleTimestamp(refugoScan.scannedAt);
         movimentos.push({
           tipo: 'refugo',
-          titulo: 'Mesa de Refugo',
-          localizacao: 'Refugo Operacional',
+          titulo: 'Refugo',
+          localizacao: 'Mesa de Refugo',
           responsavel: refugoScan.foundBy || 'Operador Refugo',
-          rota: refugoScan.rota || '',
+          rota: cleanRouteValue(refugoScan.rota),
           status: refugoScan.status === 'found' ? 'Localizado no Refugo' : 'Bipado no Refugo',
-          detalhe: refugoScan.status === 'found' ? 'Pacote encontrado e bipado na mesa de refugo' : 'Bipado no refugo',
-          dataHora: refugoScan.scannedAt ? formatFriendlyDate(refugoScan.scannedAt) : (tsRefugo ? formatFriendlyDate(tsRefugo) : 'Registrado no Refugo'),
+          detalhe: refugoScan.status === 'found' ? 'Pacote localizado na mesa de refugo' : 'Bipado no refugo',
+          dataHora: refugoScan.scannedAt ? formatFriendlyDate(refugoScan.scannedAt) : (tsRefugo ? formatFriendlyDate(tsRefugo) : 'Registrado'),
           timestamp: tsRefugo,
         });
       }
@@ -341,9 +411,9 @@ export const IdLookup: React.FC<IdLookupProps> = ({ rows, onNavigateToUpload }) 
       if (expRow || baseRow) {
         const rawVaga = expRow?.vagaOperacional || expRow?.encontradoDoca || expRow?.doca || baseRow?.doca || '';
         const cleanVaga = rawVaga.replace(/\D/g, '') || rawVaga;
-        const vagaLabel = cleanVaga ? `Vaga ${cleanVaga}` : 'Docas / Expedição';
+        const vagaLabel = cleanVaga ? `Vaga ${cleanVaga}` : 'Docas';
         const origemExp = expRow?.origem || (baseRow ? 'despacho' : '');
-        const rotaExp = expRow?.encontradoRota || expRow?.destinoRota || expRow?.rotaInformada || baseRow?.rotaOtimizada || '';
+        const rotaExp = cleanRouteValue(expRow?.encontradoRota || expRow?.destinoRota || expRow?.rotaInformada || baseRow?.rotaOtimizada || '');
         const placaExp = expRow?.encontradoPlaca || expRow?.placa || expRow?.placaInformada || baseRow?.placa || '';
         const dataReg = expRow?.dataRegistro || expStore?.updatedAt || '';
         const tsExp = parseFlexibleTimestamp(dataReg);
@@ -352,14 +422,14 @@ export const IdLookup: React.FC<IdLookupProps> = ({ rows, onNavigateToUpload }) 
           tipo: 'vaga',
           titulo: vagaLabel,
           localizacao: cleanVaga
-            ? `Vaga ${cleanVaga} (${origemExp === 'aduana' ? 'Aduana' : origemExp === 'auditoria' ? 'Auditoria' : 'Base Despacho'})`
+            ? `Vaga ${cleanVaga} (${origemExp === 'aduana' ? 'Aduana' : origemExp === 'auditoria' ? 'Auditoria' : 'Despacho'})`
             : 'Controle de Docas',
           vaga: cleanVaga || rawVaga,
           rota: rotaExp,
           placa: placaExp,
           status: expRow?.classificacao ? `Classificação: ${expRow.classificacao}` : (origemExp === 'aduana' ? 'Aduana' : origemExp === 'auditoria' ? 'Auditoria' : 'Despacho'),
           detalhe: `${expRow?.classificacao ? `Classificado como ${expRow.classificacao}` : 'Endereçado na doca'}${rotaExp ? ` • Rota ${rotaExp}` : ''}${placaExp ? ` • Placa ${placaExp}` : ''}`,
-          dataHora: dataReg ? formatFriendlyDate(dataReg) : 'Registrado em Docas',
+          dataHora: dataReg ? formatFriendlyDate(dataReg) : 'Registrado',
           timestamp: tsExp,
         });
       }
@@ -369,14 +439,14 @@ export const IdLookup: React.FC<IdLookupProps> = ({ rows, onNavigateToUpload }) 
         const tsLista = parseFlexibleTimestamp(horarioBip) || parseFlexibleTimestamp(foundInLista.lista.data);
         movimentos.push({
           tipo: 'lista',
-          titulo: `Lista: ${nomeLista}`,
-          localizacao: `${nomeLista}${grupoLista ? ` (${grupoLista})` : ''}`,
+          titulo: 'Lista de Coleta',
+          localizacao: origemLista,
           motivo: motivoLista,
           saida: saidaLista,
           rota: rotaLista,
           responsavel: bipadoPor,
           status: 'Bipado na Lista de Coleta',
-          detalhe: `Motivo: ${motivoLista || 'Padrão'} | Saída: ${saidaLista || '—'}${bipadoPor ? ` | Bipado por ${bipadoPor}` : ''}`,
+          detalhe: `Motivo: ${motivoLista || 'Padrão'} | Saída: ${cycleOnly(saidaLista)}${bipadoPor ? ` | Por ${bipadoPor}` : ''}`,
           dataHora: horarioBip ? formatFriendlyDate(horarioBip) : (foundInLista.lista.data || 'Hoje'),
           timestamp: tsLista,
         });
@@ -387,13 +457,13 @@ export const IdLookup: React.FC<IdLookupProps> = ({ rows, onNavigateToUpload }) 
         movimentos.push({
           tipo: 'base_csv',
           titulo: 'Base CSV',
-          localizacao: `Grupo: ${matchedRow.group}`,
+          localizacao: stripDateFromLabel(matchedRow.group) || 'Base CSV',
           motivo: matchedRow.motivo,
           saida: matchedRow.saida,
-          rota: matchedRow.concat,
+          rota: cleanRouteValue(matchedRow.concat),
           status: 'Carregado no Coletor',
-          detalhe: `Saída: ${matchedRow.saida || '—'} | Motivo: ${matchedRow.motivo || '—'}`,
-          dataHora: 'Carga inicial CSV',
+          detalhe: `Saída: ${cycleOnly(matchedRow.saida)} | Motivo: ${matchedRow.motivo || '—'}`,
+          dataHora: 'Base CSV',
           timestamp: 1, // Prioridade inicial base
         });
       }
@@ -411,14 +481,15 @@ export const IdLookup: React.FC<IdLookupProps> = ({ rows, onNavigateToUpload }) 
           ...matchedRow,
           motivo: motivoLista || matchedRow.motivo || '',
           saida: saidaLista || matchedRow.saida || '',
-          group: grupoLista || matchedRow.group,
+          group: grupoLista || stripDateFromLabel(matchedRow.group) || matchedRow.group,
+          concat: rotaLista || cleanRouteValue(matchedRow.concat),
           rawFields: {
             ...matchedRow.rawFields,
             ...(nomeLista ? { 'Lista de Coleta': nomeLista } : {}),
             ...(motivoLista ? { 'Motivo da Lista': motivoLista } : {}),
             ...(saidaLista ? { 'Saída da Lista': saidaLista } : {}),
             ...(bipadoPor ? { 'Bipado por': bipadoPor } : {}),
-            ...(horarioBip ? { 'Horário do Bip': horarioBip } : {}),
+            ...(horarioBip ? { 'Horário do Bip': formatFriendlyDate(horarioBip) } : {}),
             ...(rotaLista ? { 'Rota': rotaLista } : {}),
             ...(ultimoMovimento ? { 'Último Movimento': `${ultimoMovimento.titulo} (${ultimoMovimento.dataHora})` } : {}),
             ...(ultimoMovimento?.vaga ? { 'Vaga Atual': ultimoMovimento.vaga } : {}),
@@ -429,7 +500,7 @@ export const IdLookup: React.FC<IdLookupProps> = ({ rows, onNavigateToUpload }) 
           id: cleanTerm || term,
           originalId: term,
           cleanId: cleanTerm,
-          group: grupoLista || (foundInLista.lista.tipo === 'grupos' ? 'Multirotas' : foundInLista.lista.nome),
+          group: origemLista,
           saida: saidaLista,
           motivo: motivoLista,
           concat: rotaLista,
@@ -437,10 +508,10 @@ export const IdLookup: React.FC<IdLookupProps> = ({ rows, onNavigateToUpload }) 
             'Origem': 'Lista de Coleta',
             'Lista de Coleta': nomeLista,
             'Rota': rotaLista,
-            'Saída': saidaLista,
+            'Saída': cycleOnly(saidaLista),
             'Motivo': motivoLista,
             'Bipado por': bipadoPor,
-            'Data / Hora': horarioBip,
+            'Data / Hora': horarioBip ? formatFriendlyDate(horarioBip) : (foundInLista.lista.data || 'Hoje'),
             'Tipo de Lista': foundInLista.lista.tipo === 'grupos' ? 'Com Grupos' : 'Lista Comum',
             ...(ultimoMovimento ? { 'Último Movimento': `${ultimoMovimento.titulo} (${ultimoMovimento.dataHora})` } : {}),
             ...(ultimoMovimento?.vaga ? { 'Vaga Atual': ultimoMovimento.vaga } : {}),
@@ -453,16 +524,16 @@ export const IdLookup: React.FC<IdLookupProps> = ({ rows, onNavigateToUpload }) 
           id: cleanTerm || term,
           originalId: term,
           cleanId: cleanTerm,
-          group: ultimoMovimento.titulo,
+          group: ultimoMovimento.localizacao || ultimoMovimento.titulo,
           saida: ultimoMovimento.saida || '',
           motivo: ultimoMovimento.motivo || '',
-          concat: ultimoMovimento.rota || '',
+          concat: cleanRouteValue(ultimoMovimento.rota),
           rawFields: {
             'Origem': ultimoMovimento.titulo,
             'Último Movimento': ultimoMovimento.localizacao,
             'Data / Hora': ultimoMovimento.dataHora,
             ...(ultimoMovimento.vaga ? { 'Vaga Atual': ultimoMovimento.vaga } : {}),
-            ...(ultimoMovimento.rota ? { 'Rota': ultimoMovimento.rota } : {}),
+            ...(ultimoMovimento.rota ? { 'Rota': cleanRouteValue(ultimoMovimento.rota) } : {}),
             ...(ultimoMovimento.placa ? { 'Placa': ultimoMovimento.placa } : {}),
             ...(ultimoMovimento.responsavel ? { 'Responsável': ultimoMovimento.responsavel } : {}),
             ...(ultimoMovimento.detalhe ? { 'Detalhes': ultimoMovimento.detalhe } : {}),
@@ -483,7 +554,7 @@ export const IdLookup: React.FC<IdLookupProps> = ({ rows, onNavigateToUpload }) 
     }
 
     return results;
-  }, [inputText, rows, listas, serverFoundMap, refugoMap, expedicaoMaps, expStore]);
+  }, [inputText, csvRowMap, listasById, serverFoundMap, refugoMap, expedicaoMaps, expStore]);
 
   // Contadores para os filtros rápidos de último movimento
   const countStats = useMemo(() => {
@@ -632,90 +703,98 @@ export const IdLookup: React.FC<IdLookupProps> = ({ rows, onNavigateToUpload }) 
       }
     };
 
+    if (position === 'bottom' && totalLookupPages <= 1) return null;
+
     return (
-      <div className={`px-4 py-2.5 bg-gray-50 border-gray-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-gray-600 ${
-        position === 'top' ? 'border-b rounded-t-lg' : 'border-t rounded-b-lg'
+      <div className={`px-4 py-2 bg-gray-50 border-gray-200 flex flex-wrap items-center justify-between gap-2 text-xs text-gray-600 ${
+        position === 'top' ? 'border-b' : 'border-t'
       }`}>
         <div className="flex items-center gap-2 flex-wrap">
           <span>
             Mostrando <strong className="text-gray-900 font-mono">{filteredMatches.length === 0 ? 0 : startLookupIndex + 1}</strong>–<strong className="text-gray-900 font-mono">{endLookupIndex}</strong> de <strong className="text-[#3483FA] font-mono">{filteredMatches.length.toLocaleString('pt-BR')}</strong> IDs
           </span>
-          <span className="text-gray-300 hidden sm:inline">|</span>
-          <span className="text-gray-500">
-            Pág. <strong className="text-gray-800 font-mono">{lookupPage}</strong> de <strong className="text-gray-800 font-mono">{totalLookupPages}</strong>
-          </span>
+          {totalLookupPages > 1 && (
+            <>
+              <span className="text-gray-300 hidden sm:inline">|</span>
+              <span className="text-gray-500">
+                Pág. <strong className="text-gray-800 font-mono">{lookupPage}</strong> de <strong className="text-gray-800 font-mono">{totalLookupPages}</strong>
+              </span>
+            </>
+          )}
         </div>
 
-        <div className="flex items-center gap-1 flex-wrap justify-center">
-          <button
-            type="button"
-            onClick={() => { setLookupPage(1); setJumpLookupPageInput('1'); }}
-            disabled={lookupPage === 1}
-            className="p-2 sm:p-1.5 min-h-[38px] min-w-[38px] sm:min-h-[28px] sm:min-w-[28px] flex items-center justify-center rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors shadow-2xs font-bold"
-            title="Primeira página"
-          >
-            <ChevronsLeft className="w-4 h-4" />
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              const nextP = Math.max(1, lookupPage - 1);
-              setLookupPage(nextP);
-              setJumpLookupPageInput(String(nextP));
-            }}
-            disabled={lookupPage === 1}
-            className="p-2 sm:p-1.5 min-h-[38px] min-w-[38px] sm:min-h-[28px] sm:min-w-[28px] flex items-center justify-center rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors shadow-2xs font-bold"
-            title="Página anterior"
-          >
-            <ChevronLeft className="w-4 h-4" />
-          </button>
+        {totalLookupPages > 1 && (
+          <div className="flex items-center gap-1 flex-wrap justify-center">
+            <button
+              type="button"
+              onClick={() => { setLookupPage(1); setJumpLookupPageInput('1'); }}
+              disabled={lookupPage === 1}
+              className="p-1.5 flex items-center justify-center border border-gray-300 bg-white text-gray-700 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors font-bold"
+              title="Primeira página"
+            >
+              <ChevronsLeft className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const nextP = Math.max(1, lookupPage - 1);
+                setLookupPage(nextP);
+                setJumpLookupPageInput(String(nextP));
+              }}
+              disabled={lookupPage === 1}
+              className="p-1.5 flex items-center justify-center border border-gray-300 bg-white text-gray-700 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors font-bold"
+              title="Página anterior"
+            >
+              <ChevronLeft className="w-3.5 h-3.5" />
+            </button>
 
-          <div className="hidden sm:flex items-center gap-1">
-            {rangeWithDots.map((p, idx) => {
-              if (p === '...') {
-                return <span key={`ellipsis-lookup-${position}-${idx}`} className="px-1 text-gray-400 font-mono select-none">...</span>;
-              }
-              const isCurrent = p === lookupPage;
-              return (
-                <button
-                  key={`page-lookup-${position}-${p}`}
-                  type="button"
-                  onClick={() => { setLookupPage(Number(p)); setJumpLookupPageInput(String(p)); }}
-                  className={`min-w-[28px] h-7 px-1.5 rounded text-xs font-mono font-bold transition-all cursor-pointer ${
-                    isCurrent
-                      ? 'bg-[#3483FA] text-white shadow-sm'
-                      : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
-                  }`}
-                >
-                  {p}
-                </button>
-              );
-            })}
+            <div className="hidden sm:flex items-center gap-1">
+              {rangeWithDots.map((p, idx) => {
+                if (p === '...') {
+                  return <span key={`ellipsis-lookup-${position}-${idx}`} className="px-1 text-gray-400 font-mono select-none">...</span>;
+                }
+                const isCurrent = p === lookupPage;
+                return (
+                  <button
+                    key={`page-lookup-${position}-${p}`}
+                    type="button"
+                    onClick={() => { setLookupPage(Number(p)); setJumpLookupPageInput(String(p)); }}
+                    className={`min-w-[28px] h-7 px-1.5 text-xs font-mono font-bold transition-all cursor-pointer ${
+                      isCurrent
+                        ? 'bg-[#3483FA] text-white'
+                        : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
+                    }`}
+                  >
+                    {p}
+                  </button>
+                );
+              })}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                const nextP = Math.min(totalLookupPages, lookupPage + 1);
+                setLookupPage(nextP);
+                setJumpLookupPageInput(String(nextP));
+              }}
+              disabled={lookupPage >= totalLookupPages}
+              className="p-1.5 border border-gray-300 bg-white text-gray-700 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors font-bold"
+              title="Próxima página"
+            >
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => { setLookupPage(totalLookupPages); setJumpLookupPageInput(String(totalLookupPages)); }}
+              disabled={lookupPage >= totalLookupPages}
+              className="p-1.5 border border-gray-300 bg-white text-gray-700 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors font-bold"
+              title="Última página"
+            >
+              <ChevronsRight className="w-3.5 h-3.5" />
+            </button>
           </div>
-
-          <button
-            type="button"
-            onClick={() => {
-              const nextP = Math.min(totalLookupPages, lookupPage + 1);
-              setLookupPage(nextP);
-              setJumpLookupPageInput(String(nextP));
-            }}
-            disabled={lookupPage >= totalLookupPages}
-            className="p-1.5 rounded border border-gray-300 bg-white text-gray-700 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors shadow-2xs font-bold"
-            title="Próxima página"
-          >
-            <ChevronRight className="w-3.5 h-3.5" />
-          </button>
-          <button
-            type="button"
-            onClick={() => { setLookupPage(totalLookupPages); setJumpLookupPageInput(String(totalLookupPages)); }}
-            disabled={lookupPage >= totalLookupPages}
-            className="p-1.5 rounded border border-gray-300 bg-white text-gray-700 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors shadow-2xs font-bold"
-            title="Última página"
-          >
-            <ChevronsRight className="w-3.5 h-3.5" />
-          </button>
-        </div>
+        )}
 
         <div className="flex items-center gap-2 flex-wrap">
           <div className="flex items-center gap-1">
@@ -727,7 +806,7 @@ export const IdLookup: React.FC<IdLookupProps> = ({ rows, onNavigateToUpload }) 
                 setLookupPage(1);
                 setJumpLookupPageInput('1');
               }}
-              className="px-2 py-1 bg-white border border-gray-300 rounded text-xs font-bold text-gray-700 outline-none focus:border-[#3483FA] cursor-pointer"
+              className="px-2 py-1 bg-white border border-gray-300 text-xs font-bold text-gray-700 outline-none focus:border-[#3483FA] cursor-pointer"
             >
               <option value={50}>50</option>
               <option value={100}>100</option>
@@ -737,18 +816,20 @@ export const IdLookup: React.FC<IdLookupProps> = ({ rows, onNavigateToUpload }) 
             </select>
           </div>
 
-          <form onSubmit={handleJump} className="flex items-center gap-1">
-            <span className="text-[11px] text-gray-500">Ir:</span>
-            <input
-              type="number"
-              min={1}
-              max={totalLookupPages}
-              value={jumpLookupPageInput}
-              onChange={(e) => setJumpLookupPageInput(e.target.value)}
-              onBlur={handleJump}
-              className="w-12 px-1 py-1 bg-white border border-gray-300 rounded text-xs font-mono font-bold text-center text-gray-800 outline-none focus:border-[#3483FA]"
-            />
-          </form>
+          {totalLookupPages > 1 && (
+            <form onSubmit={handleJump} className="flex items-center gap-1">
+              <span className="text-[11px] text-gray-500">Ir:</span>
+              <input
+                type="number"
+                min={1}
+                max={totalLookupPages}
+                value={jumpLookupPageInput}
+                onChange={(e) => setJumpLookupPageInput(e.target.value)}
+                onBlur={handleJump}
+                className="w-12 px-1 py-1 bg-white border border-gray-300 text-xs font-mono font-bold text-center text-gray-800 outline-none focus:border-[#3483FA]"
+              />
+            </form>
+          )}
         </div>
       </div>
     );
@@ -854,41 +935,33 @@ export const IdLookup: React.FC<IdLookupProps> = ({ rows, onNavigateToUpload }) 
     <div className="space-y-4">
       {/* Top Search Input Box */}
       <div className="bg-white border border-gray-200 rounded-2xl shadow-sm flex flex-col overflow-hidden">
-        {/* Beautiful Header */}
-        <div className="bg-gray-50/80 border-b border-gray-100 px-5 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center shrink-0 shadow-sm border border-blue-200">
-              <Search className="w-5 h-5" />
+        {/* Compact Header */}
+        <div className="bg-slate-50 border-b border-gray-200 px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 bg-blue-50 text-blue-700 flex items-center justify-center shrink-0 border border-blue-200">
+              <Search className="w-4 h-4" />
             </div>
-            <div>
-              <h2 className="text-sm font-bold text-gray-900 uppercase tracking-widest flex items-center gap-2">
-                <span>Consulta de Pacotes</span>
-                <span className="bg-amber-100 text-amber-900 px-2 py-0.5 rounded text-[10px] font-black uppercase border border-amber-300">
-                  Rastreador de Último Movimento
-                </span>
-              </h2>
-              <p className="text-xs text-gray-500 mt-0.5">
-                Localiza o último movimento do pacote entre Refugo, Listas de Coleta, Vagas de Docas e Base CSV.
-              </p>
-            </div>
+            <h2 className="text-sm font-black text-slate-900 uppercase tracking-wider">
+              Consulta de Pacotes
+            </h2>
           </div>
           
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => setShowGruposModal(true)}
-              className="inline-flex items-center gap-2 px-3 py-1.5 bg-purple-50 border border-purple-200 hover:bg-purple-100 hover:border-purple-300 text-purple-700 rounded-lg text-xs font-bold transition-all shadow-sm cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 border border-purple-200 hover:bg-purple-100 text-purple-800 text-xs font-bold transition-colors cursor-pointer"
             >
-              <ListPlus className="w-4 h-4 text-purple-600" />
-              <span className="hidden sm:inline">Importar Grupo</span>
+              <ListPlus className="w-3.5 h-3.5 text-purple-600" />
+              <span>Importar Grupo</span>
             </button>
-            <label className="cursor-pointer inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 hover:bg-gray-50 hover:border-gray-300 text-gray-700 rounded-lg text-xs font-bold transition-all shadow-sm">
-              <Upload className="w-4 h-4 text-blue-600" />
-              <span>Adicionar CSV (opcional)</span>
+            <label className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 text-xs font-bold transition-colors">
+              <Upload className="w-3.5 h-3.5 text-blue-600" />
+              <span>CSV Base</span>
               <input type="file" accept=".csv,.txt,.tsv" onChange={handleFileUpload} className="hidden" />
             </label>
 
             {rows.length > 0 && (
-              <span className="hidden sm:inline-block text-[11px] font-mono text-gray-500 bg-gray-100 px-2.5 py-1 rounded-md border border-gray-200 font-bold">
+              <span className="text-[11px] font-mono text-gray-600 bg-gray-100 px-2 py-1 border border-gray-200 font-bold">
                 {rows.length} base
               </span>
             )}
@@ -907,7 +980,7 @@ export const IdLookup: React.FC<IdLookupProps> = ({ rows, onNavigateToUpload }) 
             />
             
             <div className="bg-gray-50/50 border-t border-gray-100 px-5 py-3 flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-3">
                 {inputText.trim() !== "" ? (
                   <span className="bg-blue-50 text-blue-800 border border-blue-200 px-2.5 py-1 rounded-md text-[11px] font-mono font-bold flex items-center gap-1.5 shadow-sm">
                     <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span>
@@ -918,6 +991,25 @@ export const IdLookup: React.FC<IdLookupProps> = ({ rows, onNavigateToUpload }) 
                 ) : (
                   <span className="text-xs font-mono text-gray-400 font-medium">Nenhum ID informado</span>
                 )}
+
+                <button
+                  type="button"
+                  onClick={() => setIncludeOldLists(prev => !prev)}
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold transition-colors border cursor-pointer ${
+                    includeOldLists
+                      ? 'bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100'
+                      : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-100'
+                  }`}
+                  title={includeOldLists ? 'Buscando em todas as listas (hoje e antigas)' : 'Buscando apenas nas listas de hoje (mais rápido)'}
+                >
+                  <History className="w-3.5 h-3.5" />
+                  <span>{includeOldLists ? 'Listas: Hoje + Antigas' : 'Listas: Apenas Hoje (Rápido)'}</span>
+                  <span className={`ml-1 px-1.5 py-0.2 rounded text-[10px] font-mono ${
+                    includeOldLists ? 'bg-amber-200 text-amber-950' : 'bg-gray-100 text-gray-700'
+                  }`}>
+                    {includeOldLists ? 'Ativo' : 'Incluir antigas'}
+                  </span>
+                </button>
               </div>
 
               {inputText && (
@@ -1140,9 +1232,9 @@ export const IdLookup: React.FC<IdLookupProps> = ({ rows, onNavigateToUpload }) 
                 <tr>
                   <th className="py-2.5 px-3 text-gray-400 w-10">#</th>
                   <th className="py-2.5 px-3">ID Pesquisado</th>
-                  <th className="py-2.5 px-3 text-purple-700">Último Movimento (Mais Recente)</th>
-                  <th className="py-2.5 px-3 text-emerald-700">Vaga / Local Atual</th>
-                  <th className="py-2.5 px-3 text-amber-700">Grupo / Origem</th>
+                  <th className="py-2.5 px-3 text-purple-700">Último Movimento</th>
+                  <th className="py-2.5 px-3">Data / Hora</th>
+                  <th className="py-2.5 px-3 text-amber-700">Local / Grupo</th>
                   <th className="py-2.5 px-3">Saída</th>
                   <th className="py-2.5 px-3">Motivo</th>
                   <th className="py-2.5 px-3">Rota / Placa</th>
@@ -1154,6 +1246,10 @@ export const IdLookup: React.FC<IdLookupProps> = ({ rows, onNavigateToUpload }) 
                   const globalIdx = startLookupIndex + idx;
                   const isExpanded = expandedRowIdx === globalIdx;
                   const mov = match.ultimoMovimento;
+                  const cleanRota = cleanRouteValue(mov?.rota || match.row?.concat);
+                  const localGrupoLabel = mov?.vaga
+                    ? `Vaga ${mov.vaga}`
+                    : (match.row?.group || mov?.localizacao || '');
 
                   return (
                     <React.Fragment key={`${match.searchTerm}-${globalIdx}`}>
@@ -1162,109 +1258,99 @@ export const IdLookup: React.FC<IdLookupProps> = ({ rows, onNavigateToUpload }) 
                           !match.found ? 'bg-red-50/30' : 'bg-white'
                         }`}
                       >
-                        <td className="py-2.5 px-3 text-gray-400 text-[10px]">{globalIdx + 1}</td>
+                        <td className="py-2 px-3 text-gray-400 text-[10px]">{globalIdx + 1}</td>
 
-                        <td className="py-2.5 px-3 font-bold text-gray-900 whitespace-nowrap">
-                          <div className="flex flex-col">
+                        <td className="py-2 px-3 font-bold text-gray-900 whitespace-nowrap">
+                          <div className="flex items-center gap-1.5">
                             <span className="font-mono text-xs font-bold text-gray-900">{match.searchTerm}</span>
                             {match.movimentos && match.movimentos.length > 1 && (
-                              <span className="text-[9px] text-purple-600 font-sans font-bold">
-                                {match.movimentos.length} movimentos registrados
+                              <span
+                                className="px-1.5 py-0.5 bg-purple-50 text-purple-700 border border-purple-200 text-[9px] font-sans font-bold"
+                                title={`${match.movimentos.length} movimentos registrados`}
+                              >
+                                {match.movimentos.length}x
                               </span>
                             )}
                           </div>
                         </td>
 
-                        {/* Coluna: Último Movimento */}
-                        <td className="py-2.5 px-3 whitespace-nowrap">
+                        {/* Coluna: Último Movimento (Apenas o Status, sem repetir data) */}
+                        <td className="py-2 px-3 whitespace-nowrap">
                           {mov ? (
-                            <div className="flex flex-col gap-0.5">
+                            <>
                               {mov.tipo === 'vaga' && (
-                                <span className="inline-flex items-center gap-1.5 bg-emerald-100 text-emerald-900 font-black px-2 py-0.5 rounded text-[11px] border border-emerald-300 w-fit">
+                                <span className="inline-flex items-center gap-1.5 bg-emerald-100 text-emerald-900 font-black px-2 py-0.5 text-[11px] border border-emerald-300 w-fit">
                                   <MapPin className="w-3.5 h-3.5 text-emerald-700" />
-                                  <span>{mov.vaga ? `VAGA ${mov.vaga}` : mov.titulo}</span>
+                                  <span>{mov.vaga ? `VAGA ${mov.vaga}` : 'DOCAS'}</span>
                                 </span>
                               )}
                               {mov.tipo === 'refugo' && (
-                                <span className="inline-flex items-center gap-1.5 bg-rose-100 text-rose-900 font-black px-2 py-0.5 rounded text-[11px] border border-rose-300 w-fit">
+                                <span className="inline-flex items-center gap-1.5 bg-rose-100 text-rose-900 font-black px-2 py-0.5 text-[11px] border border-rose-300 w-fit">
                                   <RotateCcw className="w-3.5 h-3.5 text-rose-700" />
                                   <span>REFUGO</span>
                                 </span>
                               )}
                               {mov.tipo === 'lista' && (
-                                <span className="inline-flex items-center gap-1.5 bg-blue-100 text-blue-900 font-black px-2 py-0.5 rounded text-[11px] border border-blue-300 w-fit">
+                                <span className="inline-flex items-center gap-1.5 bg-blue-100 text-blue-900 font-black px-2 py-0.5 text-[11px] border border-blue-300 w-fit">
                                   <Layers className="w-3.5 h-3.5 text-blue-700" />
                                   <span>LISTA DE COLETA</span>
                                 </span>
                               )}
                               {mov.tipo === 'base_csv' && (
-                                <span className="inline-flex items-center gap-1.5 bg-slate-100 text-slate-800 font-bold px-2 py-0.5 rounded text-[11px] border border-slate-300 w-fit">
+                                <span className="inline-flex items-center gap-1.5 bg-slate-100 text-slate-800 font-bold px-2 py-0.5 text-[11px] border border-slate-300 w-fit">
                                   <FileText className="w-3.5 h-3.5 text-slate-600" />
                                   <span>BASE CSV</span>
                                 </span>
                               )}
-                              <span className="text-[10px] text-gray-500 font-sans flex items-center gap-1 font-medium">
-                                <Clock className="w-2.5 h-2.5 text-gray-400" />
-                                {mov.dataHora}
-                                {mov.responsavel && (
-                                  <span className="text-gray-400">• {mov.responsavel}</span>
-                                )}
-                              </span>
-                            </div>
+                            </>
                           ) : (
-                            <span className="inline-flex items-center gap-1 bg-red-50 text-red-700 font-bold px-2 py-0.5 rounded text-[10px] border border-red-200">
+                            <span className="inline-flex items-center gap-1 bg-red-50 text-red-700 font-bold px-2 py-0.5 text-[10px] border border-red-200">
                               <AlertCircle className="w-3 h-3 text-red-500" />
                               NÃO LOCALIZADO
                             </span>
                           )}
                         </td>
 
-                        {/* Coluna: Vaga / Local Atual */}
-                        <td className="py-2.5 px-3 whitespace-nowrap">
-                          {mov?.vaga ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs">
-                              <MapPin className="w-3 h-3 text-emerald-600" />
-                              Vaga {mov.vaga}
-                            </span>
-                          ) : mov ? (
-                            <span className="text-gray-700 font-sans text-[11px] font-medium">
-                              {mov.localizacao}
+                        {/* Coluna: Data / Hora (Exibida uma única vez na linha) */}
+                        <td className="py-2 px-3 whitespace-nowrap">
+                          {mov?.dataHora ? (
+                            <span className="text-[11px] text-gray-700 font-sans inline-flex items-center gap-1 font-semibold">
+                              <Clock className="w-3 h-3 text-gray-400 shrink-0" />
+                              <span>{mov.dataHora}</span>
                             </span>
                           ) : (
                             <span className="text-gray-400 font-mono">—</span>
                           )}
                         </td>
 
-                        {/* Coluna: Grupo Encontrado / Origem */}
-                        <td className="py-2.5 px-3 whitespace-nowrap">
-                          {match.found && match.row ? (
-                            <div className="flex flex-col gap-0.5">
-                              {match.row.group === 'ERROS' ? (
-                                <span className="inline-flex items-center gap-1 bg-red-100 text-red-900 font-black px-2 py-0.5 rounded text-[11px] border border-red-300 w-fit">
-                                  <AlertCircle className="w-3 h-3 text-red-600" />
-                                  {match.row.group}
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-900 font-black px-2 py-0.5 rounded text-[11px] border border-amber-200 w-fit">
-                                  <Layers className="w-3 h-3 text-amber-700" />
-                                  <span>{match.row.group}</span>
-                                </span>
-                              )}
-                              {match.row.rawFields?.['Lista de Coleta'] && (
-                                <span className="text-[10px] font-sans font-semibold text-blue-700 truncate max-w-[220px]" title={`Lista: ${match.row.rawFields['Lista de Coleta']}`}>
-                                  Lista: {match.row.rawFields['Lista de Coleta']}
-                                </span>
-                              )}
-                            </div>
+                        {/* Coluna: Local / Grupo (Sem data repetida e sem subtítulo redundante) */}
+                        <td className="py-2 px-3 whitespace-nowrap">
+                          {match.found && localGrupoLabel ? (
+                            mov?.vaga ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 text-[11px]">
+                                <MapPin className="w-3 h-3 text-emerald-600" />
+                                {localGrupoLabel}
+                              </span>
+                            ) : localGrupoLabel === 'ERROS' ? (
+                              <span className="inline-flex items-center gap-1 bg-red-100 text-red-900 font-black px-2 py-0.5 text-[11px] border border-red-300 w-fit">
+                                <AlertCircle className="w-3 h-3 text-red-600" />
+                                {localGrupoLabel}
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-900 font-bold px-2 py-0.5 text-[11px] border border-amber-200 w-fit">
+                                <Layers className="w-3 h-3 text-amber-700" />
+                                <span>{localGrupoLabel}</span>
+                              </span>
+                            )
                           ) : (
                             <span className="text-gray-400 font-mono">—</span>
                           )}
                         </td>
 
                         {/* Coluna: Saída */}
-                        <td className="py-2.5 px-3 whitespace-nowrap">
+                        <td className="py-2 px-3 whitespace-nowrap">
                           {match.found && (match.row?.saida || mov?.saida) ? (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-blue-50 text-blue-800 border border-blue-200">
+                            <span className="inline-flex items-center px-2 py-0.5 text-[11px] font-bold bg-blue-50 text-blue-800 border border-blue-200">
                               {cycleOnly(match.row?.saida || mov?.saida)}
                             </span>
                           ) : (
@@ -1273,9 +1359,9 @@ export const IdLookup: React.FC<IdLookupProps> = ({ rows, onNavigateToUpload }) 
                         </td>
 
                         {/* Coluna: Motivo */}
-                        <td className="py-2.5 px-3 whitespace-nowrap">
+                        <td className="py-2 px-3 whitespace-nowrap">
                           {match.found && (match.row?.motivo || mov?.motivo) ? (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-amber-50 text-amber-900 border border-amber-200">
+                            <span className="inline-flex items-center px-2 py-0.5 text-[11px] font-bold bg-amber-50 text-amber-900 border border-amber-200">
                               {match.row?.motivo || mov?.motivo}
                             </span>
                           ) : (
@@ -1283,18 +1369,15 @@ export const IdLookup: React.FC<IdLookupProps> = ({ rows, onNavigateToUpload }) 
                           )}
                         </td>
 
-                        {/* Coluna: Rota / Placa */}
-                        <td className="py-2.5 px-3 whitespace-nowrap">
-                          {mov?.rota || match.row?.concat || mov?.placa ? (
-                            <div className="flex flex-col text-[10px]">
-                              {mov?.rota && (
-                                <span className="font-bold text-amber-950 font-mono">Rota: {mov.rota}</span>
+                        {/* Coluna: Rota / Placa (Sem exibir 'Rota: Sem Rota') */}
+                        <td className="py-2 px-3 whitespace-nowrap">
+                          {cleanRota || mov?.placa ? (
+                            <div className="flex flex-col text-[11px]">
+                              {cleanRota && (
+                                <span className="font-bold text-slate-800 font-mono">{cleanRota}</span>
                               )}
                               {mov?.placa && (
-                                <span className="text-gray-500 font-mono">Placa: {mov.placa}</span>
-                              )}
-                              {!mov?.rota && match.row?.concat && (
-                                <span className="font-bold text-amber-950 font-mono">{match.row.concat}</span>
+                                <span className="text-gray-500 font-mono text-[10px]">Placa: {mov.placa}</span>
                               )}
                             </div>
                           ) : (
@@ -1303,11 +1386,11 @@ export const IdLookup: React.FC<IdLookupProps> = ({ rows, onNavigateToUpload }) 
                         </td>
 
                         {/* Coluna: Ações */}
-                        <td className="py-2.5 px-3 whitespace-nowrap text-right">
+                        <td className="py-2 px-3 whitespace-nowrap text-right">
                           <div className="flex items-center justify-end gap-1">
                             <button
                               onClick={() => handleCopySingleRowDetail(match, globalIdx)}
-                              className="px-2 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded border border-gray-300 text-[10px] font-mono font-medium transition-colors"
+                              className="px-2 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-300 text-[10px] font-mono font-medium transition-colors cursor-pointer"
                               title="Copiar detalhes do ID"
                             >
                               {copiedDetailIdx === globalIdx ? (
@@ -1320,7 +1403,7 @@ export const IdLookup: React.FC<IdLookupProps> = ({ rows, onNavigateToUpload }) 
                             {match.found && (
                               <button
                                 onClick={() => setExpandedRowIdx(isExpanded ? null : globalIdx)}
-                                className={`p-1 rounded border transition-colors ${
+                                className={`p-1 border transition-colors cursor-pointer ${
                                   isExpanded
                                     ? 'bg-amber-100 text-amber-900 border-amber-300'
                                     : 'text-gray-400 hover:text-gray-700 bg-gray-50 hover:bg-gray-100 border-gray-200'
@@ -1531,7 +1614,7 @@ export const IdLookup: React.FC<IdLookupProps> = ({ rows, onNavigateToUpload }) 
                 listas.filter(l => l.tipo === 'grupos' && l.grupos && l.grupos.length > 0).map(lista => (
                   <div key={lista.id} className="border border-gray-200 rounded-xl overflow-hidden">
                     <div className="bg-gray-50 px-4 py-2 border-b border-gray-200 flex items-center justify-between">
-                      <span className="font-bold text-sm text-gray-800">{lista.nome}</span>
+                      <span className="font-bold text-sm text-gray-800">{stripDateFromLabel(lista.nome) || lista.nome}</span>
                       <span className="text-xs text-gray-500">{lista.data}</span>
                     </div>
                     <div className="p-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
