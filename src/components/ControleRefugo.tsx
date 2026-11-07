@@ -618,26 +618,50 @@ export function ControleRefugo({
     let totalEncontrados = 0;
     let totalBrancas = 0;
     const rotasEncontradas: Record<string, number> = {};
+    const uniqueScans = new Map<string, RefugoScan>();
 
     for (let i = 0; i < scannedItems.length; i++) {
       const item = scannedItems[i];
-      const isBrancaOuSemRota = item.status !== 'found' || !item.rota || item.rota.toUpperCase().includes('SEM ROTA') || item.rota.toLowerCase().includes('branca');
-      if (item.status === 'found') {
+      const key = String(item.normalizedId || normalizeTrackingCode(item.id) || '').trim();
+      if (!key || uniqueScans.has(key)) continue;
+      uniqueScans.set(key, item);
+    }
+
+    const dedupedList = Array.from(uniqueScans.values());
+
+    for (let i = 0; i < dedupedList.length; i++) {
+      const item = dedupedList[i];
+      const rotaUpper = String(item.rota || '').trim().toUpperCase();
+      const isBrancaOuSemRota =
+        item.status !== 'found' ||
+        !rotaUpper ||
+        rotaUpper.includes('SEM ROTA') ||
+        rotaUpper.includes('BRANCA');
+
+      if (!isBrancaOuSemRota) {
         totalEncontrados++;
-        const rotaNome = (item.rota || 'SEM ROTA').trim();
-        rotasEncontradas[rotaNome] = (rotasEncontradas[rotaNome] || 0) + 1;
-      }
-      if (isBrancaOuSemRota) {
+        rotasEncontradas[rotaUpper] = (rotasEncontradas[rotaUpper] || 0) + 1;
+      } else {
         totalBrancas++;
       }
     }
 
-    const payload: Omit<RefugoHistoricoMetrica, 'id'> = {
+    // Gera ID determinístico para o conjunto atual de pacotes da sessão para evitar duplicação ao clicar em Salvar e depois Limpar
+    const sortedKeys = Array.from(uniqueScans.keys()).sort();
+    let hash = 5381;
+    const joined = sortedKeys.join('|');
+    for (let i = 0; i < joined.length; i++) {
+      hash = ((hash << 5) + hash + joined.charCodeAt(i)) >>> 0;
+    }
+    const deterministicId = `refugo_sessao_${dataIso}_${dedupedList.length}_${hash.toString(36)}`;
+
+    const payload: Omit<RefugoHistoricoMetrica, 'id'> & { id: string } = {
+      id: deterministicId,
       data: dataIso,
       dataHora,
       timestamp: Date.now(),
       responsavel: currentUser?.username || 'Operador',
-      totalBipados: scannedItems.length,
+      totalBipados: dedupedList.length,
       totalEncontrados,
       totalBrancas,
       rotasEncontradas,

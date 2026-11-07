@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import {
   BarChart3,
   Barcode,
+  BookOpen,
   Boxes,
   ChevronDown,
   ChevronRight,
@@ -134,6 +135,16 @@ export const NAV_ITEMS: NavItem[] = [
     keywords: 'reporte whatsapp resumo',
     icon: MessageSquare,
     section: 'analise',
+  },
+  {
+    id: 'guia',
+    label: 'Guia & Aulas',
+    shortLabel: 'Guia',
+    path: '/guia',
+    keywords: 'guia aulas videos treinamento buscador publico',
+    icon: BookOpen,
+    section: 'sistema',
+    publicModule: true,
   },
   {
     id: 'codes',

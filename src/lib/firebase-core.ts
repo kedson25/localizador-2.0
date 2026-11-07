@@ -487,7 +487,26 @@ export function listenToRefugoHistoricoMetricas(
 export async function deleteRefugoHistoricoMetrica(id: string): Promise<void> {
   const docRef = doc(db, REFUGO_HISTORICO_COLLECTION, id);
   try {
+    const snap = await getDoc(docRef);
+    const targetData = snap.exists() ? snap.data() : null;
     await deleteDoc(docRef);
+
+    if (targetData) {
+      const allSnap = await getDocs(collection(db, REFUGO_HISTORICO_COLLECTION));
+      const dupes = allSnap.docs.filter(d => {
+        if (d.id === id) return false;
+        const item = d.data();
+        return (
+          String(item.data || '') === String(targetData.data || '') &&
+          Number(item.totalBipados || 0) === Number(targetData.totalBipados || 0) &&
+          Number(item.totalEncontrados || 0) === Number(targetData.totalEncontrados || 0) &&
+          Number(item.totalBrancas || 0) === Number(targetData.totalBrancas || 0)
+        );
+      });
+      for (const dupe of dupes) {
+        await deleteDoc(dupe.ref).catch(() => {});
+      }
+    }
   } catch (error) {
     console.error('Erro ao excluir histórico de métrica do refugo:', error);
     try {

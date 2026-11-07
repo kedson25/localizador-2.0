@@ -14,11 +14,15 @@ import {
   Target,
   Trash2,
   User as UserIcon,
+  X,
 } from 'lucide-react';
 import { RefugoHistoricoMetrica } from '../types';
 import { RefugoScan } from './AdminPanel';
 import {
   calculateRefugoPermanentSummary,
+  deleteRefugoMetricItem,
+  deleteRefugoMetricRoute,
+  hasValidRouteRefugoScan,
   listenToRefugoMetricItems,
   RefugoMetricItem,
 } from '../lib/refugoMetrics';
@@ -51,9 +55,14 @@ export const AdminRefugoMetrics: React.FC<AdminRefugoMetricsProps> = ({
   endDate,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
+  const [encontradosSearchTerm, setEncontradosSearchTerm] = useState('');
   const [brancasSearchTerm, setBrancasSearchTerm] = useState('');
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
+  const [confirmSessionId, setConfirmSessionId] = useState<string | null>(null);
+  const [confirmRoute, setConfirmRoute] = useState<string | null>(null);
+  const [confirmItemId, setConfirmItemId] = useState<string | null>(null);
   const [showAllSessions, setShowAllSessions] = useState(false);
+  const [showAllEncontrados, setShowAllEncontrados] = useState(false);
   const [showAllBrancas, setShowAllBrancas] = useState(false);
   const [permanentItems, setPermanentItems] = useState<RefugoMetricItem[]>([]);
   const [metricsReady, setMetricsReady] = useState(false);
@@ -96,10 +105,51 @@ export const AdminRefugoMetrics: React.FC<AdminRefugoMetricsProps> = ({
     return Number.isFinite(min) ? min : null;
   }, [permanentItems]);
 
+  const permanentDates = useMemo(() => {
+    const set = new Set<string>();
+    for (const item of permanentItems) {
+      if (item.firstSeenDate) set.add(item.firstSeenDate);
+      if (item.firstRouteFoundDate) set.add(item.firstRouteFoundDate);
+      if (item.firstBrancaDate) set.add(item.firstBrancaDate);
+    }
+    return set;
+  }, [permanentItems]);
+
   const legacyHistorico = useMemo(() => {
-    if (firstPermanentTimestamp === null) return historico;
-    return historico.filter(item => Number(item.timestamp || 0) < firstPermanentTimestamp);
-  }, [historico, firstPermanentTimestamp]);
+    // Exclui registros sintéticos permanent-day-* (já contabilizados em permanentSummary)
+    const onlyLegacy = historico.filter(
+      item =>
+        !String(item.id || '').startsWith('permanent-day-') &&
+        item.origem !== 'auto_sync'
+    );
+
+    const filtered = onlyLegacy.filter(item => {
+      const dateStr = String(item.data || '').trim();
+      if (dateStr && permanentDates.has(dateStr)) return false;
+      if (firstPermanentTimestamp !== null && Number(item.timestamp || 0) >= firstPermanentTimestamp) {
+        return false;
+      }
+      if (startDate || endDate) {
+        const itemDate =
+          dateStr ||
+          (item.timestamp ? new Date(item.timestamp).toISOString().slice(0, 10) : '');
+        if (itemDate && !inPeriod(itemDate, startDate, endDate)) return false;
+      }
+      return true;
+    });
+
+    const seenSignatures = new Set<string>();
+    return filtered.filter(item => {
+      const routesKey = Object.entries(item.rotasEncontradas || {})
+        .map(([k, v]) => `${String(k).trim().toUpperCase()}:${v}`)
+        .sort()
+        .join(',');
+      const sig = `${item.data || ''}|${item.totalBipados || 0}|${item.totalEncontrados || 0}|${item.totalBrancas || 0}|${routesKey}`;
+      if (seenSignatures.has(sig)) return false;
+      seenSignatures.add(sig);
+      return true;
+    });
+  }, [historico, firstPermanentTimestamp, permanentDates, startDate, endDate]);
 
   const legacyTotals = useMemo(() => {
     let totalBipados = 0;
@@ -109,31 +159,47 @@ export const AdminRefugoMetrics: React.FC<AdminRefugoMetricsProps> = ({
 
     for (const item of legacyHistorico) {
       totalBipados += Number(item.totalBipados || 0);
-      totalEncontrados += Number(item.totalEncontrados || 0);
       totalBrancas += Number(item.totalBrancas || 0);
 
-      for (const [rota, quantidade] of Object.entries(item.rotasEncontradas || {})) {
-        const key = String(rota || 'SEM ROTA').trim() || 'SEM ROTA';
-        rotas[key] = (rotas[key] || 0) + Number(quantidade || 0);
+      const rawRotas = item.rotasEncontradas || {};
+      const hasRawRotas = Object.keys(rawRotas).length > 0;
+      let itemValidRoutes = 0;
+
+      for (const [rota, quantidade] of Object.entries(rawRotas)) {
+        const key = String(rota || '').trim().toUpperCase();
+        const qty = Number(quantidade || 0);
+        if (!key || qty <= 0 || key.includes('SEM ROTA') || key.includes('BRANCA')) {
+          continue;
+        }
+        rotas[key] = (rotas[key] || 0) + qty;
+        itemValidRoutes += qty;
       }
+
+      totalEncontrados += hasRawRotas ? itemValidRoutes : Number(item.totalEncontrados || 0);
     }
 
     return { totalBipados, totalEncontrados, totalBrancas, rotas };
   }, [legacyHistorico]);
 
   const activeFallback = useMemo(() => {
-    if (permanentItems.length > 0) {
-      return { totalBipados: 0, totalEncontrados: 0, totalBrancas: 0, rotas: {} as Record<string, number> };
-    }
+    const permanentIds = new Set(
+      permanentItems.map(item => String(item.normalizedId || item.id || item.packageId || '').trim()).filter(Boolean)
+    );
+    const seenScanIds = new Set<string>();
 
+    let totalBipados = 0;
     let totalEncontrados = 0;
     let totalBrancas = 0;
     const rotas: Record<string, number> = {};
 
     for (const scan of activeScans) {
-      const route = String(scan.rota || '').trim();
-      const upper = route.toUpperCase();
-      const isBranca = scan.status !== 'found' || !route || upper.includes('SEM ROTA') || upper.includes('BRANCA');
+      const scanId = String((scan as any).normalizedId || scan.id || '').trim();
+      if (!scanId || permanentIds.has(scanId) || seenScanIds.has(scanId)) continue;
+      seenScanIds.add(scanId);
+      totalBipados++;
+
+      const route = String(scan.rota || '').trim().toUpperCase();
+      const isBranca = scan.status !== 'found' || !route || route.includes('SEM ROTA') || route.includes('BRANCA');
       const hasValidRoute = scan.status === 'found' && !isBranca;
 
       if (hasValidRoute) {
@@ -144,12 +210,12 @@ export const AdminRefugoMetrics: React.FC<AdminRefugoMetricsProps> = ({
     }
 
     return {
-      totalBipados: activeScans.length,
+      totalBipados,
       totalEncontrados,
       totalBrancas,
       rotas,
     };
-  }, [activeScans, permanentItems.length]);
+  }, [activeScans, permanentItems]);
 
   const totals = useMemo(() => {
     const totalBipados = legacyTotals.totalBipados + permanentSummary.totalUniqueBipados + activeFallback.totalBipados;
@@ -174,14 +240,21 @@ export const AdminRefugoMetrics: React.FC<AdminRefugoMetricsProps> = ({
   const rotasAgrupadas = useMemo(() => {
     const map: Record<string, number> = {};
 
+    const addRoute = (rawRota: string, quantidade: unknown) => {
+      const key = String(rawRota || '').trim().toUpperCase();
+      const qty = Number(quantidade || 0);
+      if (!key || qty <= 0 || key.includes('SEM ROTA') || key.includes('BRANCA')) return;
+      map[key] = (map[key] || 0) + qty;
+    };
+
     for (const [rota, quantidade] of Object.entries(legacyTotals.rotas)) {
-      map[rota] = (map[rota] || 0) + Number(quantidade || 0);
+      addRoute(rota, quantidade);
     }
     for (const [rota, quantidade] of Object.entries(permanentSummary.rotas)) {
-      map[rota] = (map[rota] || 0) + Number(quantidade || 0);
+      addRoute(rota, quantidade);
     }
     for (const [rota, quantidade] of Object.entries(activeFallback.rotas)) {
-      map[rota] = (map[rota] || 0) + Number(quantidade || 0);
+      addRoute(rota, quantidade);
     }
 
     let list = Object.entries(map).map(([rota, total]) => ({ rota, total }));
@@ -194,11 +267,47 @@ export const AdminRefugoMetrics: React.FC<AdminRefugoMetricsProps> = ({
     return list.sort((a, b) => b.total - a.total);
   }, [legacyTotals.rotas, permanentSummary.rotas, activeFallback.rotas, searchTerm]);
 
+  const encontradosPermanentes = useMemo(() => {
+    const q = encontradosSearchTerm.trim().toLowerCase();
+
+    return permanentItems
+      .filter(item => {
+        const candidateRoute = String(item.rotaEncontrada || item.lastRota || '').trim();
+        const valid =
+          item.everRouteFound &&
+          hasValidRouteRefugoScan({ status: 'found', rota: candidateRoute });
+        if (!valid) return false;
+        return inPeriod(item.firstRouteFoundDate || item.firstSeenDate, startDate, endDate);
+      })
+      .filter(item => {
+        if (!q) return true;
+        return [
+          item.packageId,
+          item.normalizedId,
+          item.rotaEncontrada,
+          item.lastRota,
+          item.firstFoundBy,
+          item.lastFoundBy,
+        ]
+          .map(value => String(value || '').toLowerCase())
+          .some(value => value.includes(q));
+      })
+      .sort(
+        (a, b) =>
+          Number(b.firstRouteFoundTimestamp || b.firstSeenTimestamp || 0) -
+          Number(a.firstRouteFoundTimestamp || a.firstSeenTimestamp || 0)
+      );
+  }, [permanentItems, encontradosSearchTerm, startDate, endDate]);
+
+  const displayedEncontrados = showAllEncontrados
+    ? encontradosPermanentes
+    : encontradosPermanentes.slice(0, 50);
+
   const brancasPermanentes = useMemo(() => {
     const q = brancasSearchTerm.trim().toLowerCase();
 
     return permanentItems
-      .filter(item => item.everBranca && inPeriod(item.firstBrancaDate, startDate, endDate))
+      .filter(item => item.everBranca && inPeriod(item.firstBrancaDate || item.firstSeenDate, startDate, endDate))
       .filter(item => {
         if (!q) return true;
         return [
@@ -270,12 +379,30 @@ export const AdminRefugoMetrics: React.FC<AdminRefugoMetricsProps> = ({
 
   const handleDelete = async (id: string) => {
     if (!onDeleteHistorico) return;
-    const confirmed = window.confirm('Deseja realmente excluir este registro histórico legado de refugo?');
-    if (!confirmed) return;
-
     setIsDeleting(id);
     try {
       await onDeleteHistorico(id);
+      setConfirmSessionId(null);
+    } finally {
+      setIsDeleting(null);
+    }
+  };
+
+  const handleDeleteRoute = async (rota: string) => {
+    setIsDeleting(`route:${rota}`);
+    try {
+      await deleteRefugoMetricRoute(rota, startDate, endDate);
+      setConfirmRoute(null);
+    } finally {
+      setIsDeleting(null);
+    }
+  };
+
+  const handleDeleteMetricItem = async (normalizedId: string) => {
+    setIsDeleting(`item:${normalizedId}`);
+    try {
+      await deleteRefugoMetricItem(normalizedId);
+      setConfirmItemId(null);
     } finally {
       setIsDeleting(null);
     }
@@ -414,14 +541,46 @@ export const AdminRefugoMetrics: React.FC<AdminRefugoMetricsProps> = ({
             {rotasAgrupadas.map(item => (
               <div
                 key={item.rota}
-                className="flex items-center justify-between p-2.5 bg-white border border-gray-200 rounded-lg shadow-2xs hover:border-cyan-300 transition-colors"
+                className="flex items-center justify-between gap-1.5 p-2.5 bg-white border border-gray-200 rounded-lg shadow-2xs hover:border-cyan-300 transition-colors"
               >
                 <span className="font-bold text-xs text-gray-800 truncate" title={item.rota}>
                   {item.rota}
                 </span>
-                <span className="ml-1.5 px-2 py-0.5 text-[11px] font-black bg-cyan-50 text-cyan-700 border border-cyan-200 rounded-md shrink-0 tabular-nums">
-                  {item.total}
-                </span>
+                <div className="flex items-center gap-1 shrink-0">
+                  <span className="px-2 py-0.5 text-[11px] font-black bg-cyan-50 text-cyan-700 border border-cyan-200 rounded-md tabular-nums">
+                    {item.total}
+                  </span>
+                  {confirmRoute === item.rota ? (
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteRoute(item.rota)}
+                        disabled={isDeleting === `route:${item.rota}`}
+                        className="px-1.5 py-0.5 text-[10px] font-black bg-red-600 text-white hover:bg-red-700 cursor-pointer disabled:opacity-40"
+                        title="Confirmar exclusão da rota"
+                      >
+                        Apagar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmRoute(null)}
+                        className="p-0.5 text-gray-400 hover:text-gray-700 cursor-pointer"
+                        title="Cancelar"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmRoute(item.rota)}
+                      className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
+                      title={`Apagar rota ${item.rota}`}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>
@@ -430,6 +589,114 @@ export const AdminRefugoMetrics: React.FC<AdminRefugoMetricsProps> = ({
             Nenhuma rota válida encontrada para o período selecionado.
           </div>
         )}
+
+        {/* Tabela individual de IDs com Rota Encontrada para permitir apagar qualquer ID encontrado */}
+        <div className="pt-3 border-t border-gray-200 space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <h4 className="text-xs font-black text-gray-800 uppercase tracking-wider flex items-center gap-2">
+              <span>IDs com Rota Encontrada</span>
+              <span className="px-2 py-0.5 text-[10px] font-black bg-cyan-100 text-cyan-800">
+                {encontradosPermanentes.length.toLocaleString('pt-BR')} IDs
+              </span>
+            </h4>
+
+            <div className="relative min-w-[220px] max-w-sm">
+              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                value={encontradosSearchTerm}
+                onChange={e => setEncontradosSearchTerm(e.target.value)}
+                placeholder="Buscar ID encontrado ou rota..."
+                className="w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-gray-200 rounded-lg text-gray-800 placeholder-gray-400 focus:outline-none focus:border-cyan-500"
+              />
+            </div>
+          </div>
+
+          {displayedEncontrados.length > 0 ? (
+            <div className="overflow-x-auto border border-gray-200 rounded-xl bg-white">
+              <table className="w-full text-xs text-left text-gray-700">
+                <thead className="bg-cyan-50/60 font-bold uppercase tracking-wider text-gray-600 border-b border-cyan-100 text-[10px]">
+                  <tr>
+                    <th className="py-2 px-3">ID</th>
+                    <th className="py-2 px-3">Rota Encontrada</th>
+                    <th className="py-2 px-3">Data / Hora</th>
+                    <th className="py-2 px-3">Responsável</th>
+                    <th className="py-2 px-3 text-center">Ações</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {displayedEncontrados.map(item => {
+                    const targetKey = item.normalizedId || item.id;
+                    return (
+                      <tr key={item.id} className="hover:bg-cyan-50/20">
+                        <td className="py-2 px-3 font-mono font-bold text-gray-900 whitespace-nowrap">
+                          {item.packageId}
+                        </td>
+                        <td className="py-2 px-3 font-bold text-cyan-800">
+                          {item.rotaEncontrada || item.lastRota}
+                        </td>
+                        <td className="py-2 px-3 whitespace-nowrap text-gray-600">
+                          {item.firstRouteFoundAt || item.firstSeenAt}
+                        </td>
+                        <td className="py-2 px-3 text-gray-600">
+                          {item.lastFoundBy || item.firstFoundBy || 'Operador'}
+                        </td>
+                        <td className="py-2 px-3 text-center">
+                          {confirmItemId === targetKey ? (
+                            <div className="inline-flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteMetricItem(targetKey)}
+                                disabled={isDeleting === `item:${targetKey}`}
+                                className="px-2 py-0.5 text-[10px] font-black bg-red-600 text-white hover:bg-red-700 cursor-pointer disabled:opacity-40"
+                              >
+                                Confirmar
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setConfirmItemId(null)}
+                                className="p-1 text-gray-400 hover:text-gray-700 cursor-pointer"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setConfirmItemId(targetKey)}
+                              className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
+                              title="Apagar este ID encontrado"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="py-4 text-center text-xs text-gray-500 bg-white border border-dashed border-gray-200">
+              Nenhum ID encontrado com rota para o filtro atual.
+            </div>
+          )}
+
+          {encontradosPermanentes.length > 50 && (
+            <button
+              type="button"
+              onClick={() => setShowAllEncontrados(v => !v)}
+              className="text-xs font-bold text-cyan-700 hover:underline flex items-center gap-1 cursor-pointer"
+            >
+              {showAllEncontrados ? (
+                <>Mostrar somente 50 <ChevronUp className="w-3.5 h-3.5" /></>
+              ) : (
+                <>Mostrar todos ({encontradosPermanentes.length.toLocaleString('pt-BR')}) <ChevronDown className="w-3.5 h-3.5" /></>
+              )}
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="rounded-xl border border-rose-200 bg-rose-50/30 p-5 space-y-4">
@@ -469,23 +736,57 @@ export const AdminRefugoMetrics: React.FC<AdminRefugoMetricsProps> = ({
                   <th className="py-2.5 px-3">Responsável</th>
                   <th className="py-2.5 px-3 text-center">Aparições</th>
                   <th className="py-2.5 px-3 text-center">Rota depois?</th>
+                  <th className="py-2.5 px-3 text-center">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {displayedBrancas.map(item => (
-                  <tr key={item.id} className="hover:bg-rose-50/30">
-                    <td className="py-2.5 px-3 font-mono font-bold text-gray-900 whitespace-nowrap">{item.packageId}</td>
-                    <td className="py-2.5 px-3 whitespace-nowrap">{item.firstBrancaAt || item.firstSeenAt}</td>
-                    <td className="py-2.5 px-3">{item.lastRota || 'SEM ROTA'}</td>
-                    <td className="py-2.5 px-3">{item.lastFoundBy || item.firstFoundBy || 'Operador'}</td>
-                    <td className="py-2.5 px-3 text-center font-bold tabular-nums">{item.scanCount}</td>
-                    <td className="py-2.5 px-3 text-center">
-                      <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold border ${item.everRouteFound ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-rose-50 border-rose-200 text-rose-700'}`}>
-                        {item.everRouteFound ? item.rotaEncontrada || 'Sim' : 'Não'}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
+                {displayedBrancas.map(item => {
+                  const targetKey = item.normalizedId || item.id;
+                  return (
+                    <tr key={item.id} className="hover:bg-rose-50/30">
+                      <td className="py-2.5 px-3 font-mono font-bold text-gray-900 whitespace-nowrap">{item.packageId}</td>
+                      <td className="py-2.5 px-3 whitespace-nowrap">{item.firstBrancaAt || item.firstSeenAt}</td>
+                      <td className="py-2.5 px-3">{item.lastRota || 'SEM ROTA'}</td>
+                      <td className="py-2.5 px-3">{item.lastFoundBy || item.firstFoundBy || 'Operador'}</td>
+                      <td className="py-2.5 px-3 text-center font-bold tabular-nums">{item.scanCount}</td>
+                      <td className="py-2.5 px-3 text-center">
+                        <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold border ${item.everRouteFound ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-rose-50 border-rose-200 text-rose-700'}`}>
+                          {item.everRouteFound ? item.rotaEncontrada || 'Sim' : 'Não'}
+                        </span>
+                      </td>
+                      <td className="py-2.5 px-3 text-center">
+                        {confirmItemId === targetKey ? (
+                          <div className="inline-flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteMetricItem(targetKey)}
+                              disabled={isDeleting === `item:${targetKey}`}
+                              className="px-2 py-0.5 text-[10px] font-black bg-red-600 text-white hover:bg-red-700 cursor-pointer disabled:opacity-40"
+                            >
+                              Confirmar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setConfirmItemId(null)}
+                              className="p-1 text-gray-400 hover:text-gray-700 cursor-pointer"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setConfirmItemId(targetKey)}
+                            className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
+                            title="Apagar este registro"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -596,15 +897,35 @@ export const AdminRefugoMetrics: React.FC<AdminRefugoMetricsProps> = ({
                       </td>
                       {onDeleteHistorico && (
                         <td className="py-3 px-3 text-center">
-                          <button
-                            type="button"
-                            onClick={() => handleDelete(item.id)}
-                            disabled={isDeleting === item.id}
-                            className="p-1 text-gray-400 hover:text-red-600 transition-colors rounded hover:bg-red-50 cursor-pointer disabled:opacity-40"
-                            title="Remover este registro histórico legado"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          {confirmSessionId === item.id ? (
+                            <div className="inline-flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => handleDelete(item.id)}
+                                disabled={isDeleting === item.id}
+                                className="px-2 py-0.5 text-[10px] font-black bg-red-600 text-white hover:bg-red-700 cursor-pointer disabled:opacity-40"
+                              >
+                                {isDeleting === item.id ? 'Apagando...' : 'Confirmar'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setConfirmSessionId(null)}
+                                className="p-1 text-gray-400 hover:text-gray-700 cursor-pointer"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setConfirmSessionId(item.id)}
+                              disabled={isDeleting === item.id}
+                              className="p-1 text-gray-400 hover:text-red-600 transition-colors rounded hover:bg-red-50 cursor-pointer disabled:opacity-40"
+                              title="Apagar este registro"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                         </td>
                       )}
                     </tr>

@@ -13,6 +13,7 @@ import {
 interface IdLookupEnhancedProps {
   rows: CsvRow[];
   onNavigateToUpload: () => void;
+  minimalMode?: boolean;
 }
 
 type Cycle = 'AM' | 'PM' | 'SD';
@@ -498,7 +499,7 @@ export const IdLookupEnhanced: React.FC<IdLookupEnhancedProps> = (props) => {
         </section>
       )}
 
-      {routingCandidates.length > 0 && (
+      {!props.minimalMode && routingCandidates.length > 0 && (
         <div className="flex justify-end">
           <button type="button" onClick={() => setShowSaveErrors(true)} className="inline-flex items-center gap-2 rounded-lg bg-amber-600 px-3 py-2 text-xs font-bold text-white hover:bg-amber-700">
             <Save className="h-3.5 w-3.5" /> Salvar errados

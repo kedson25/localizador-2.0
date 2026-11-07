@@ -1,6 +1,6 @@
 {
-  "summary": "Plano completo de análise de gargalos e otimização de performance do sistema de logística (Firebase/Firestore, Buscador de IDs, Listas de Coleta e Controle de Refugo).",
-  "updatedAt": "2026-11-05T21:32:53.929916669Z",
-  "requestFeedback": true,
-  "userFacing": true
+  "summary":  "Plano de implementação para adicionar suporte a descrições de módulos, descrições por item e links gerais/vídeos dentro dos módulos da rota pública /guia (exclusivo para edição por Admin).",
+  "updatedAt":  "2026-11-07T08:53:01.874882393Z",
+  "requestFeedback":  true,
+  "userFacing":  true
 }

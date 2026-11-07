@@ -18,6 +18,7 @@ import {
   clearRefugo as clearRefugoCore,
   listenToRefugo as listenToRefugoCore,
   listenToRefugoHistoricoMetricas as listenToLegacyRefugoHistoricoMetricas,
+  deleteRefugoHistoricoMetrica as deleteRefugoHistoricoMetricaCore,
   listenToRefugoScans as listenToTransientRefugoScans,
   listenToRefugoScansIncremental as listenToCoreRefugoScansIncremental,
   addRefugoScan as addRefugoScanCore,
@@ -29,6 +30,8 @@ import {
 import type { RefugoData, RefugoScan, RefugoScanChange } from './firebase-core';
 import type { ColetaItem, ColetaLista, RefugoHistoricoMetrica } from '../types';
 import {
+  deleteRefugoMetricItem,
+  deleteRefugoMetricsByDate,
   listenToRefugoMetricItems,
   persistRefugoMetricScan,
   RefugoMetricItem,
@@ -512,7 +515,23 @@ export async function deleteRefugoScan(normalizedId: string): Promise<void> {
   await mutateLocalValue<RefugoScan[]>(LOCAL_REFUGO_SCANS_KEY, current =>
     (current || []).filter(item => item.normalizedId !== normalizedId)
   );
-  await deleteRefugoScanCore(normalizedId);
+  await Promise.allSettled([
+    deleteRefugoScanCore(normalizedId),
+    deleteRefugoMetricItem(normalizedId),
+  ]);
+}
+
+export async function deleteRefugoHistoricoMetrica(id: string): Promise<void> {
+  const cleanId = String(id || '').trim();
+  if (!cleanId) return;
+
+  if (cleanId.startsWith('permanent-day-')) {
+    const dateIso = cleanId.replace('permanent-day-', '').trim();
+    await deleteRefugoMetricsByDate(dateIso);
+    return;
+  }
+
+  await deleteRefugoHistoricoMetricaCore(cleanId);
 }
 
 export async function clearRefugoScans(): Promise<boolean> {
@@ -572,6 +591,7 @@ export function listenToRefugoScansIncremental(
         const normalizedInitial = (initialScans || []).map(normalizeRefugoRouteStatus);
         if (normalizedInitial.length > 0) {
           void setLocalValue(LOCAL_REFUGO_SCANS_KEY, normalizedInitial);
+          schedulePermanentBackfill(normalizedInitial);
         } else {
           void deleteLocalValue(LOCAL_REFUGO_SCANS_KEY);
         }
@@ -611,35 +631,54 @@ export function listenToRefugoScans(
   let transientScans: RefugoScan[] = [];
   let permanentItems: RefugoMetricItem[] = [];
   let permanentReady = false;
+  let permanentFailed = false;
+
+  const deduplicateScans = (scans: RefugoScan[]): RefugoScan[] => {
+    const map = new Map<string, RefugoScan>();
+    for (const raw of scans) {
+      const normalized = normalizeScanForDashboard(raw);
+      const key = String(normalized.normalizedId || normalized.id || '').trim();
+      if (!key || map.has(key)) continue;
+      map.set(key, normalized);
+    }
+    return Array.from(map.values());
+  };
 
   const emit = () => {
-    if (!permanentReady) {
-      callback(transientScans);
+    if (!permanentReady && !permanentFailed) {
       return;
     }
 
-    const permanentById = new Map(permanentItems.map(item => [item.normalizedId, item]));
+    if (permanentFailed) {
+      callback(deduplicateScans(transientScans));
+      return;
+    }
 
-    const pending = transientScans
-      .filter(scan => {
-        const permanent = permanentById.get(scan.normalizedId);
-        return !permanent || permanent.lastEventKey !== eventKeyFromScan(scan);
-      })
-      .map(normalizeRefugoRouteStatus);
+    const permanentIds = new Set(
+      permanentItems.map(item => String(item.normalizedId || item.id || '').trim()).filter(Boolean)
+    );
+
+    const pending = deduplicateScans(transientScans).filter(scan => {
+      const key = String(scan.normalizedId || scan.id || '').trim();
+      return Boolean(key) && !permanentIds.has(key);
+    });
 
     callback(pending);
   };
 
   void getLocalValue<RefugoScan[]>(LOCAL_REFUGO_SCANS_KEY).then(cached => {
     if (transientScans.length === 0 && cached?.length) {
-      transientScans = cached.map(normalizeScanForDashboard);
+      transientScans = deduplicateScans(cached);
       emit();
     }
   });
 
   const unsubTransient = listenToTransientRefugoScans(scans => {
-    transientScans = scans.map(normalizeScanForDashboard);
+    transientScans = deduplicateScans(scans);
     void setLocalValue(LOCAL_REFUGO_SCANS_KEY, transientScans);
+    if (transientScans.length > 0) {
+      schedulePermanentBackfill(transientScans);
+    }
     emit();
   });
 
@@ -647,10 +686,12 @@ export function listenToRefugoScans(
     items => {
       permanentItems = items;
       permanentReady = true;
+      permanentFailed = false;
       emit();
     },
     () => {
       permanentReady = false;
+      permanentFailed = true;
       emit();
     }
   );
@@ -682,6 +723,67 @@ function getDailyAccumulator(map: Map<string, DailyAccumulator>, date: string): 
   return current;
 }
 
+function extractLegacyDateIso(item: RefugoHistoricoMetrica): string {
+  const direct = String(item.data || '').trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(direct)) return direct;
+  const brMatch = direct.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  if (brMatch) return `${brMatch[3]}-${brMatch[2]}-${brMatch[1]}`;
+  if (item.timestamp && Number.isFinite(Number(item.timestamp))) {
+    const d = new Date(Number(item.timestamp));
+    if (!Number.isNaN(d.getTime())) {
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }
+  }
+  return '';
+}
+
+function sanitizeLegacyMetrica(item: RefugoHistoricoMetrica): RefugoHistoricoMetrica {
+  const cleanRotas: Record<string, number> = {};
+  let validRoutesSum = 0;
+  const rawRotas = item.rotasEncontradas || {};
+  const hasRawRotas = Object.keys(rawRotas).length > 0;
+
+  for (const [rawRoute, rawQty] of Object.entries(rawRotas)) {
+    const route = String(rawRoute || '').trim().toUpperCase();
+    const qty = Number(rawQty || 0);
+    if (!route || qty <= 0) continue;
+    if (route.includes('SEM ROTA') || route.includes('BRANCA')) continue;
+    cleanRotas[route] = (cleanRotas[route] || 0) + qty;
+    validRoutesSum += qty;
+  }
+
+  return {
+    ...item,
+    data: extractLegacyDateIso(item) || item.data,
+    rotasEncontradas: cleanRotas,
+    totalEncontrados: hasRawRotas ? validRoutesSum : Number(item.totalEncontrados || 0),
+  };
+}
+
+function deduplicateLegacyMetricas(items: RefugoHistoricoMetrica[]): RefugoHistoricoMetrica[] {
+  const sorted = [...items]
+    .filter(item => !String(item.id || '').startsWith('permanent-day-'))
+    .map(sanitizeLegacyMetrica)
+    .sort((a, b) => Number(b.timestamp || 0) - Number(a.timestamp || 0));
+
+  const seenSignatures = new Set<string>();
+  const result: RefugoHistoricoMetrica[] = [];
+
+  for (const item of sorted) {
+    const routesKey = Object.entries(item.rotasEncontradas || {})
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([k, v]) => `${k}:${v}`)
+      .join(',');
+
+    const signature = `${item.data || ''}|${item.totalBipados || 0}|${item.totalEncontrados || 0}|${item.totalBrancas || 0}|${routesKey}`;
+    if (seenSignatures.has(signature)) continue;
+    seenSignatures.add(signature);
+    result.push(item);
+  }
+
+  return result;
+}
+
 export function listenToRefugoHistoricoMetricas(
   callback: (metricas: RefugoHistoricoMetrica[]) => void
 ): () => void {
@@ -690,38 +792,67 @@ export function listenToRefugoHistoricoMetricas(
   let permanentReady = false;
 
   const emit = () => {
+    const dedupedLegacy = deduplicateLegacyMetricas(legacy);
+
     if (!permanentReady || permanentItems.length === 0) {
-      callback(legacy);
+      callback(dedupedLegacy);
       return;
     }
 
     let firstPermanentTimestamp = Number.POSITIVE_INFINITY;
-    for (const item of permanentItems) {
-      if (item.firstSeenTimestamp > 0 && item.firstSeenTimestamp < firstPermanentTimestamp) {
-        firstPermanentTimestamp = item.firstSeenTimestamp;
-      }
-    }
-
-    const legacyBeforePermanent = Number.isFinite(firstPermanentTimestamp)
-      ? legacy.filter(item => Number(item.timestamp || 0) < firstPermanentTimestamp)
-      : legacy;
-
+    let firstPermanentDate = '9999-99-99';
+    const permanentDates = new Set<string>();
+    const seenPermanentIds = new Set<string>();
     const daily = new Map<string, DailyAccumulator>();
 
     for (const item of permanentItems) {
-      if (item.firstSeenDate) getDailyAccumulator(daily, item.firstSeenDate).totalBipados += 1;
+      const normKey = String(item.normalizedId || item.id || item.packageId || '').trim();
+      if (!normKey || seenPermanentIds.has(normKey)) continue;
+      seenPermanentIds.add(normKey);
 
-      if (item.everRouteFound && item.firstRouteFoundDate) {
-        const bucket = getDailyAccumulator(daily, item.firstRouteFoundDate);
+      if (item.firstSeenTimestamp > 0 && item.firstSeenTimestamp < firstPermanentTimestamp) {
+        firstPermanentTimestamp = item.firstSeenTimestamp;
+      }
+      if (item.firstSeenDate) {
+        permanentDates.add(item.firstSeenDate);
+        if (item.firstSeenDate < firstPermanentDate) {
+          firstPermanentDate = item.firstSeenDate;
+        }
+        getDailyAccumulator(daily, item.firstSeenDate).totalBipados += 1;
+      }
+
+      const route = String(item.rotaEncontrada || item.lastRota || '').trim().toUpperCase();
+      const isValidRoute =
+        item.everRouteFound &&
+        Boolean(route) &&
+        !route.includes('SEM ROTA') &&
+        !route.includes('BRANCA');
+
+      const routeDate = item.firstRouteFoundDate || item.firstSeenDate;
+      if (isValidRoute && routeDate) {
+        permanentDates.add(routeDate);
+        const bucket = getDailyAccumulator(daily, routeDate);
         bucket.totalEncontrados += 1;
-        const route = String(item.rotaEncontrada || 'SEM ROTA').trim() || 'SEM ROTA';
         bucket.rotasEncontradas[route] = (bucket.rotasEncontradas[route] || 0) + 1;
       }
 
-      if (item.everBranca && item.firstBrancaDate) {
-        getDailyAccumulator(daily, item.firstBrancaDate).totalBrancas += 1;
+      const brancaDate = item.firstBrancaDate || item.firstSeenDate;
+      if (item.everBranca && brancaDate) {
+        permanentDates.add(brancaDate);
+        getDailyAccumulator(daily, brancaDate).totalBrancas += 1;
       }
     }
+
+    const legacyBeforePermanent = dedupedLegacy.filter(item => {
+      const itemDate = extractLegacyDateIso(item);
+      if (itemDate && (permanentDates.has(itemDate) || itemDate >= firstPermanentDate)) {
+        return false;
+      }
+      if (Number.isFinite(firstPermanentTimestamp) && Number(item.timestamp || 0) >= firstPermanentTimestamp) {
+        return false;
+      }
+      return true;
+    });
 
     const permanentDaily: RefugoHistoricoMetrica[] = Array.from(daily.entries())
       .map(([date, totals]) => ({

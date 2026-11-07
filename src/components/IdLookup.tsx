@@ -34,6 +34,7 @@ import { getLocalValue } from '../lib/localPersistence';
 interface IdLookupProps {
   rows: CsvRow[];
   onNavigateToUpload: () => void;
+  minimalMode?: boolean;
 }
 
 function cycleOnly(value?: string): string {
@@ -140,7 +141,7 @@ export function formatFriendlyDate(timestampOrStr: number | string): string {
   return `${dateStr} às ${timeStr}`;
 }
 
-export const IdLookup: React.FC<IdLookupProps> = ({ rows, onNavigateToUpload }) => {
+export const IdLookup: React.FC<IdLookupProps> = ({ rows, onNavigateToUpload, minimalMode = false }) => {
   const [inputText, setInputText] = useState<string>('');
   const [includeOldLists, setIncludeOldLists] = useState<boolean>(false);
   const [saidaFilter, setSaidaFilter] = useState<string>('');
@@ -942,30 +943,32 @@ export const IdLookup: React.FC<IdLookupProps> = ({ rows, onNavigateToUpload }) 
               <Search className="w-4 h-4" />
             </div>
             <h2 className="text-sm font-black text-slate-900 uppercase tracking-wider">
-              Consulta de Pacotes
+              {minimalMode ? 'Localizador de IDs' : 'Consulta de Pacotes'}
             </h2>
           </div>
           
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              onClick={() => setShowGruposModal(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 border border-purple-200 hover:bg-purple-100 text-purple-800 text-xs font-bold transition-colors cursor-pointer"
-            >
-              <ListPlus className="w-3.5 h-3.5 text-purple-600" />
-              <span>Importar Grupo</span>
-            </button>
-            <label className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 text-xs font-bold transition-colors">
-              <Upload className="w-3.5 h-3.5 text-blue-600" />
-              <span>CSV Base</span>
-              <input type="file" accept=".csv,.txt,.tsv" onChange={handleFileUpload} className="hidden" />
-            </label>
+          {!minimalMode && (
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => setShowGruposModal(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 border border-purple-200 hover:bg-purple-100 text-purple-800 text-xs font-bold transition-colors cursor-pointer"
+              >
+                <ListPlus className="w-3.5 h-3.5 text-purple-600" />
+                <span>Importar Grupo</span>
+              </button>
+              <label className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 text-xs font-bold transition-colors">
+                <Upload className="w-3.5 h-3.5 text-blue-600" />
+                <span>CSV Base</span>
+                <input type="file" accept=".csv,.txt,.tsv" onChange={handleFileUpload} className="hidden" />
+              </label>
 
-            {rows.length > 0 && (
-              <span className="text-[11px] font-mono text-gray-600 bg-gray-100 px-2 py-1 border border-gray-200 font-bold">
-                {rows.length} base
-              </span>
-            )}
-          </div>
+              {rows.length > 0 && (
+                <span className="text-[11px] font-mono text-gray-600 bg-gray-100 px-2 py-1 border border-gray-200 font-bold">
+                  {rows.length} base
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Clean Textarea Section */}

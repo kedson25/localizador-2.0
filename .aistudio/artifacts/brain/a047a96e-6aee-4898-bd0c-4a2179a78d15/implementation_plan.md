@@ -1,89 +1,102 @@
-# Plano de Otimização de Performance — Sistema de Logística e Coleta
+# Módulos com Links e Descrições na Rota Guia (`/guia`)
 
-Diagnóstico técnico dos gargalos de lentidão identificados no sistema e plano de otimização ponta a ponta abrangendo **Conexão Firebase/Firestore**, **Buscador de IDs (`/consulta`)**, **Listas de Coleta (`/listas`)** e **Controle de Refugo (`/refugo`)**.
+Permitir que administradores cadastrem e editem **descrições e links** (tanto vídeo-aulas quanto links externos como planilhas, documentos e ferramentas) dentro de cada módulo da página **Guias**, mantendo as descrições sempre visíveis logo abaixo do título do módulo e de cada item.
 
-## User Review & Critical Decisions
+## Revisão e Decisões Confirmadas
 
-- **Escopo de Otimização Confirmado**: Otimização completa em todos os módulos críticos (Buscador, Listas de Coleta, Refugo e camada de rede do Firebase).
-- **Alcance da Busca em Listas de Coleta**: Por padrão, a busca de pacotes nas Listas de Coleta consultará apenas as **listas do dia atual (Hoje)** para resposta instantânea, adicionando um controle direto na tela (`Incluir listas antigas`) caso o operador deseje expandir a varredura para todo o histórico.
-- **Preservação Integral de Dados e Funcionalidades**: Nenhuma regra de negócio, formato de exportação/cópia ou estrutura de dados salva no Firestore será perdida; todas as otimizações atuam na eficiência de consulta, indexação em memória e eliminação de leituras/observadores duplicados.
+> [!IMPORTANT]
+> As escolhas abaixo refletem suas respostas e as diretrizes definidas anteriormente para a tela `/guia`:
 
----
-
-## 1. Overview & Core Concept
-
-Durante a análise do código-fonte, foram identificados **5 gargalos principais** que causam lentidão, travamentos ao digitar/colar lotes grandes de IDs e atraso na sincronização com o banco de dados:
-
-1. **Long-Polling Forçado no Firestore**: O cliente Firebase estava configurado para usar `experimentalForceLongPolling: true` por padrão, forçando conexões HTTP lentas em vez de WebSockets nativos em tempo real.
-2. **Explosão de Consultas Duplicadas no Buscador (`/consulta`)**: Ao colar centenas de IDs, dois componentes (`IdLookup` e `IdLookupEnhanced`) disparam buscas concorrentes no Firestore. Além disso, a busca varria **todas as listas históricas já criadas** em lotes de 30 IDs (duplicando para `codigo` e `codigoClean`), gerando centenas de requisições simultâneas a cada pesquisa.
-3. **Busca Linear $O(N \times M)$ na Planilha Base (CSV)**: Na aba `Buscar IDs`, cada ID pesquisado percorria toda a lista de milhares de linhas do CSV via `.find()` repetidamente a cada alteração de filtro, travando a thread principal do navegador.
-4. **Leitura Dupla (`getDocs` + `onSnapshot`) e Escrita Sequencial nas Listas**: Ao abrir uma Lista de Coleta, o sistema executava um `getDocs` completo seguido imediatamente de um `onSnapshot` na mesma coleção de até 10.000 itens (dobrando o consumo de rede). Além disso, cada bipagem fazia 3 viagens de rede sequenciais (`getDoc` $\rightarrow$ `setDoc` $\rightarrow$ `updateDoc`).
-5. **Polling de DOM a cada 300ms e `MutationObserver` Global**: Os componentes `IdLookupEnhanced` e `ListasColetaEnhanced` utilizavam `setInterval(..., 300)` e observadores globais em `document.body` (`subtree: true, characterData: true`) varrendo todas as tags `<span>` e `<button>` da página a cada mudança visual.
+- **Exibição das Descrições (Confirmado)**: A descrição do módulo fica visível diretamente abaixo do título do cabeçalho do módulo, e a descrição de cada item/link fica visível logo abaixo do título do respectivo item.
+- **Comportamento dos Links (Padrão Recomendado)**: Links de vídeo (YouTube, Google Drive, Vimeo, Loom ou `.mp4`) abrem no player integrado da página (com opção de abrir em nova aba), enquanto links externos gerais (planilhas, formulários, sites ou sistemas) abrem diretamente em uma nova guia.
+- **Permissão Exclusiva de Admin**: Apenas administradores autenticados visualizam os controles para adicionar ou editar módulos, links e descrições; visitantes sem login e operadores visualizam apenas o conteúdo limpo e o menu Drawer (**Localizador** e **Guias**).
 
 ---
 
-## 2. User Experience & Visual Design
+## 1. Visão Geral e Conceito
 
-A interface manterá sua identidade visual limpa e de alta densidade tabular (`tabular-nums`), recebendo melhorias diretas de fluidez e controle:
-
-- **Seletor "Apenas Listas de Hoje / Incluir Listas Antigas" no Buscador**:
-  - Na barra de filtros da aba **Buscar IDs**, ao lado dos filtros de Último Movimento e Saída, haverá uma opção clara (`Buscar apenas listas de hoje` ativo por padrão, com botão/checkbox `Incluir listas antigas`).
-  - Quando em modo padrão (Hoje), a busca de 500+ IDs nas listas de coleta cai de vários segundos para milissegundos.
-- **Resposta Instantânea ao Colar Lotes (500+ IDs)**:
-  - Debounce inteligente na caixa de texto de busca para evitar disparos repetidos no Firestore enquanto o usuário ainda está digitando, mantendo atualização imediata ao colar ou clicar em pesquisar.
-- **Bipagem Contínua sem Travamentos (`/listas` e `/refugo`)**:
-  - Remoção dos observadores pesados de DOM global, garantindo que leitores de código de barras rápidos não sofram atraso de digitação (input lag).
+- **O que faz**: Transforma cada módulo da aba **Guias** em um bloco completo de orientação operacional, onde o Admin pode definir:
+  1. **Título e Descrição Geral do Módulo** (ex.: orientações gerais do processo daquele setor).
+  2. **Itens do Módulo (Vídeos e Links)**: Cada item possui título, descrição detalhada visível abaixo do título e link clicável (vídeo ou link externo).
+- **Público-Alvo**: Operadores e equipe logística que acessam `/guia` sem login para consultar IDs e acessar treinamentos, procedimentos e links úteis da operação.
+- **Valor Principal**: Centraliza instruções escritas, vídeos de treinamento e links operacionais em um único lugar organizado por módulos, sem poluição visual.
 
 ---
 
-## 3. Key Product Decisions & Trade-Offs
+## 2. Experiência do Usuário e Design Visual
 
-- **WebSockets com Auto-Detecção (`experimentalAutoDetectLongPolling`) vs. Long-Polling Forçado**:
-  - *Decisão*: Mudar o padrão para auto-detecção do Firebase (que usa WebSockets rápidos e só cai para long-polling se a rede corporativa bloquear), mantendo a opção manual de fallback caso necessário.
-- **Unificação de Busca em Listas (`IdLookup` + `IdLookupEnhanced`)**:
-  - *Decisão*: Centralizar e compartilhar o cache em memória das listas consultadas para que `IdLookup` e `IdLookupEnhanced` não façam consultas duplicadas ao Firestore para os mesmos pacotes.
-- **Indexação em Memória (`Map`) para CSV e Histórico**:
-  - *Decisão*: Pré-indexar as linhas da planilha CSV e os mapas de vagas/refugo em estruturas `Map<string, Row>` via `useMemo`. O cruzamento de 500 IDs contra 10.000 linhas passa de ~5.000.000 de comparações para 500 acessos diretos $O(1)$.
+- **Fluxo de Uso**:
+  1. O usuário acessa `/guia` e alterna pelo Drawer lateral entre **Localizador** e **Guias**.
+  2. Na visão **Guias**, cada módulo exibe seu **Título** e, logo abaixo, sua **Descrição do Módulo** em texto legível e direto.
+  3. Dentro do módulo, a lista de itens apresenta o **Título do Item**, a **Descrição do Item** logo abaixo do título e a ação direta (reproduzir vídeo na página ou abrir o link externo em nova aba).
+  4. Quando logado como **Admin**, o usuário conta com botões discretos para **Adicionar Item / Link**, **Editar Módulo (nome e descrição)**, **Editar Item** e **Excluir**.
+- **Identidade Visual e Tema**:
+  - *Direção Estética*: Utilitária corporativa limpa, seguindo o padrão de bordas retas (`1px solid`), fundo neutro (`#EBEBEB`) e cartões brancos de nível único de elevação.
+  - *Paleta de Cores*: Superfícies brancas (`#FFFFFF`), cabeçalhos de módulo em cinza suave (`#F8FAFC`), destaque amarelo institucional (`#FFE600`) com azul escuro (`#253B80`) no Drawer e azul de ação (`#1769FF`) nos links e botões administrativos.
+  - *Tipografia e Hierarquia*: Títulos de módulo em caixa alta compacta (`12px`, `font-black`), descrições de módulo e de itens em texto corrido legível (`12px–13px`, `text-slate-600`, preservando quebras de linha com `whitespace-pre-line`).
+- **Feedback Interativo**:
+  - Notificações discretas (*toast*) ao criar, atualizar ou remover itens e módulos, sem uso de janelas de alerta nativas.
 
 ---
 
-## 4. Technical Architecture & Data Strategy
+## 3. Decisões de Produto e Trade-Offs
+
+- **Decisão 1: Suporte Unificado a Vídeos e Links Externos no Mesmo Módulo**
+  - *Abordagem Escolhida*: Detectar automaticamente se o link informado é um vídeo incorporável (YouTube, Drive, Vimeo, Loom, `.mp4`) ou um link externo geral (planilha, documento, site). Se for vídeo, exibe o ícone de reprodução e abre o player na página (além de permitir abrir em nova aba); se for um link externo, exibe o ícone de link e abre diretamente em nova aba.
+  - *Por quê*: Evita que o Admin precise preencher formulários separados para vídeos e links, mantendo o cadastro simples e rápido.
+- **Decisão 2: Sincronização da Descrição do Módulo no Firestore + Cache Local**
+  - *Abordagem Escolhida*: Armazenar a descrição do módulo (`moduleDescription`) e a descrição do item (`description`) sincronizadas em tempo real no Firestore com cache instantâneo em `localStorage`.
+  - *Por quê*: Garante carregamento instantâneo (`0ms`) para quem abre `/guia` no coletor ou celular e atualiza em tempo real para toda a equipe quando o Admin edita um módulo.
+
+---
+
+## 4. Arquitetura Técnica e Estratégia de Dados
+
+### Diagrama de Arquitetura e Componentes
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                        INTERFACE DO OPERADOR                            │
-│  /consulta (Buscador)        /listas (Coleta)         /refugo (Refugo)  │
-└───────────┬─────────────────────────┬────────────────────────┬──────────┘
-            │                         │                        │
-            ▼                         ▼                        ▼
-┌───────────────────────────┐ ┌──────────────────────┐ ┌──────────────────┐
-│ Indexador O(1) em Memória │ │ Listener Único       │ │ Cache & Map O(1) │
-│ • Map<ID, CsvRow>         │ │ • Apenas onSnapshot  │ │ • Lookup direto  │
-│ • Debounce de Input       │ │   (sem getDocs duplo)│ │   por pacote     │
-│ • Filtro Padrão: Hoje     │ │ • Escrita Otimizada  │ │                  │
-└───────────┬───────────────┘ └──────────┬───────────┘ └────────┬─────────┘
-            │                            │                      │
-            └────────────────────────────┼──────────────────────┘
-                                         ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                CAMADA FIREBASE / FIRESTORE OTIMIZADA                    │
-│  • Transporte WebSocket padrão (experimentalAutoDetectLongPolling)      │
-│  • Cache compartilhado de metadados de listas e ocorrências de pacotes  │
-│  • Redução de queries concorrentes com deduplicação de códigos limpos   │
-└─────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│                        Rota Pública (/guia)                          │
+│  ┌────────────────────────────────────────────────────────────────┐  │
+│  │ Barra Superior + Drawer Lateral (Localizador | Guias)          │  │
+│  └───────────────┬────────────────────────────────┬───────────────┘  │
+│                  │                                │                  │
+│                  ▼                                ▼                  │
+│  ┌──────────────────────────────┐  ┌──────────────────────────────┐  │
+│  │ Visão: Localizador           │  │ Visão: Guias (Módulos)       │  │
+│  │ • Busca de IDs (MinimalMode) │  │ • Cabeçalho do Módulo        │  │
+│  │ • Cruzamento em tempo real   │  │   - Título do Módulo         │  │
+│  └──────────────────────────────┘  │   - Descrição do Módulo      │  │
+│                                    │ • Lista de Itens do Módulo   │  │
+│                                    │   - Título do Item           │  │
+│                                    │   - Descrição abaixo título  │  │
+│                                    │   - Ação: Player ou Link Ext │  │
+│                                    │ • Modal Admin (Criar/Editar) │  │
+│                                    └──────────────┬───────────────┘  │
+└───────────────────────────────────────────────────┼──────────────────┘
+                                                    │
+                                                    ▼
+                                     ┌──────────────────────────────┐
+                                     │ Firestore (guia_aulas)       │
+                                     │ + Cache Local (localStorage) │
+                                     └──────────────────────────────┘
 ```
 
-### Etapas de Implementação Técnica
+### Modelo de Dados e Estado
 
-1. **Otimização da Camada Firebase (`firebase-core.ts` e `listaMultiSearch.ts`)**:
-   - Ativar `experimentalAutoDetectLongPolling: true` por padrão (desativando o `forceLongPolling` forçado).
-   - Remover o `getDocs(q)` redundante dentro de `listenToListaItens`, deixando apenas o `onSnapshot` gerenciar os dados em tempo real.
-   - Otimizar `searchItemsAcrossAllListas` para aceitar o parâmetro `onlyToday: boolean` (padrão `true`), filtrar as listas em memória pela data de hoje antes de disparar queries nas subcoleções `itens`, unificar buscas quando `codigo === codigoClean` (reduzindo pela metade as queries por lote) e guardar cache de curta duração para evitar re-consultas idênticas.
-   - Otimizar `addItemToLista` para usar operação direta com `increment(1)` ou batch sem leituras bloqueantes desnecessárias quando o item é novo.
-2. **Otimização do Buscador de IDs (`IdLookup.tsx` e `IdLookupEnhanced.tsx`)**:
-   - Criar índice `Map` memorizado para `rows` (CSV) por ID limpo e ID exato, eliminando o `rows.find()` linear dentro do loop de resultados.
-   - Adicionar debounce de 350ms na busca ao Firestore quando o usuário digita/cola códigos, além do seletor visual **"Apenas listas de hoje"** / **"Incluir listas antigas"**.
-   - Substituir o `setInterval` de 300ms do `IdLookupEnhanced` por eventos sincronizados leves, reutilizando os dados já carregados pelo `IdLookup`.
-3. **Otimização de Listas de Coleta e Refugo (`ListasColetaEnhanced.tsx` e `ControleRefugo.tsx`)**:
-   - Remover os dois `MutationObserver` globais em `document.body` com `characterData: true` que causavam lentidão geral na interface, substituindo por verificação leve e escopada.
-   - Garantir que o cruzamento de pacotes no Controle de Refugo utilize `Map` indexado em memória para resposta imediata ao bipar.
+- **Entidade `GuiaLesson` (Item do Módulo)**:
+  - `id`: Identificador único do item.
+  - `moduleTitle`: Nome do módulo ao qual o item pertence.
+  - `moduleDescription`: Descrição geral do módulo exibida abaixo do título do módulo.
+  - `title`: Título da aula, link ou orientação.
+  - `description`: Descrição detalhada exibida abaixo do título do item.
+  - `videoUrl`: URL do vídeo ou link externo.
+  - `createdAt` / `updatedAt` / `createdBy`: Metadados de auditoria e ordenação.
+
+### Mapeamento de Interações
+
+- **Criar / Editar Item (Admin)**: Modal único com campos para **Módulo** (com seleção rápida dos módulos existentes), **Descrição do Módulo** (preenchida automaticamente ao selecionar um módulo existente e editável), **Título do Item**, **Link (Vídeo ou URL externa)** e **Descrição do Item**.
+- **Editar Módulo (Admin)**: Ao atualizar o nome ou a descrição de um módulo no cabeçalho do bloco, todos os itens daquele módulo têm seu cabeçalho/descrição de módulo sincronizados.
+- **Clique no Item (Todos os Usuários)**:
+  - Se o link for um vídeo compatível com player integrado, abre/fecha o player acima da lista.
+  - Se o link for uma página ou documento externo, abre diretamente em uma nova aba segura (`target="_blank" rel="noopener noreferrer"`).

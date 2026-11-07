@@ -1,14 +1,17 @@
 import {
   collection,
+  deleteDoc,
   doc,
+  getDocs,
   increment,
   onSnapshot,
   orderBy,
   query,
   runTransaction,
   serverTimestamp,
+  writeBatch,
 } from 'firebase/firestore';
-import { db } from './firebase-core';
+import { db, REFUGO_HISTORICO_COLLECTION } from './firebase-core';
 import type { RefugoScan } from './firebase-core';
 
 export const REFUGO_METRIC_ITEMS_COLLECTION = 'refugo_metricas_items';
@@ -70,18 +73,17 @@ function toDateKey(timestamp: number): string {
 }
 
 function normalizeRoute(route: string | undefined): string {
-  return String(route || '').trim();
+  return String(route || '').trim().toUpperCase();
 }
 
 export function isBrancaRefugoScan(scan: Pick<RefugoScan, 'status' | 'rota'>): boolean {
   const route = normalizeRoute(scan.rota);
-  const upper = route.toUpperCase();
 
   return (
     scan.status !== 'found' ||
     !route ||
-    upper.includes('SEM ROTA') ||
-    upper.includes('BRANCA')
+    route.includes('SEM ROTA') ||
+    route.includes('BRANCA')
   );
 }
 
@@ -89,12 +91,11 @@ export function hasValidRouteRefugoScan(scan: Pick<RefugoScan, 'status' | 'rota'
   if (scan.status !== 'found') return false;
 
   const route = normalizeRoute(scan.rota);
-  const upper = route.toUpperCase();
 
   return Boolean(
     route &&
-    !upper.includes('SEM ROTA') &&
-    !upper.includes('BRANCA')
+    !route.includes('SEM ROTA') &&
+    !route.includes('BRANCA')
   );
 }
 
@@ -170,7 +171,7 @@ export async function persistRefugoMetricScan(
       firstRouteFoundAt: previous?.firstRouteFoundAt || (isFirstRouteFound ? (scan.scannedAt || new Date(timestamp).toISOString()) : undefined),
       firstRouteFoundTimestamp: previous?.firstRouteFoundTimestamp || (isFirstRouteFound ? timestamp : undefined),
       firstRouteFoundDate: previous?.firstRouteFoundDate || (isFirstRouteFound ? dateKey : undefined),
-      rotaEncontrada: previous?.rotaEncontrada || (isFirstRouteFound ? route : undefined),
+      rotaEncontrada: previous?.rotaEncontrada ? normalizeRoute(previous.rotaEncontrada) : (isFirstRouteFound ? route : undefined),
       firstBrancaAt: previous?.firstBrancaAt || (isFirstBranca ? (scan.scannedAt || new Date(timestamp).toISOString()) : undefined),
       firstBrancaTimestamp: previous?.firstBrancaTimestamp || (isFirstBranca ? timestamp : undefined),
       firstBrancaDate: previous?.firstBrancaDate || (isFirstBranca ? dateKey : undefined),
@@ -216,12 +217,18 @@ export function listenToRefugoMetricItems(
   return onSnapshot(
     q,
     snap => {
-      callback(
-        snap.docs.map(document => ({
-          ...(document.data() as RefugoMetricItem),
+      const uniqueById = new Map<string, RefugoMetricItem>();
+      snap.docs.forEach(document => {
+        const data = document.data() as RefugoMetricItem;
+        const key = String(data.normalizedId || document.id).trim();
+        if (!key || uniqueById.has(key)) return;
+        uniqueById.set(key, {
+          ...data,
           id: document.id,
-        }))
-      );
+          normalizedId: key,
+        });
+      });
+      callback(Array.from(uniqueById.values()));
     },
     error => {
       console.error('Erro ao carregar métricas permanentes do Refugo:', error);
@@ -269,19 +276,28 @@ export function calculateRefugoPermanentSummary(
   let totalRotasEncontradas = 0;
   let totalBrancasEncontradas = 0;
   const rotas: Record<string, number> = {};
+  const seenIds = new Set<string>();
 
   for (const item of items) {
+    const key = String(item.normalizedId || item.id || item.packageId || '').trim();
+    if (!key || seenIds.has(key)) continue;
+    seenIds.add(key);
+
     if (inPeriod(item.firstSeenDate, startDate, endDate)) {
       totalUniqueBipados++;
     }
 
-    if (item.everRouteFound && inPeriod(item.firstRouteFoundDate, startDate, endDate)) {
+    const candidateRoute = normalizeRoute(item.rotaEncontrada || item.lastRota);
+    const hasValidRoute =
+      item.everRouteFound &&
+      hasValidRouteRefugoScan({ status: 'found', rota: candidateRoute });
+
+    if (hasValidRoute && inPeriod(item.firstRouteFoundDate || item.firstSeenDate, startDate, endDate)) {
       totalRotasEncontradas++;
-      const route = normalizeRoute(item.rotaEncontrada) || 'SEM ROTA';
-      rotas[route] = (rotas[route] || 0) + 1;
+      rotas[candidateRoute] = (rotas[candidateRoute] || 0) + 1;
     }
 
-    if (item.everBranca && inPeriod(item.firstBrancaDate, startDate, endDate)) {
+    if (item.everBranca && inPeriod(item.firstBrancaDate || item.firstSeenDate, startDate, endDate)) {
       totalBrancasEncontradas++;
     }
   }
@@ -295,4 +311,147 @@ export function calculateRefugoPermanentSummary(
       : 0,
     rotas,
   };
+}
+
+/**
+ * Exclui permanentemente um item de métrica do Refugo (e também o scan ativo se existir).
+ */
+export async function deleteRefugoMetricItem(normalizedId: string): Promise<void> {
+  const id = String(normalizedId || '').trim();
+  if (!id) return;
+
+  await Promise.allSettled([
+    deleteDoc(doc(db, REFUGO_METRIC_ITEMS_COLLECTION, id)),
+    deleteDoc(doc(db, 'refugo_scans_items', id)),
+  ]);
+}
+
+/**
+ * Exclui todos os itens encontrados de uma rota específica (no período informado, se houver)
+ * tanto na coleção permanente quanto nos scans ativos e nos registros históricos legados.
+ */
+export async function deleteRefugoMetricRoute(
+  rawRoute: string,
+  startDate?: string,
+  endDate?: string
+): Promise<void> {
+  const targetRoute = normalizeRoute(rawRoute);
+  if (!targetRoute) return;
+
+  // 1. Remove da coleção permanente refugo_metricas_items
+  const permSnap = await getDocs(collection(db, REFUGO_METRIC_ITEMS_COLLECTION));
+  const permToDelete = permSnap.docs.filter(d => {
+    const data = d.data() as RefugoMetricItem;
+    const itemRoute = normalizeRoute(data.rotaEncontrada || data.lastRota);
+    if (itemRoute !== targetRoute) return false;
+    const dateKey = data.firstRouteFoundDate || data.firstSeenDate;
+    return !dateKey || inPeriod(dateKey, startDate, endDate);
+  });
+
+  for (let i = 0; i < permToDelete.length; i += 400) {
+    const batch = writeBatch(db);
+    permToDelete.slice(i, i + 400).forEach(d => batch.delete(d.ref));
+    await batch.commit();
+  }
+
+  // 2. Remove dos scans ativos refugo_scans_items
+  const scansSnap = await getDocs(collection(db, 'refugo_scans_items'));
+  const scansToDelete = scansSnap.docs.filter(d => {
+    const data = d.data() as RefugoScan;
+    return normalizeRoute(data.rota) === targetRoute;
+  });
+
+  for (let i = 0; i < scansToDelete.length; i += 400) {
+    const batch = writeBatch(db);
+    scansToDelete.slice(i, i + 400).forEach(d => batch.delete(d.ref));
+    await batch.commit();
+  }
+
+  // 3. Atualiza sessões legadas em refugo_historico_metricas que contenham essa rota
+  const histSnap = await getDocs(collection(db, REFUGO_HISTORICO_COLLECTION));
+  const histBatch = writeBatch(db);
+  let histCount = 0;
+
+  histSnap.docs.forEach(d => {
+    const data = d.data();
+    const rawRotas: Record<string, number> = data.rotasEncontradas || {};
+    let removedQty = 0;
+    const nextRotas: Record<string, number> = {};
+
+    for (const [k, v] of Object.entries(rawRotas)) {
+      if (normalizeRoute(k) === targetRoute) {
+        removedQty += Number(v || 0);
+      } else {
+        nextRotas[k] = Number(v || 0);
+      }
+    }
+
+    if (removedQty > 0) {
+      const nextEncontrados = Math.max(0, Number(data.totalEncontrados || 0) - removedQty);
+      const nextBipados = Math.max(0, Number(data.totalBipados || 0) - removedQty);
+      if (nextEncontrados === 0 && Number(data.totalBrancas || 0) === 0) {
+        histBatch.delete(d.ref);
+      } else {
+        histBatch.update(d.ref, {
+          rotasEncontradas: nextRotas,
+          totalEncontrados: nextEncontrados,
+          totalBipados: nextBipados,
+        });
+      }
+      histCount++;
+    }
+  });
+
+  if (histCount > 0) {
+    await histBatch.commit();
+  }
+}
+
+/**
+ * Exclui todos os registros permanentes, diários e legados de uma data específica (YYYY-MM-DD).
+ */
+export async function deleteRefugoMetricsByDate(dateIso: string): Promise<void> {
+  const targetDate = String(dateIso || '').trim();
+  if (!targetDate) return;
+
+  // 1. Exclui itens permanentes daquela data
+  const permSnap = await getDocs(collection(db, REFUGO_METRIC_ITEMS_COLLECTION));
+  const permToDelete = permSnap.docs.filter(d => {
+    const data = d.data() as RefugoMetricItem;
+    return (
+      data.firstSeenDate === targetDate ||
+      data.firstRouteFoundDate === targetDate ||
+      data.firstBrancaDate === targetDate ||
+      data.lastSeenDate === targetDate
+    );
+  });
+
+  for (let i = 0; i < permToDelete.length; i += 400) {
+    const batch = writeBatch(db);
+    permToDelete.slice(i, i + 400).forEach(d => batch.delete(d.ref));
+    await batch.commit();
+  }
+
+  // 2. Exclui consolidado diário refugo_metricas_diarias/{targetDate}
+  await deleteDoc(doc(db, REFUGO_DAILY_METRICS_COLLECTION, targetDate)).catch(() => {});
+
+  // 3. Exclui registros legados daquela data em refugo_historico_metricas
+  const histSnap = await getDocs(collection(db, REFUGO_HISTORICO_COLLECTION));
+  const histToDelete = histSnap.docs.filter(d => {
+    const data = d.data();
+    const itemDate = String(data.data || '').trim();
+    if (itemDate === targetDate) return true;
+    if (data.timestamp && Number.isFinite(Number(data.timestamp))) {
+      const dt = new Date(Number(data.timestamp));
+      const iso = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+      return iso === targetDate;
+    }
+    return false;
+  });
+
+  for (let i = 0; i < histToDelete.length; i += 400) {
+    const batch = writeBatch(db);
+    histToDelete.slice(i, i + 400).forEach(d => batch.delete(d.ref));
+    await batch.commit();
+  }
 }

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Handshake, Eye, EyeOff } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { BookOpen, Eye, EyeOff } from 'lucide-react';
 import { loginUser, signupUser, User } from '../lib/auth';
 
 interface LoginProps {
@@ -7,6 +8,7 @@ interface LoginProps {
 }
 
 export const Login: React.FC<LoginProps> = ({ onLogin }) => {
+  const navigate = useNavigate();
   const [step, setStep] = useState<1 | 2>(1);
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   
@@ -238,6 +240,17 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
               </div>
             </form>
           )}
+
+          <div className="mt-6 pt-4 border-t border-gray-200 text-center">
+            <button
+              type="button"
+              onClick={() => navigate('/guia')}
+              className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 text-xs font-bold transition-colors cursor-pointer"
+            >
+              <BookOpen className="w-4 h-4 text-[#1769ff]" />
+              <span>Acessar Guia & Buscador (Sem Login)</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>

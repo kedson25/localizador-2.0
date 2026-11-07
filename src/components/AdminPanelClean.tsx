@@ -326,7 +326,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
   }, [refugoHistorico, startDate, endDate]);
 
   const filteredActiveScans = useMemo(() => {
+    const seen = new Set<string>();
     return refugoScans.filter(scan => {
+      const key = String((scan as any).normalizedId || scan.id || '').trim();
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+
       const date = parseDateRobust(scan.scannedAt);
       if (!date) return false;
       const iso = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -342,8 +347,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
 
     const historicoEncontrados = filteredRefugoHistorico.reduce((total, item) => total + Number(item.totalEncontrados || 0), 0);
     const historicoBrancas = filteredRefugoHistorico.reduce((total, item) => total + Number(item.totalBrancas || 0), 0);
-    const ativosEncontrados = filteredActiveScans.filter(scan => scan.status === 'found').length;
-    const ativosBrancas = filteredActiveScans.filter(scan => scan.status !== 'found' || (scan.rota || '').toLowerCase().includes('branca')).length;
+    const ativosEncontrados = filteredActiveScans.filter(scan => {
+      const route = String(scan.rota || '').trim().toUpperCase();
+      return scan.status === 'found' && Boolean(route) && !route.includes('SEM ROTA') && !route.includes('BRANCA');
+    }).length;
+    const ativosBrancas = filteredActiveScans.filter(scan => {
+      const route = String(scan.rota || '').trim().toUpperCase();
+      return scan.status !== 'found' || !route || route.includes('SEM ROTA') || route.includes('BRANCA');
+    }).length;
 
     const accuracies = finalizadas
       .map(lista => Number(lista.porcentagemAcerto))
@@ -436,7 +447,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
   };
 
   const removeUser = async (user: User) => {
-    if (!window.confirm(`Excluir ${user.username}?`)) return;
     await runAdminAction(async () => {
       await deleteUser(user.id);
       await refreshUsers();
@@ -451,7 +461,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
 
   const validateAll = async () => {
     if (!selectedListaForReport) return;
-    if (!window.confirm('Validar todos os IDs pendentes desta lista?')) return;
     const itens = (selectedListaForReport.itens || []).map(item => ({ ...item, validado: true }));
     await runAdminAction(async () => { await saveLista({ ...selectedListaForReport, itens }); });
   };
@@ -519,6 +528,33 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
     const next = routingErrors.map((item, itemIndex) => itemIndex === index ? { ...item, resolvedAt: new Date().toISOString() } : item);
     localStorage.setItem('routing_errors_report_v1', JSON.stringify(next));
     setRoutingErrors(next);
+    window.dispatchEvent(new Event('routing-errors-report-updated'));
+  };
+
+  const unmarkRoutingErrorFound = (index: number) => {
+    const next = routingErrors.map((item, itemIndex) => {
+      if (itemIndex !== index) return item;
+      const copy = { ...item };
+      delete copy.resolvedAt;
+      return copy;
+    });
+    localStorage.setItem('routing_errors_report_v1', JSON.stringify(next));
+    setRoutingErrors(next);
+    window.dispatchEvent(new Event('routing-errors-report-updated'));
+  };
+
+  const deleteRoutingError = (index: number) => {
+    const next = routingErrors.filter((_, itemIndex) => itemIndex !== index);
+    localStorage.setItem('routing_errors_report_v1', JSON.stringify(next));
+    setRoutingErrors(next);
+    window.dispatchEvent(new Event('routing-errors-report-updated'));
+  };
+
+  const clearResolvedRoutingErrors = () => {
+    const next = routingErrors.filter(item => !item.resolvedAt);
+    localStorage.setItem('routing_errors_report_v1', JSON.stringify(next));
+    setRoutingErrors(next);
+    window.dispatchEvent(new Event('routing-errors-report-updated'));
   };
 
   return (
@@ -660,7 +696,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
             )}
           </section>
 
-          <details className="group rounded-xl border border-gray-200 bg-white shadow-sm">
+          <details open className="group rounded-xl border border-gray-200 bg-white shadow-sm">
             <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-semibold text-gray-800">
               <span>Detalhes do Refugo</span>
               <span className="text-xs font-normal text-gray-400">histórico, brancas e rotas encontradas</span>
@@ -701,10 +737,24 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
           </section>
           <section className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
           <div className="border-b border-gray-100 px-5 py-4">
-            <h2 className="text-base font-bold text-gray-900">Pacotes com erro de roteamento</h2>
-            <p className="mt-1 text-xs text-gray-500">Confira a lista de origem, onde o pacote foi localizado e marque quando resolver.</p>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h2 className="text-base font-bold text-gray-900">Pacotes com erro de roteamento</h2>
+                <p className="mt-1 text-xs text-gray-500">Confira a lista de origem, onde o pacote foi localizado e marque ou apague quando resolver.</p>
+              </div>
+              {routingErrorFilter === 'encontrados' && routingErrorSummary.found > 0 && (
+                <button
+                  type="button"
+                  onClick={clearResolvedRoutingErrors}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-bold text-red-700 hover:bg-red-100 cursor-pointer"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  <span>Apagar todos os encontrados</span>
+                </button>
+              )}
+            </div>
             <div className="mt-4 flex gap-2">
-              {(['pendentes', 'encontrados'] as const).map(filter => <button key={filter} onClick={() => setRoutingErrorFilter(filter)} className={`rounded-lg px-3 py-2 text-xs font-bold ${routingErrorFilter === filter ? 'bg-gray-900 text-white shadow-sm' : 'border border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`}>{filter === 'pendentes' ? `Procurar (${routingErrorSummary.pending})` : `Encontrados (${routingErrorSummary.found})`}</button>)}
+              {(['pendentes', 'encontrados'] as const).map(filter => <button key={filter} onClick={() => setRoutingErrorFilter(filter)} className={`rounded-lg px-3 py-2 text-xs font-bold cursor-pointer ${routingErrorFilter === filter ? 'bg-gray-900 text-white shadow-sm' : 'border border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`}>{filter === 'pendentes' ? `Procurar (${routingErrorSummary.pending})` : `Encontrados (${routingErrorSummary.found})`}</button>)}
             </div>
           </div>
           {routingErrors.length === 0 ? (
@@ -717,7 +767,35 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
                   <div><p className="text-[10px] font-bold uppercase text-gray-400">Deveria estar em</p><p className="mt-1 font-semibold text-gray-700">{error.sourceListaNome || '-'}</p></div>
                   <div><p className="text-[10px] font-bold uppercase text-gray-400">Foi encontrado em</p><p className="mt-1 font-semibold text-red-700">{(error.foundIn || error.lists || []).join(' • ') || '-'}</p></div>
                   <div><p className="text-[10px] font-bold uppercase text-gray-400">Registrado</p><p className="mt-1 text-gray-600">{error.detectedAt ? new Date(error.detectedAt).toLocaleDateString('pt-BR') : '-'}</p></div>
-                  <button onClick={() => !error.resolvedAt && markRoutingErrorFound(index)} disabled={Boolean(error.resolvedAt)} className={`rounded-lg px-3 py-2 text-xs font-bold ${error.resolvedAt ? 'bg-emerald-50 text-emerald-700' : 'bg-emerald-600 text-white hover:bg-emerald-700'}`}>{error.resolvedAt ? '✓ Encontrado' : 'Marcar encontrado'}</button>
+                  <div className="flex items-center gap-2">
+                    {error.resolvedAt ? (
+                      <button
+                        type="button"
+                        onClick={() => unmarkRoutingErrorFound(index)}
+                        className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-100 cursor-pointer"
+                        title="Clique para voltar para pendentes"
+                      >
+                        ✓ Encontrado
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => markRoutingErrorFound(index)}
+                        className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700 cursor-pointer"
+                      >
+                        Marcar encontrado
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => deleteRoutingError(index)}
+                      className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-white px-2.5 py-2 text-xs font-bold text-red-600 hover:bg-red-50 cursor-pointer"
+                      title="Apagar este item do relatório"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      <span>Apagar</span>
+                    </button>
+                  </div>
                 </div>
               ))}
               {visibleRoutingErrors.length === 0 && <div className="px-5 py-12 text-center text-sm text-gray-400">Nenhum pacote nesta situação.</div>}

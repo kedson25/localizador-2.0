@@ -21,6 +21,7 @@ import { AdminPanel } from './components/AdminPanel';
 import { OperationNavigation } from './components/OperationNavigation';
 import { ExpedicaoPanel } from './components/ExpedicaoPanel';
 import { CodesPanel } from './components/CodesPanel';
+import { GuiaPublicoPage } from './components/GuiaPublicoPage';
 import { DynamicQrRedirect } from './components/DynamicQrRedirect';
 import { User, getCurrentUser } from './lib/auth';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -80,6 +81,7 @@ export default function App() {
         location.pathname.startsWith('/reporte') ? 'Reporte' :
         location.pathname.startsWith('/expedicao') ? 'Controle de Docas' :
         location.pathname.startsWith('/qrs') ? 'QRs Dinâmicos' :
+        location.pathname.startsWith('/guia') ? 'Guia & Aulas' :
         location.pathname.startsWith('/configuracoes') ? 'Configurações' :
         location.pathname.startsWith('/admin') ? 'Admin' : 'Módulos';
       try {
@@ -139,7 +141,8 @@ export default function App() {
       {notification && <div className="fixed left-1/2 top-4 z-[100] w-[min(92vw,720px)] -translate-x-1/2 rounded-lg border border-gray-700 bg-[#111827] px-3.5 py-2.5 text-xs text-white shadow-xl">{notification}</div>}
       <ErrorBoundary>
         <Routes>
-          {/* Rotas Públicas de Redirecionamento Dinâmico (qualquer câmera/scanner de celular) */}
+          {/* Rotas Públicas Sem Login */}
+          <Route path="/guia" element={<GuiaPublicoPage rows={rows} currentUser={currentUser} />} />
           <Route path="/qr/:code" element={<DynamicQrRedirect />} />
           <Route path="/r/:code" element={<DynamicQrRedirect />} />
 
